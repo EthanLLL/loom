@@ -35,3 +35,6 @@ loom-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Runtime secrets — never commit. Use .env.example as the template.
+.env
