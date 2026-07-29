@@ -1,0 +1,64 @@
+.login {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #010c18;
+  font-family: "MesloLGL Nerd Font Mono", monospace;
+}
+
+.login-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 260px;
+  padding: 32px;
+  background: #0b1f33;
+  border-radius: 12px;
+}
+
+.login-title {
+  color: #38ff9d;
+  font-size: 26px;
+  font-weight: bold;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.login-input {
+  padding: 10px 12px;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  background: #010c18;
+  color: #ecdef4;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.login-input:focus {
+  border-color: #1376f9;
+}
+
+.login-error {
+  color: #ff54b0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.login-btn {
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: #1376f9;
+  color: #010c18;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.login-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
