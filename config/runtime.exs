@@ -22,21 +22,6 @@ end
 
 config :loom, LoomWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-if config_env() == :dev do
-  # Reload browser tabs when matching files change.
-  config :loom, LoomWeb.Endpoint,
-    live_reload: [
-      web_console_logger: true,
-      patterns: [
-        # Static assets, except user uploads
-        ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$"E,
-        # Router, Controllers, LiveViews and LiveComponents
-        ~r"lib/loom_web/router\.ex$"E,
-        ~r"lib/loom_web/(controllers|live|components)/.*\.(ex|heex)$"E
-      ]
-    ]
-end
-
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

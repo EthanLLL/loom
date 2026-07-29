@@ -15,38 +15,10 @@ config :loom, LoomWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: LoomWeb.ErrorHTML, json: LoomWeb.ErrorJSON],
+    formats: [json: LoomWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: Loom.PubSub,
-  live_view: [signing_salt: "VQmGTzDL"]
-
-# Configure LiveView
-config :phoenix_live_view,
-  # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
-  root_tag_attribute: "phx-r"
-
-# Configure esbuild (the version is required)
-config :esbuild,
-  version: "0.25.4",
-  loom: [
-    args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
-    cd: Path.expand("../assets", __DIR__),
-    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
-  ]
-
-# Configure tailwind (the version is required)
-config :tailwind,
-  version: "4.3.0",
-  loom: [
-    args: ~w(
-      --input=assets/css/app.css
-      --output=priv/static/assets/css/app.css
-    ),
-    cd: Path.expand("..", __DIR__),
-    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
-  ]
+  pubsub_server: Loom.PubSub
 
 # Configure Elixir's Logger
 config :logger, :default_formatter,

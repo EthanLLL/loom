@@ -16,11 +16,7 @@ config :loom, LoomWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk",
-  watchers: [
-    esbuild: {Esbuild, :install_and_run, [:loom, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:loom, ~w(--watch)]}
-  ]
+  secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk"
 
 # ## SSL Support
 #
@@ -45,9 +41,6 @@ config :loom, LoomWeb.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
-# Enable dev routes for dashboard and mailbox
-config :loom, dev_routes: true
-
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
@@ -57,11 +50,3 @@ config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
-
-config :phoenix_live_view,
-  # Include debug annotations and locations in rendered markup.
-  # Changing this configuration will require mix clean and a full recompile.
-  debug_heex_annotations: true,
-  debug_attributes: true,
-  # Enable helpful, but potentially expensive runtime checks
-  enable_expensive_runtime_checks: true
