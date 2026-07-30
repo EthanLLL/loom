@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react"
 import { Terminal as Xterm } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
-import { WebglAddon } from "@xterm/addon-webgl"
 import { Unicode11Addon } from "@xterm/addon-unicode11"
 import "@xterm/xterm/css/xterm.css"
 import { getSocket } from "./socket"
@@ -78,19 +77,6 @@ export function Terminal({ sessionId, active }: Props) {
     termRef.current = term
     fitRef.current = fit
 
-    // WebGL renderer: crisper text and, unlike the default DOM renderer, it
-    // repaints from the full grid state each frame — which fixes the redraw
-    // artifacts (stray strikethrough lines) some TUIs produce. Fall back
-    // silently to the DOM renderer if WebGL is unavailable or its context is
-    // lost, so the terminal never breaks.
-    try {
-      const webgl = new WebglAddon()
-      webgl.onContextLoss(() => webgl.dispose())
-      term.loadAddon(webgl)
-    } catch {
-      // no WebGL — stick with the default renderer
-    }
-
     const dec = new TextDecoder()
     const enc = new TextEncoder()
 
@@ -132,10 +118,10 @@ export function Terminal({ sessionId, active }: Props) {
           term.write(payload)
         }
         // A TUI streaming a table repaints the same region many times per
-        // second; the DOM/WebGL renderer can leave ghost rows from earlier
-        // frames (multi-exposure look) that only a full repaint clears — which
-        // is why a manual resize fixes it. Debounce a forced full refresh to
-        // the end of each output burst so it self-cleans without user action.
+        // second; the DOM renderer can leave ghost rows from earlier frames
+        // that only a full repaint clears — which is why a manual resize fixes
+        // it. Debounce a forced full refresh to the end of each output burst so
+        // it self-cleans without user action.
         scheduleRefresh()
       })
 

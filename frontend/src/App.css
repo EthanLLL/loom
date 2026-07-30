@@ -103,11 +103,14 @@
   display: flex;
   gap: 4px;
   opacity: 0;
+  /* Hidden toolbar must not eat clicks; enabled only on hover (below). */
+  pointer-events: none;
   transition: opacity 0.12s;
 }
 
 .pane:hover .pane-toolbar {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .pane-btn {
@@ -133,6 +136,10 @@
 .terminal-container {
   position: absolute;
   inset: 0;
+  /* Below the pane toolbar. Without this, the terminal (later in the DOM,
+     also position:absolute) stacks above the z-index:2 toolbar and its canvas
+     swallows clicks meant for the split/close buttons. */
+  z-index: 0;
   padding: 6px;
   box-sizing: border-box;
   background: #010c18;
