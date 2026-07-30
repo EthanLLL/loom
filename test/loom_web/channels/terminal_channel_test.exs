@@ -86,4 +86,24 @@ defmodule LoomWeb.TerminalChannelTest do
     assert {:ok, out} = await_output("SIZE=120x40")
     assert out =~ "SIZE=120x40"
   end
+
+  test "join applies the client size so the shell sees correct columns immediately" do
+    # Session created at the default 80 cols...
+    id = "test-#{System.unique_integer([:positive])}"
+    {:ok, _pid} = Loom.Terminal.start_session(id, cols: 80, rows: 24)
+
+    # ...but the client joins reporting a wider terminal. The shell should see
+    # the wide size right away, without a separate resize event. This is the
+    # fix for TUIs (Claude Code) laying out their first screen at the wrong width.
+    {:ok, _reply, socket} =
+      socket(UserSocket, nil, %{})
+      |> subscribe_and_join(LoomWeb.TerminalChannel, "terminal:#{id}", %{
+        "cols" => 150,
+        "rows" => 45
+      })
+
+    push_input(socket, "echo SIZE=$(tput cols)x$(tput lines)\n")
+    assert {:ok, out} = await_output("SIZE=150x45")
+    assert out =~ "SIZE=150x45"
+  end
 end

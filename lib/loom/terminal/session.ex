@@ -80,7 +80,6 @@ defmodule Loom.Terminal.Session do
       rows: rows,
       subscriber: nil,
       monitor: nil,
-      sgr_carry: "",
       buffer: "",
       buffer_size: 0
     }
@@ -118,8 +117,7 @@ defmodule Loom.Terminal.Session do
 
   @impl true
   def handle_info({:pty_data, data}, state) do
-    {output, carry} = Loom.Terminal.Sgr.transform(data, state.sgr_carry)
-    state = %{state | sgr_carry: carry}
+    output = Loom.Terminal.Sgr.transform(data)
 
     if output == "" do
       {:noreply, state}

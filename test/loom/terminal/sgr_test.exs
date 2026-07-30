@@ -4,46 +4,37 @@ defmodule Loom.Terminal.SgrTest do
   alias Loom.Terminal.Sgr
 
   test "rewrites colon-form truecolor foreground to semicolon form" do
-    {out, carry} = Sgr.transform("\e[38:2:130:139:184mhi")
-    assert out == "\e[38;2;130;139;184mhi"
-    assert carry == ""
+    assert Sgr.transform("\e[38:2:130:139:184mhi") == "\e[38;2;130;139;184mhi"
   end
 
   test "rewrites background truecolor too" do
-    {out, _} = Sgr.transform("\e[48:2:1:2:3mX")
-    assert out == "\e[48;2;1;2;3mX"
+    assert Sgr.transform("\e[48:2:1:2:3mX") == "\e[48;2;1;2;3mX"
   end
 
   test "leaves semicolon-form truecolor untouched" do
-    {out, _} = Sgr.transform("\e[38;2;10;20;30mok")
-    assert out == "\e[38;2;10;20;30mok"
+    assert Sgr.transform("\e[38;2;10;20;30mok") == "\e[38;2;10;20;30mok"
   end
 
   test "leaves 256-color and plain text untouched" do
-    {out, _} = Sgr.transform("\e[38;5;42m plain \e[0m text")
-    assert out == "\e[38;5;42m plain \e[0m text"
+    assert Sgr.transform("\e[38;5;42m plain \e[0m text") ==
+             "\e[38;5;42m plain \e[0m text"
   end
 
   test "handles truecolor combined with other params in one CSI" do
-    {out, _} = Sgr.transform("\e[1;38:2:200:100:50;4mbold")
-    assert out == "\e[1;38;2;200;100;50;4mbold"
+    assert Sgr.transform("\e[1;38:2:200:100:50;4mbold") ==
+             "\e[1;38;2;200;100;50;4mbold"
   end
 
-  test "holds back a sequence split across two reads and rewrites once complete" do
-    # First read ends mid-escape-sequence.
-    {out1, carry1} = Sgr.transform("text\e[38:2:130:139")
-    assert out1 == "text"
-    assert carry1 == "\e[38:2:130:139"
-
-    # Second read completes it.
-    {out2, carry2} = Sgr.transform(":184mrest", carry1)
-    assert out2 == "\e[38;2;130;139;184mrest"
-    assert carry2 == ""
+  test "passes control sequences through untouched (stateless, no buffering)" do
+    # These are exactly the sequences whose delayed delivery used to break
+    # TUI redraws: cursor save/restore, clear line, OSC, charset, etc.
+    for seq <- ["\e7", "\e8", "\e[K", "\e]0;title\a", "\e(B", "\e=", "\e[0m"] do
+      assert Sgr.transform("text" <> seq) == "text" <> seq
+    end
   end
 
-  test "does not hold back a completed sequence" do
-    {out, carry} = Sgr.transform("\e[0m")
-    assert out == "\e[0m"
-    assert carry == ""
+  test "a trailing bare ESC is forwarded, not held back" do
+    # No carry: whatever arrives is emitted as-is (rewrites don't cross reads).
+    assert Sgr.transform("some content\e") == "some content\e"
   end
 end

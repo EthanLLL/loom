@@ -14,11 +14,21 @@ defmodule LoomWeb.TerminalChannel do
   alias Loom.Terminal
 
   @impl true
-  def join("terminal:" <> id, _params, socket) do
+  def join("terminal:" <> id, params, socket) do
     # Sessions are created via the REST API; a channel only attaches to an
     # existing one. Rejecting unknown ids stops a stale tab from resurrecting a
     # session that was already closed.
     if Terminal.exists?(id) do
+      # Apply the client's real terminal size immediately, before the shell
+      # produces any output the client cares about. The session was created at
+      # a default size; without this, a TUI (e.g. Claude Code) would lay out
+      # its first screen at the wrong column count and wrap/table rendering
+      # would be broken until the process is restarted.
+      with %{"cols" => cols, "rows" => rows} <- params,
+           true <- is_integer(cols) and is_integer(rows) do
+        Terminal.resize(id, cols, rows)
+      end
+
       :ok = Terminal.subscribe(id, self())
       {:ok, assign(socket, :session_id, id)}
     else
