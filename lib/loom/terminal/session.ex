@@ -43,6 +43,11 @@ defmodule Loom.Terminal.Session do
 
   @impl true
   def init(opts) do
+    # Trap exits so `terminate/2` runs on supervisor shutdown — that is where we
+    # kill the PTY. ExPTY is started with `GenServer.start` (NOT `start_link`),
+    # so it is NOT linked to us: when this Session dies, the ExPTY process, its
+    # PTY, and the shell all keep running unless we explicitly kill them.
+    Process.flag(:trap_exit, true)
     id = Keyword.fetch!(opts, :id)
     cols = Keyword.get(opts, :cols, 80)
     rows = Keyword.get(opts, :rows, 24)
@@ -71,9 +76,21 @@ defmodule Loom.Terminal.Session do
         on_exit: fn _pty, _pid, _code, _signal -> send(parent, :pty_exit) end
       )
 
+    # The shell's OS pid. ExPTY spawns it via forkpty + setsid(), so the shell
+    # is a session/process-group leader: killing the negative pid (the whole
+    # group) also reaps async workers it forked (zsh instant-prompt/zinit
+    # helpers) that have re-parented away and would otherwise be orphaned.
+    os_pid =
+      try do
+        :sys.get_state(pty).pid
+      catch
+        _, _ -> nil
+      end
+
     state = %{
       id: id,
       pty: pty,
+      os_pid: os_pid,
       title: title,
       created_at: System.system_time(:millisecond),
       cols: cols,
@@ -138,6 +155,33 @@ defmodule Loom.Terminal.Session do
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(_reason, state) do
+    # Closing a tab/pane calls DynamicSupervisor.terminate_child, which lands
+    # here. Without this the PTY + shell (+ any TUI in it) would keep running
+    # forever, since ExPTY is unlinked (it uses GenServer.start, not start_link).
+    #
+    # If ExPTY is still alive, the shell hasn't exited on its own, so os_pid is
+    # still valid (not yet reaped/reused): kill the whole process group. The
+    # shell is a group leader (forkpty + setsid), so the negative pid also
+    # reaps async workers it forked (zsh instant-prompt/zinit helpers) that
+    # re-parented to init and would otherwise be orphaned. If ExPTY already
+    # died (:pty_exit), the child is already gone — skip the group kill to avoid
+    # SIGKILLing an unrelated process that reused the pid.
+    if Process.alive?(state.pty) do
+      if state.os_pid && state.os_pid > 1 do
+        System.cmd("kill", ["-KILL", "-#{state.os_pid}"], stderr_to_stdout: true)
+      end
+
+      ExPTY.kill(state.pty, 9)
+      GenServer.stop(state.pty, :normal, 1_000)
+    end
+
+    :ok
+  catch
+    _, _ -> :ok
+  end
 
   # ── Helpers ───────────────────────────────────────────────────────────────
 
