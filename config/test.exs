@@ -2,6 +2,10 @@ import Config
 
 config :loom, :password, "test-password"
 
+# Each test owns its session data under a temp dir, so the boot-time restore
+# would only race with that. Tests that exercise restore drive it directly.
+config :loom, :restore_agents, false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :loom, LoomWeb.Endpoint,
@@ -18,3 +22,7 @@ config :phoenix, :plug_init_mode, :runtime
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# No real `codex app-server`: the suite drives the JSON-RPC protocol directly,
+# and spawning one would make every run slow and dependent on a working login.
+config :loom, :codex_server, false

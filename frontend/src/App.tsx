@@ -1,200 +1,247 @@
-import { useEffect, useRef, useState } from "react"
-import { Terminal } from "./Terminal"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Chat } from "./Chat"
 import { Login } from "./Login"
+import { Sidebar } from "./Sidebar"
+import { Terminal } from "./Terminal"
 import {
+  createAgent,
   createSession,
+  deleteAgent,
   deleteSession,
-  getLayout,
   getToken,
-  putLayout,
-  type Layout,
-  type Tab,
+  listAgents,
+  listSessions,
+  type AgentBackend,
+  type AgentInfo,
 } from "./api"
 import "./App.css"
 
-const MAX_PANES = 3
+// The session list carries each agent's status and auto-generated title, and
+// both change while the server works. Polling is enough here (single tenant,
+// one list) and it is paused while the tab is hidden so a phone in a pocket
+// is not asking every few seconds.
+const POLL_MS = 5000
 
-function newTabId() {
-  return "t_" + Math.random().toString(36).slice(2, 10)
-}
+const SIDEBAR_KEY = "loom_sidebar_open"
 
 function App() {
   const [authed, setAuthed] = useState(!!getToken())
-  const [layout, setLayout] = useState<Layout>({ tabs: [], active_tab: null })
+  const [sessions, setSessions] = useState<AgentInfo[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const persistTimer = useRef<number | null>(null)
 
-  // Load the saved layout (reconciled against live sessions on the server). If
-  // nothing survives, start a fresh tab with one pane.
+  // Remembered, because on a narrow screen you collapse it once and want it
+  // to stay collapsed across reloads.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => localStorage.getItem(SIDEBAR_KEY) !== "0",
+  )
+
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  // PTY session ids, top to bottom in the right-hand column.
+  const [ptyIds, setPtyIds] = useState<string[]>([])
+  const openingTerminal = useRef(false)
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "1" : "0")
+  }, [sidebarOpen])
+
+  const refresh = useCallback(async () => {
+    const list = await listAgents()
+    setSessions(list)
+    return list
+  }, [])
+
   useEffect(() => {
     if (!authed) return
     ;(async () => {
       try {
-        let l = await getLayout()
-        if (l.tabs.length === 0) {
-          const s = await createSession()
-          l = { tabs: [{ id: newTabId(), panes: [s.id] }], active_tab: null }
-          l.active_tab = l.tabs[0].id
-        }
-        setLayout(l)
+        const list = await refresh()
+        setActiveId((current) => current ?? list[0]?.id ?? null)
       } finally {
         setLoading(false)
       }
     })()
-  }, [authed])
+  }, [authed, refresh])
 
-  // Persist layout to the backend (debounced) whenever it changes.
   useEffect(() => {
-    if (loading) return
-    if (persistTimer.current) window.clearTimeout(persistTimer.current)
-    persistTimer.current = window.setTimeout(() => {
-      putLayout(layout).catch(() => {})
-    }, 150)
-  }, [layout, loading])
+    if (!authed) return
+    let timer = 0
 
-  const setActiveTab = (id: string) =>
-    setLayout((l) => ({ ...l, active_tab: id }))
-
-  const addTab = async () => {
-    const s = await createSession()
-    const tab: Tab = { id: newTabId(), panes: [s.id] }
-    setLayout((l) => ({ tabs: [...l.tabs, tab], active_tab: tab.id }))
-  }
-
-  const closeTab = async (tabId: string) => {
-    const tab = layout.tabs.find((t) => t.id === tabId)
-    if (tab) await Promise.all(tab.panes.map((p) => deleteSession(p)))
-
-    setLayout((l) => {
-      const idx = l.tabs.findIndex((t) => t.id === tabId)
-      const tabs = l.tabs.filter((t) => t.id !== tabId)
-      let active = l.active_tab
-      if (active === tabId) {
-        active = tabs[Math.max(0, idx - 1)]?.id ?? null
-      }
-      return { tabs, active_tab: active }
-    })
-  }
-
-  // Ensure we never end up with zero tabs.
-  useEffect(() => {
-    if (loading) return
-    if (layout.tabs.length === 0) {
-      ;(async () => {
-        const s = await createSession()
-        const tab: Tab = { id: newTabId(), panes: [s.id] }
-        setLayout({ tabs: [tab], active_tab: tab.id })
-      })()
+    const tick = () => {
+      if (!document.hidden) refresh().catch(() => {})
+      timer = window.setTimeout(tick, POLL_MS)
     }
-  }, [layout.tabs.length, loading])
+    timer = window.setTimeout(tick, POLL_MS)
 
-  const splitPane = async (tabId: string) => {
-    const tab = layout.tabs.find((t) => t.id === tabId)
-    if (!tab || tab.panes.length >= MAX_PANES) return
-    const s = await createSession()
-    setLayout((l) => ({
-      ...l,
-      tabs: l.tabs.map((t) =>
-        t.id === tabId ? { ...t, panes: [...t.panes, s.id] } : t,
-      ),
-    }))
+    // Catch up immediately when the tab comes back rather than waiting out the
+    // interval — on a phone that is the moment the user is looking at it.
+    const onVisible = () => {
+      if (!document.hidden) refresh().catch(() => {})
+    }
+    document.addEventListener("visibilitychange", onVisible)
+
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [authed, refresh])
+
+  // The backend is chosen here and never again: the conversation lives in that
+  // engine's own store, so there is nothing to migrate if it changes.
+  const create = async (backend: AgentBackend) => {
+    const session = await createAgent(backend)
+    setSessions((list) => [...list, session])
+    setActiveId(session.id)
   }
 
-  const closePane = async (tabId: string, sessionId: string) => {
-    const tab = layout.tabs.find((t) => t.id === tabId)
-    if (!tab) return
+  const remove = async (id: string) => {
+    await deleteAgent(id)
+    const list = await refresh()
+    setActiveId((current) => (current === id ? (list[0]?.id ?? null) : current))
+  }
 
-    // Closing the last pane in a tab closes the tab.
-    if (tab.panes.length <= 1) {
-      await closeTab(tabId)
+  // ── Terminals ────────────────────────────────────────────────────────────
+  //
+  // All of them live in the right-hand column, stacked. Hiding the column
+  // leaves them running: the shells are server-side and a hidden pane just has
+  // zero size, which the Terminal component already handles.
+
+  const toggleTerminal = async () => {
+    if (terminalOpen) {
+      setTerminalOpen(false)
       return
     }
 
-    await deleteSession(sessionId)
-    setLayout((l) => ({
-      ...l,
-      tabs: l.tabs.map((t) =>
-        t.id === tabId
-          ? { ...t, panes: t.panes.filter((p) => p !== sessionId) }
-          : t,
-      ),
-    }))
+    if (ptyIds.length === 0) {
+      // Guarded against a double click: `ptyIds` is still empty for the second
+      // call, which would spawn a second shell nobody asked for.
+      if (openingTerminal.current) return
+      openingTerminal.current = true
+
+      try {
+        // Adopt whatever shells are already running before starting another,
+        // so a page reload reattaches instead of piling up PTYs.
+        const existing = await listSessions().catch(() => [])
+        const ids =
+          existing.length > 0
+            ? [...existing]
+                .sort((a, b) => a.created_at - b.created_at)
+                .map((s) => s.id)
+            : [(await createSession("terminal")).id]
+        setPtyIds(ids)
+      } finally {
+        openingTerminal.current = false
+      }
+    }
+
+    setTerminalOpen(true)
   }
 
-  if (!authed) {
-    return <Login onSuccess={() => setAuthed(true)} />
+  const addTerminal = async () => {
+    const session = await createSession("terminal")
+    setPtyIds((ids) => [...ids, session.id])
   }
 
+  const closeTerminal = async (id: string) => {
+    const next = ptyIds.filter((p) => p !== id)
+    setPtyIds(next)
+    // Nothing left to show, so drop the column rather than leave a gap.
+    if (next.length === 0) setTerminalOpen(false)
+    await deleteSession(id).catch(() => {})
+  }
+
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
   if (loading) return <div className="loading">connecting…</div>
+
+  const active = sessions.find((s) => s.id === activeId) ?? null
 
   return (
     <div className="app">
-      <div className="tabbar">
-        {layout.tabs.map((t, i) => (
-          <div
-            key={t.id}
-            className={"tab" + (t.id === layout.active_tab ? " active" : "")}
-            onClick={() => setActiveTab(t.id)}
-          >
-            <span className="tab-label">
-              shell {i + 1}
-              {t.panes.length > 1 ? ` (${t.panes.length})` : ""}
-            </span>
-            <span
-              className="tab-close"
-              title="Close tab"
-              onClick={(e) => {
-                e.stopPropagation()
-                closeTab(t.id)
-              }}
-            >
-              ×
-            </span>
-          </div>
-        ))}
-        <button className="tab new" onClick={addTab} title="New tab">
-          +
-        </button>
-      </div>
+      {sidebarOpen && (
+        <Sidebar
+          sessions={sessions}
+          activeId={activeId}
+          onSelect={setActiveId}
+          onCreate={create}
+          onDelete={remove}
+          onCollapse={() => setSidebarOpen(false)}
+        />
+      )}
 
-      {/* Keep every tab mounted so its panes' terminals aren't torn down when
-          switching tabs; hide the inactive ones. */}
-      <div className="tabs-area">
-        {layout.tabs.map((t) => (
+      <main className="main">
+        <div className="main-chat">
+          {active ? (
+            // Keyed by id so switching sessions rebuilds the channel and the
+            // transcript rather than mixing two conversations.
+            <Chat
+              key={active.id}
+              session={active}
+              sidebarOpen={sidebarOpen}
+              onToggleSidebar={() => setSidebarOpen((open) => !open)}
+              terminalOpen={terminalOpen}
+              terminalCount={ptyIds.length}
+              onToggleTerminal={toggleTerminal}
+            />
+          ) : (
+            <div className="placeholder">
+              <p>No session selected.</p>
+              <div className="backend-choice">
+                <button
+                  className="composer-btn send"
+                  onClick={() => create("claude_code")}
+                >
+                  new Claude Code session
+                </button>
+                <button
+                  className="composer-btn send"
+                  onClick={() => create("codex")}
+                >
+                  new Codex session
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Kept mounted once opened: unmounting would drop the channel and
+            xterm's scrollback, and the shell itself keeps running server-side
+            either way. */}
+        {ptyIds.length > 0 && (
           <div
-            key={t.id}
-            className="panes"
-            style={{ display: t.id === layout.active_tab ? "flex" : "none" }}
+            className="terminal-column"
+            style={{ display: terminalOpen ? "flex" : "none" }}
           >
-            {t.panes.map((sessionId) => (
-              <div className="pane" key={sessionId}>
-                <div className="pane-toolbar">
-                  {t.panes.length < MAX_PANES && (
+            {ptyIds.map((id, index) => (
+              <div className="terminal-pane" key={id}>
+                <div className="pane-head">
+                  <span>terminal {index + 1}</span>
+                  <span className="pane-actions">
+                    {/* On every pane rather than once, so it does not move
+                        around as terminals are closed. */}
                     <button
                       className="pane-btn"
-                      title="Split right"
-                      onClick={() => splitPane(t.id)}
+                      onClick={addTerminal}
+                      title="New terminal"
                     >
-                      ⧉
+                      +
                     </button>
-                  )}
-                  <button
-                    className="pane-btn"
-                    title="Close pane"
-                    onClick={() => closePane(t.id, sessionId)}
-                  >
-                    ×
-                  </button>
+                    <button
+                      className="pane-btn"
+                      onClick={() => closeTerminal(id)}
+                      title="Close this terminal"
+                    >
+                      ×
+                    </button>
+                  </span>
                 </div>
-                <Terminal
-                  sessionId={sessionId}
-                  active={t.id === layout.active_tab}
-                />
+                <div className="pane-body">
+                  <Terminal sessionId={id} active={terminalOpen} />
+                </div>
               </div>
             ))}
           </div>
-        ))}
-      </div>
+        )}
+      </main>
     </div>
   )
 }

@@ -38,3 +38,6 @@ npm-debug.log
 
 # Runtime secrets — never commit. Use .env.example as the template.
 .env
+
+# Agent session state: one directory per conversation, written at runtime.
+/priv/agent_sessions/

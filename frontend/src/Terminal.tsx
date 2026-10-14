@@ -177,10 +177,23 @@ export function Terminal({ sessionId, active }: Props) {
       }
     }
 
+    // Last box we actually acted on, so a callback for an unchanged size can
+    // be dropped. ResizeObserver fires for reflows that leave this element the
+    // same size, and `fit()` is not free when that happens: it resizes the
+    // terminal, which reflows its content, which can bring the observer
+    // straight back here. With two panes sharing a column that showed up as
+    // continuous flicker after the sidebar was toggled.
+    let lastWidth = 0
+    let lastHeight = 0
+
     const onSizeChanged = () => {
       // Ignore until the font is loaded (char metrics wrong) and while the
-      // container is zero-sized (hidden tab).
+      // container is zero-sized (hidden pane).
       if (!fontReady || el.clientWidth === 0 || el.clientHeight === 0) return
+      if (el.clientWidth === lastWidth && el.clientHeight === lastHeight) return
+
+      lastWidth = el.clientWidth
+      lastHeight = el.clientHeight
       window.clearTimeout(debounce)
       debounce = window.setTimeout(settle, 120)
     }

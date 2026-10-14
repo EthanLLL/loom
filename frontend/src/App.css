@@ -1,151 +1,378 @@
+:root {
+  --bg: #010c18;
+  --bg-raised: #04101f;
+  --bg-card: #0b1f33;
+  --line: #16314f;
+  --fg: #ecdef4;
+  --fg-dim: #7f93a8;
+  --accent: #38ff9d;
+  --blue: #388eff;
+  --red: #ff54b0;
+  --mono: "MesloLGL Nerd Font Mono", Menlo, Monaco, monospace;
+}
+
 .app {
   display: flex;
-  flex-direction: column;
   height: 100%;
-  background: #010c18;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 13px;
 }
 
-.loading {
+.loading,
+.placeholder {
   height: 100%;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
   align-items: center;
   justify-content: center;
-  color: #ecdef4;
-  font-family: "MesloLGL Nerd Font Mono", monospace;
-  background: #010c18;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  background: var(--bg);
 }
 
-.tabbar {
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+
+.sidebar {
+  flex: 0 0 240px;
   display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 2px 4px 0;
-  background: #04101f;
-  flex: 0 0 auto;
-  overflow-x: auto;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--line);
 }
 
-.tab {
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  color: var(--accent);
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.icon-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  color: var(--fg-dim);
+  border: none;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--blue);
+  color: var(--bg);
+}
+
+.session-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.session-empty {
+  padding: 12px;
+  color: var(--fg-dim);
+}
+
+.session {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #0b1f33;
-  color: #9ab;
-  border: none;
-  border-radius: 6px 6px 0 0;
-  padding: 3px 8px 3px 12px;
-  font-family: "MesloLGL Nerd Font Mono", monospace;
-  font-size: 12px;
+  padding: 7px 8px;
+  border-radius: 6px;
   cursor: pointer;
-  white-space: nowrap;
   user-select: none;
 }
 
-.tab:hover {
-  color: #ecdef4;
+.session:hover {
+  background: var(--bg-card);
 }
 
-.tab.active {
-  background: #010c18;
-  color: #ecdef4;
+.session.active {
+  background: var(--bg-card);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.tab-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  color: #667;
-  font-size: 15px;
-  line-height: 1;
-}
-
-.tab-close:hover {
-  background: #ff54b0;
-  color: #010c18;
-}
-
-.tab.new {
-  font-weight: bold;
-  padding: 3px 10px;
-  justify-content: center;
-}
-
-.tabs-area {
-  position: relative;
+.session-label {
   flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.session-when {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.session-del {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--fg-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.session:hover .session-del {
+  visibility: visible;
+}
+
+.session-del:hover {
+  background: var(--red);
+  color: var(--bg);
+}
+
+/* A session's state at a glance; the sidebar is the only place you see all of
+   them at once. */
+.dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.dot.starting {
+  background: var(--fg-dim);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.dot.running {
+  background: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* Stopped, not finished: it needs the user before anything else happens. */
+.dot.interrupted {
+  background: var(--red);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ── Main ────────────────────────────────────────────────────────────── */
+
+/* sidebar | chat | terminals — always three columns, at every width. The
+   target device is a foldable, so a narrow viewport is a *tall* viewport
+   rather than a reason to restack: putting the terminal under the chat would
+   leave both halves too short to be useful. The sidebar collapses instead. */
+.main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
   min-height: 0;
 }
 
-.panes {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: row;
-  gap: 3px;
-  background: #1e3a5f; /* shows as a divider between panes */
-}
-
-.pane {
-  position: relative;
-  flex: 1 1 0;
+.main-chat {
+  flex: 1 1 auto;
   min-width: 0;
-  background: #010c18;
-}
-
-.pane-toolbar {
-  position: absolute;
-  top: 4px;
-  right: 10px;
-  z-index: 2;
+  min-height: 0;
   display: flex;
-  gap: 4px;
-  opacity: 0;
-  /* Hidden toolbar must not eat clicks; enabled only on hover (below). */
-  pointer-events: none;
-  transition: opacity 0.12s;
 }
 
-.pane:hover .pane-toolbar {
-  opacity: 1;
-  pointer-events: auto;
+/* Terminals stack top to bottom inside the one right-hand column.
+   6 of 10 to the chat's 4: a shell here is also used as a canvas (rendering a
+   markdown file, watching a build), not just for one-line commands. */
+.terminal-column {
+  flex: 0 0 60%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+  /* Deliberately NOT `overflow-y: auto`. A scrollbar here would narrow the
+     column when it appeared, which re-fits every terminal, which reflows
+     their content — a loop that shows up as flicker. Panes share the height
+     instead; past a handful they get small, which is the cue to close one. */
+  overflow: hidden;
+}
+
+.terminal-pane {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+}
+
+.terminal-pane:first-child {
+  border-top: none;
+}
+
+.pane-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 10px;
+  color: var(--fg-dim);
+  background: var(--bg-raised);
+  font-size: 11px;
+}
+
+.pane-actions {
+  display: flex;
+  gap: 2px;
 }
 
 .pane-btn {
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #0b1f33;
-  color: #9ab;
+  background: none;
   border: none;
-  border-radius: 6px;
-  font-size: 18px;
+  border-radius: 4px;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
 }
 
 .pane-btn:hover {
-  background: #1376f9;
-  color: #010c18;
+  background: var(--blue);
+  color: var(--bg);
+}
+
+.pane-btn:last-child:hover {
+  background: var(--red);
+}
+
+/* The Terminal component positions itself absolutely, so its parent has to be
+   a positioning context or it escapes the pane. */
+.pane-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .terminal-container {
   position: absolute;
   inset: 0;
-  /* Below the pane toolbar. Without this, the terminal (later in the DOM,
-     also position:absolute) stacks above the z-index:2 toolbar and its canvas
-     swallows clicks meant for the split/close buttons. */
-  z-index: 0;
   padding: 6px;
   box-sizing: border-box;
-  background: #010c18;
+  background: var(--bg);
 }
 
 .terminal-container .xterm {
   height: 100%;
   width: 100%;
+}
+
+
+/* ── Backend choice ──────────────────────────────────────────────────────
+   Creating a session means choosing an engine. The choice is permanent, so it
+   is never defaulted — there is no plain "+" that just makes something. */
+
+.new-session {
+  position: relative;
+  display: inline-flex;
+}
+
+.backend-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  margin-top: 4px;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+  overflow: hidden;
+}
+
+.backend-menu button {
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.backend-menu button:hover {
+  background: var(--line);
+}
+
+.backend-choice {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* Which engine, per row. Short because the sidebar is narrow and the colour
+   carries most of it. */
+.session-backend {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--line);
+  color: var(--fg-dim);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.session-backend.claude_code {
+  color: var(--accent);
+}
+
+.session-backend.codex {
+  color: var(--blue);
+}
+
+.session-queued {
+  flex: 0 0 auto;
+  min-width: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--blue);
+  color: var(--bg);
+  font-size: 9px;
+  text-align: center;
 }

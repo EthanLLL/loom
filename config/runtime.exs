@@ -22,6 +22,19 @@ end
 
 config :loom, LoomWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Agent sessions run Claude Code or Codex as a child process; loom runs no
+# model requests of its own, so there is no API key or region here. Both CLIs
+# must be on PATH and already logged in — they decide which model and which
+# credentials to use. Applies to every environment.
+config :loom, Loom.Agent,
+  # Override only to pin a specific binary (an absolute path, a wrapper).
+  claude_cli: System.get_env("LOOM_CLAUDE_CLI") || "claude",
+  codex_cli: System.get_env("LOOM_CODEX_CLI") || "codex",
+  # Working directory for new sessions. Sessions have no project root of their
+  # own: which project is being worked on is a fact in the conversation, and
+  # the model composes absolute paths from it.
+  workspace: System.get_env("LOOM_WORKSPACE")
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
@@ -39,9 +52,10 @@ if config_env() == :prod do
 
   config :loom, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
-  config :loom, :password,
-    System.get_env("LOOM_PASSWORD") ||
-      raise("environment variable LOOM_PASSWORD is missing.")
+  config :loom,
+         :password,
+         System.get_env("LOOM_PASSWORD") ||
+           raise("environment variable LOOM_PASSWORD is missing.")
 
   config :loom, LoomWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],

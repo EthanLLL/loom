@@ -23,6 +23,11 @@ defmodule LoomWeb.Router do
     post "/sessions", SessionController, :create
     delete "/sessions/:id", SessionController, :delete
 
+    get "/agents", AgentSessionController, :index
+    post "/agents", AgentSessionController, :create
+    patch "/agents/:id", AgentSessionController, :update
+    delete "/agents/:id", AgentSessionController, :delete
+
     get "/layout", LayoutController, :show
     put "/layout", LayoutController, :update
   end
