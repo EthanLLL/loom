@@ -64,12 +64,23 @@ defmodule Loom.Agent.Session do
   only what they missed. Transient deltas go out on the same topic as
   `{:agent_delta, id, delta}` and are never persisted — a client that missed one
   gets the authoritative event instead.
+
+  Deltas carry their own monotonic `delta_seq` for the same reason events carry
+  `seq`: so a client can tell a delta it has already applied from a new one.
+  Text deltas are *appended*, so applying one twice visibly corrupts the output
+  — and double delivery really happens. phoenix.js skips the leave push when a
+  channel has not finished joining (it fakes a local "ok" instead), so a client
+  that mounts and immediately remounts — React StrictMode does exactly this —
+  leaves a channel process alive on the server, subscribed and pushing. Events
+  survived it because `seq` deduplicated them; deltas interleaved the same text
+  with itself.
   """
   use GenServer, restart: :transient
 
   require Logger
 
   alias Loom.Agent.Backend
+  alias Loom.Agent.Files
   alias Loom.Agent.Store
 
   # How many events stay in memory for replay. A client that has been away
@@ -96,8 +107,10 @@ defmodule Loom.Agent.Session do
   `{:ok, :queued}` if it is waiting for the current turn — or for the user to
   continue, when the session is `:interrupted`.
 
-  `opts` accepts `:origin` (which device sent it) and `:client_msg_id` (so the
-  sender can reconcile its optimistic bubble with the broadcast one).
+  `opts` accepts `:origin` (which device sent it), `:client_msg_id` (so the
+  sender can reconcile its optimistic bubble with the broadcast one) and
+  `:files` — paths of this session's uploaded attachments, which are appended to
+  the message the backend sees but kept out of the one that is displayed.
   """
   def submit(id, text, opts \\ []), do: GenServer.call(via(id), {:submit, text, opts})
 
@@ -282,6 +295,9 @@ defmodule Loom.Agent.Session do
       # Normalized events for clients, newest first.
       transcript: [],
       seq: 0,
+      # Deltas are not persisted, so this restarts at 0 on every restore — which
+      # is fine: a client that reattaches also discards its streaming buffers.
+      delta_seq: 0,
       truncated_before: nil,
       # User messages waiting for the current turn to end, oldest first. On disk
       # too: a restart must not drain a queue the user deliberately parked.
@@ -305,33 +321,21 @@ defmodule Loom.Agent.Session do
   def handle_call({:submit, text, opts}, _from, state) do
     text = to_string(text)
 
-    if String.trim(text) == "" do
-      {:reply, {:error, :empty}, state}
-    else
-      state =
-        state
-        |> maybe_title(text)
-        |> emit(:user, %{
-          text: text,
-          origin: Keyword.get(opts, :origin, "unknown"),
-          client_msg_id: Keyword.get(opts, :client_msg_id),
-          status: :sent
-        })
+    # The client sends back paths that `Files.store/2` handed it. Checking them
+    # against this session's own directory is the one validation that matters:
+    # the model reads whatever path we name. See `Loom.Agent.Files`.
+    case Files.verify(state.id, Keyword.get(opts, :files, [])) do
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
 
-      case state.status do
-        status when status in [:starting, :running] ->
-          # Hand it straight over: both backends inject it into the turn that is
-          # running. Queuing it would waste the one thing that makes typing
-          # mid-turn useful. It only joins the queue if steering is refused.
-          steer(state, text)
-
-        _ ->
-          # Covers `:interrupted` as well as `:idle`: typing is how an
-          # interrupted session continues, and anything parked goes out merged
-          # with this message.
-          state = Map.update!(state, :queue, &(&1 ++ [text]))
-          {:reply, {:ok, :started}, drain(state)}
-      end
+      {:ok, files} ->
+        # An attachment on its own is a message. Dragging in a screenshot and
+        # pressing send, with nothing typed, is a normal way to ask about it.
+        if String.trim(text) == "" and files == [] do
+          {:reply, {:error, :empty}, state}
+        else
+          accept(state, text, files, opts)
+        end
     end
   end
 
@@ -443,13 +447,52 @@ defmodule Loom.Agent.Session do
 
   # ── The turn ────────────────────────────────────────────────────────────
 
+  # A submitted message, once its attachments have been vouched for.
+  defp accept(state, text, files, opts) do
+    state =
+      state
+      |> maybe_title(if String.trim(text) == "", do: Files.title(files), else: text)
+      |> emit(:user, %{
+        text: text,
+        # Structured rather than folded into `text`, so a bubble can show
+        # `shot.png` as a chip instead of an absolute path.
+        files: files,
+        origin: Keyword.get(opts, :origin, "unknown"),
+        client_msg_id: Keyword.get(opts, :client_msg_id),
+        status: :sent
+      })
+
+    # What the backend receives differs from what is displayed: it needs the
+    # paths, the user does not want to read them.
+    message = Files.prompt(text, files)
+
+    case state.status do
+      status when status in [:starting, :running] ->
+        # Hand it straight over: both backends inject it into the turn that is
+        # running. Queuing it would waste the one thing that makes typing
+        # mid-turn useful. It only joins the queue if steering is refused.
+        steer(state, message)
+
+      _ ->
+        # Covers `:interrupted` as well as `:idle`: typing is how an
+        # interrupted session continues, and anything parked goes out merged
+        # with this message.
+        state = Map.update!(state, :queue, &(&1 ++ [message]))
+        {:reply, {:ok, :started}, drain(state)}
+    end
+  end
+
   defp consume(state, out), do: Enum.reduce(out, state, &apply_out(&2, &1))
 
   defp apply_out(state, {:delta, delta}) do
-    # Not persisted and not numbered: deltas are a typewriter effect. The
-    # authoritative event follows under the same `block_id`.
+    # Not persisted — deltas are a typewriter effect and the authoritative event
+    # follows under the same `block_id`. But numbered, so a client can drop one
+    # it has already applied; see the moduledoc.
+    delta_seq = state.delta_seq + 1
+    delta = Map.put(delta, :delta_seq, delta_seq)
+
     Phoenix.PubSub.broadcast(Loom.PubSub, topic(state.id), {:agent_delta, state.id, delta})
-    state
+    %{state | delta_seq: delta_seq}
   end
 
   defp apply_out(state, {:event, :status, %{status: :running}}) do

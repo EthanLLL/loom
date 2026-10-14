@@ -28,6 +28,8 @@ defmodule LoomWeb.Router do
     patch "/agents/:id", AgentSessionController, :update
     delete "/agents/:id", AgentSessionController, :delete
 
+    post "/agents/:id/files", AgentFileController, :create
+
     get "/layout", LayoutController, :show
     put "/layout", LayoutController, :update
   end

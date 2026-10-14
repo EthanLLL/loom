@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Channel } from "phoenix"
 import { getSocket } from "./socket"
+import type { AgentFile } from "./api"
 import {
   addPending,
   applyDelta,
@@ -23,7 +24,7 @@ const DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
 type Agent = {
   transcript: Transcript
   joinError: string | null
-  submit: (text: string) => void
+  submit: (text: string, files?: AgentFile[]) => void
   interrupt: () => void
   dropQueued: (index: number) => void
   rename: (title: string) => void
@@ -52,6 +53,8 @@ export function useAgent(sessionId: string | null): Agent {
     if (!sessionId) return
 
     let joined = false
+    // Set if the effect is torn down before the join resolves; see the cleanup.
+    let leaveWhenJoined = false
 
     const channel = getSocket().channel(`agent:${sessionId}`, () => ({
       since_seq: lastSeqRef.current,
@@ -59,12 +62,22 @@ export function useAgent(sessionId: string | null): Agent {
     }))
     channelRef.current = channel
 
+    // Two joins overlap whenever an effect is torn down before its join
+    // resolves — StrictMode does this on every mount — and phoenix.js dispatches
+    // an incoming message to *every* channel object matching the topic. So a
+    // handler belonging to a channel we have already replaced must do nothing;
+    // `delta_seq` would catch the duplicate anyway, but not touching state at
+    // all is cheaper and keeps the reducer honest.
+    const current = () => channelRef.current === channel
+
     channel.on("event", (event: AgentEvent) => {
+      if (!current()) return
       lastSeqRef.current = Math.max(lastSeqRef.current, event.seq)
       setTranscript((t) => applyEvent(t, event))
     })
 
     channel.on("delta", (delta: AgentDelta) => {
+      if (!current()) return
       setTranscript((t) => applyDelta(t, delta))
     })
 
@@ -74,6 +87,10 @@ export function useAgent(sessionId: string | null): Agent {
         lastSeqRef.current = Math.max(lastSeqRef.current, snapshot.last_seq)
         const wasJoined = joined
         joined = true
+        if (leaveWhenJoined || channelRef.current !== channel) {
+          channel.leave()
+          return
+        }
         setTranscript((t) => applySnapshot(snapshot, wasJoined ? t : undefined))
         setJoinError(null)
       })
@@ -83,13 +100,24 @@ export function useAgent(sessionId: string | null): Agent {
       .receive("timeout", () => setJoinError("join timed out"))
 
     return () => {
-      channel.leave()
+      // phoenix.js silently *skips* the leave push when the channel has not
+      // finished joining — it fakes a local "ok" and closes its own copy — so
+      // the server keeps the channel, keeps it subscribed, and keeps pushing to
+      // this socket. React StrictMode mounts, unmounts and remounts every
+      // effect, so in dev that happened on every single session open: two
+      // server channels, every delta delivered twice.
+      if (joined) {
+        channel.leave()
+      } else {
+        leaveWhenJoined = true
+      }
+
       channelRef.current = null
       // The socket is shared with the terminal; never disconnect it here.
     }
   }, [sessionId])
 
-  const submit = useCallback((text: string) => {
+  const submit = useCallback((text: string, files: AgentFile[] = []) => {
     const channel = channelRef.current
     if (!channel) return
 
@@ -97,10 +125,16 @@ export function useAgent(sessionId: string | null): Agent {
     // Optimistic: the bubble appears now and is replaced by the authoritative
     // `:user` event, matched on `client_msg_id`. Without that id the sender
     // would see its own message twice.
-    setTranscript((t) => addPending(t, { clientMsgId, text }))
+    setTranscript((t) => addPending(t, { clientMsgId, text, files }))
 
     channel
-      .push("submit", { text, client_msg_id: clientMsgId })
+      .push("submit", {
+        text,
+        client_msg_id: clientMsgId,
+        // Already uploaded; only the path travels. The server checks it is one
+        // of this session's own attachments before the model is told about it.
+        files: files.map((f) => ({ path: f.path, name: f.name })),
+      })
       .receive("error", (resp: { reason?: string }) => {
         setTranscript((t) => ({
           ...t,

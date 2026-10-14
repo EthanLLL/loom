@@ -1,4 +1,4 @@
-import type { AgentInfo, AgentStatus, AgentUsage } from "./api"
+import type { AgentFile, AgentInfo, AgentStatus, AgentUsage } from "./api"
 
 /**
  * The client half of the agent protocol.
@@ -26,6 +26,10 @@ export type AgentEvent = {
 }
 
 export type AgentDelta = {
+  // Monotonic per session. Deltas are appended, so applying one twice visibly
+  // corrupts the output — and double delivery happens for real (see
+  // `applyDelta`), which is why they are numbered like events are.
+  delta_seq: number
   block_id: string
   type:
     | "block_start"
@@ -70,6 +74,7 @@ type ToolStream = { blockId: string; text: string }
 type PendingMessage = {
   clientMsgId: string
   text: string
+  files: AgentFile[]
 }
 
 export type Transcript = {
@@ -77,6 +82,7 @@ export type Transcript = {
   lastSeq: number
   truncatedBefore: number | null
   streaming: StreamingBlock[]
+  lastDeltaSeq: number
   toolStreams: ToolStream[]
   pending: PendingMessage[]
   status: AgentStatus
@@ -94,6 +100,7 @@ export const emptyTranscript: Transcript = {
   lastSeq: 0,
   truncatedBefore: null,
   streaming: [],
+  lastDeltaSeq: 0,
   toolStreams: [],
   pending: [],
   status: "idle",
@@ -121,6 +128,7 @@ export function applySnapshot(
   const base: Transcript = {
     ...(previous ?? emptyTranscript),
     streaming: [],
+    lastDeltaSeq: 0,
     toolStreams: [],
     status: snapshot.meta.status,
     contextTokens: snapshot.meta.context_tokens ?? 0,
@@ -196,7 +204,25 @@ function queueAfter(current: string[], event: AgentEvent): string[] {
   return current
 }
 
+/**
+ * Fold a delta in, once.
+ *
+ * The `delta_seq` guard is not defensive programming — it fixes a real defect.
+ * phoenix.js skips the leave push when a channel has not finished joining (it
+ * fakes a local "ok"), so a mount-then-immediately-remount — which React
+ * StrictMode does on every mount — leaves a channel alive on the server, still
+ * subscribed and still pushing. Measured: every delta arrived exactly twice
+ * while `socket.channels` held only one channel.
+ *
+ * Events survived that because `seq` already deduplicated them. Deltas append,
+ * so a double produced text interleaved with itself ("AAWS Lambda WebWS
+ * Lambda Web Functions"), and a duplicate arriving *after* the authoritative
+ * event had cleared the placeholder rebuilt it as a stray empty block.
+ */
 export function applyDelta(t: Transcript, delta: AgentDelta): Transcript {
+  if (delta.delta_seq !== undefined && delta.delta_seq <= t.lastDeltaSeq) return t
+  t = { ...t, lastDeltaSeq: delta.delta_seq ?? t.lastDeltaSeq }
+
   if (delta.type === "block_end") return t
 
   // Tool output goes into its own bucket, appended onto the card the
@@ -278,6 +304,9 @@ export type TimelineItem =
       key: string
       kind: "user"
       text: string
+      // Shown as chips. The paths went to the model in the message it
+      // received, not in `text` — see `Loom.Agent.Files`.
+      files: AgentFile[]
       origin?: string
       queued: boolean
       pending: boolean
@@ -328,6 +357,7 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
           key,
           kind: "user",
           text: String(p.text ?? ""),
+          files: (p.files as AgentFile[] | undefined) ?? [],
           origin: p.origin as string | undefined,
           queued: p.status === "queued",
           pending: false,
@@ -467,6 +497,7 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
       key: `p${p.clientMsgId}`,
       kind: "user",
       text: p.text,
+      files: p.files,
       queued: false,
       pending: true,
     })

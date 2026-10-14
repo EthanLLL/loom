@@ -122,6 +122,34 @@ defmodule LoomWeb.AgentChannelTest do
       assert_reply ref, :error, %{reason: reason}
       assert reason =~ "text"
     end
+
+    test "attachments travel as the objects the upload returned", %{id: id} do
+      {:ok, _snapshot, socket} = attach(id)
+
+      tmp = Path.join(System.tmp_dir!(), "chan-att-#{System.unique_integer([:positive])}")
+      File.write!(tmp, "hi")
+      {:ok, file} = Loom.Agent.Files.store(id, %{filename: "note.txt", path: tmp})
+      File.rm(tmp)
+
+      ref =
+        push(socket, "submit", %{
+          "text" => "look at this",
+          "files" => [%{"path" => file.path, "name" => file.name}]
+        })
+
+      assert_reply ref, :ok, %{status: :started}
+      assert BackendStub.await_turn() =~ file.path
+      assert_push "event", %{kind: :user, payload: %{files: [%{name: "note.txt"}]}}
+    end
+
+    test "a path the session does not own is refused", %{id: id} do
+      {:ok, _snapshot, socket} = attach(id)
+
+      ref = push(socket, "submit", %{"text" => "read it", "files" => ["/etc/passwd"]})
+      assert_reply ref, :error, %{reason: reason}
+      assert reason =~ "not_an_attachment"
+      BackendStub.refute_turn()
+    end
   end
 
   describe "interrupting" do

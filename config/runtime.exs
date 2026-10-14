@@ -22,6 +22,11 @@ end
 
 config :loom, LoomWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Everything loom owns on disk — session headers, transcripts, and the files a
+# user attached — lives here. Under the user's home rather than the release,
+# because a deploy replaces `priv/`.
+config :loom, :home, System.get_env("LOOM_HOME") || Path.expand("~/.loom")
+
 # Agent sessions run Claude Code or Codex as a child process; loom runs no
 # model requests of its own, so there is no API key or region here. Both CLIs
 # must be on PATH and already logged in — they decide which model and which

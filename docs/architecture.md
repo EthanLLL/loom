@@ -7,7 +7,7 @@ agent 本体交给 Claude Code 或 Codex。
 - 后端(CC / Codex)的协议细节和实测数据在 [backends.md](backends.md)。
 - PTY 终端(`Loom.Terminal.*`)保留,和 agent 共存 —— 那条路是给人用的终端。
 
-最后更新 2026-10-14,159 个测试。
+最后更新 2026-10-14,194 个测试。
 
 ---
 
@@ -133,9 +133,14 @@ channel 层(`LoomWeb.AgentChannel`)不持有任何会话状态,只做转发。
 ## 4. 落盘
 
 ```
-<data_dir>/<id>/meta.json     header,原地重写(temp + rename)
-<data_dir>/<id>/events.jsonl  规范化的 transcript,append-only
+~/.loom/sessions/<id>/meta.json     header,原地重写(temp + rename)
+~/.loom/sessions/<id>/events.jsonl  规范化的 transcript,append-only
+~/.loom/sessions/<id>/files/…        用户上传的附件
 ```
+
+`~/.loom`(或 `LOOM_HOME`)而不是 release 的 `priv/`:部署会整个替换 `priv/`,而这些
+东西一个都不能跟着没。老位置 `priv/agent_sessions/` 在开机时**逐个会话**拷过来 ——
+只拷、不移、不覆盖已存在的,所以反复执行是安全的。
 
 **没有消息日志。** 以前有一份原始 API messages,因为 loom 自己跑 loop 需要有东西可以
 恢复。现在对话归后端所有(CC 在 `~/.claude/projects/…`,Codex 在它的 thread store),
@@ -166,6 +171,29 @@ channel 层(`LoomWeb.AgentChannel`)不持有任何会话状态,只做转发。
 > Elixir 模块懒加载,boot 时 adapter 模块可能还没加载,`:cc_session_id` 就不是已存在的
 > atom。所以 adapter 一律用 `Backend.meta_get/2` 读,两种键都接受。这条真的让一个会话
 > 恢复失败过。
+
+---
+
+## 4.1 附件
+
+上传走 HTTP (`POST /api/agents/:id/files`,multipart),不走 channel —— 20 MB 的截图
+塞进 WebSocket 帧会挡在同一条连接上所有 event 和 delta 前面。文件落在会话自己目录下
+的 `files/`,所以删会话就连附件一起删,一条路径在哪个对话里一看就知道。
+
+**不做 base64,也不做多模态 content block。** 消息里给绝对路径,后端用自己的工具去读
+—— CC 的 `Read` 直接把图片渲染给模型,Codex 有 `view_image`。代价是一次工具往返,换来
+的是:任何文件类型都支持、不用把 20 MB 过一遍 JSON-RPC、两个 adapter 都不需要第二种
+content 格式(`run_turn/2` 还是收字符串)。两边都实测过:传一张纯红 PNG 问颜色,CC 走
+`Read` 答"红色(纯红,约 #FF0000)",Codex 直接答"红色"。
+
+**展示文本和模型文本是两个字符串。** `:user` 事件存用户真正打的字 + 附件列表(结构化),
+气泡渲染成 `shot.png` 这样的 chip;只有递给后端的那份带路径。把路径折进 `text` 的话,
+每次带附件都等于在用户自己那句话后面永久粘上 70 个字符的绝对路径。
+
+**路径就是权限。** 客户端 submit 时回传的是 `Files.store/2` 给它的路径,而模型会读我们
+指名的任何文件 —— 所以 `Files.verify/2` 拒绝任何不在本会话 `files/` 下的路径。agent
+本来就没沙箱、自己想读也能读;要守的是"客户端不能靠改一个字段让它悄悄去读"。文件名同理
+按敌意字符串处理(`../`、NUL、Windows 路径、4 KB 的名字),CJK 原样保留。
 
 ---
 
@@ -209,12 +237,55 @@ child 的 crash-loop 会把整个 application 带下去。详见 [backends.md](b
 ## 7. 前端
 
 ```
-App.tsx      布局:| sidebar | chat | terminals |,三栏恒定
-Sidebar.tsx  会话列表 + 后端徽章 + 新建下拉
-Chat.tsx     timeline / 工具卡片 / 队列面板 / composer
-agent.ts     纯函数:applySnapshot / applyEvent / applyDelta / buildTimeline
-useAgent.ts  一个 channel 的生命周期
+App.tsx           布局:| sidebar | chat | terminals |,三栏恒定
+Sidebar.tsx       会话列表 + 后端徽章 + 新建下拉
+Chat.tsx          timeline / 工具卡片 / 队列面板 / composer
+markdown.tsx      assistant 消息的 markdown 渲染
+agent.ts          纯函数:applySnapshot / applyEvent / applyDelta / buildTimeline
+useAgent.ts       一个 channel 的生命周期
+useAttachments.ts 附件托盘 + 拖拽
 ```
+
+### 一个列宽
+
+`--measure: 100ch`,对话里所有东西共用:正文、工具卡片、turn 行、以及 composer。
+之前气泡是 `max-width: 78ch` 而工具卡是 `align-self: stretch`,结果卡片横跨整个窗口、
+正文在半路就换行,读起来像两套布局。滚动容器仍是 `.timeline`(滚动条留在窗口边),列
+在里层的 `.timeline-inner` —— 全 monospace 的界面里 `ch` 就是精确的字符数。
+
+### 附件的三个入口
+
+按钮、拖拽(落在整个对话区域都算,拖到这一步了还要瞄 40 像素的靶子是最烦的)、以及
+粘贴(截图根本不以文件形式存在,是最常见的附件)。
+
+**选中/拖入/粘贴的那一刻就开始上传**,不是按发送时才传:失败要在用户还盯着输入框、还
+有得救的时候出现,而且发送始终是瞬时的。每个文件一个请求 —— 服务端一个请求是全有或全无,
+合批会让第四个超大的文件把前三个好的一起作废。
+
+### markdown 只给 assistant 消息
+
+用户自己打的字原样显示 —— 把他的 `*` 变成强调等于改写他写的东西。工具的输入输出也原样:
+diff、构建日志、JSON 参数经过 markdown 一遍之后含义就变了。
+
+渲染走 **`marked.lexer()` 的 token 流,不是 HTML**。agent 会抓网页并复述内容,所以模型输出
+可能带着页面里的任何东西 —— 而**绝对不能发生的事**就是那些东西作为 markup 进入 DOM。
+把 token 渲染成 React 元素让这件事**结构上不可能**,而不是依赖某个 sanitiser 一直正确。
+`html` token 按它字面的文本渲染;`javascript:` 之类的链接显示但不可点;图片只报出名字,
+不加载(加载就会向模型指定的主机发请求)。
+
+体积也是三选一里最小的。相对纯 React bundle 实测:
+
+| | gzip 增量 |
+|---|---|
+| `marked.lexer` + 自己渲染 token | **+14 KB** |
+| `marked` + `DOMPurify` | +26 KB(而且要 innerHTML) |
+| `react-markdown` + `remark-gfm` | +47 KB |
+
+流式期间也渲染:几 KB markdown 的 lex 在亚毫秒级,`useMemo` 保证每个不同字符串只做一次。
+未闭合的围栏 `marked` 自己会收尾,写了一半的表格在分隔行到达前就是普通段落 —— 两种中间
+状态读起来都正常。
+
+`pnpm md:check` 跑 13 个用例,其中一半专门盯着"模型输出不能变成 markup"这条。
 
 **`agent.ts` 全部是对 `Transcript` 的纯函数**,规则集中在一处而不是散在组件里。
 
@@ -224,6 +295,32 @@ useAgent.ts  一个 channel 的生命周期
   真正见过的最后一个 seq"去要那一段差异,回复是**合并**而不是替换状态。
 - **队列状态不从事件推算**,服务端的 `:queue` 事件直接给完整列表。队列有四种变化方式
   (注入成功就不入队、注入被拒入队、interrupt 暂存、drain 清空),计数器推一定会漂。
+
+### 7.1 调试:录下线上流,用真实 reducer 回放
+
+```
+pnpm transcript record <session-id> "一个提示词"   # 录,写到 tools/recordings/
+pnpm transcript record <id> "这图什么颜色" --attach a.png   # 先上传再提交,复现附件问题
+pnpm transcript replay <file.json> [--steps]      # 回放,打印 buildTimeline 的结果
+pnpm transcript check  <file.json>                # 只报异常,有异常则退出码 1
+```
+
+`tools/transcript.mjs` **直接 import `src/agent.ts`**(Node 24 原生 strip types,没有
+构建步骤、没有第二份会漂移的 reducer),所以它打印的 timeline 就是 `Chat.tsx` 收到的
+timeline。
+
+存在的理由:渲染问题只有两种,在浏览器里长得一模一样 ——
+
+- **数据错了**:delta 重复、block_id 撞车、event 的 block_id 和它的 delta 对不上
+- **数据没错,是 CSS**
+
+靠读代码猜要一个小时,这个工具一次运行就能分开。它会标出会渲染成空白的 item、没被权威
+事件接替的残留 placeholder、重复投递的 `delta_seq`、被两个事件复用的 block_id。
+
+三个真实 bug 是这么找到的:block_id 按 turn 而不是按 API 调用取名、channel 重复订阅
+PubSub、以及 `.timeline` 的 flex 把卡片压扁。最后那个的决定性证据就是这行输出:
+
+> `no anomalies — the data is fine, so a rendering problem is in the CSS`
 
 输入框的 IME 守卫:Chrome 的提交 keydown 带 `isComposing === true`,Safari 的
 `compositionend` 在那个 keydown **之后**才来 —— 所以两个条件都要判,否则中文输入法用
@@ -238,3 +335,5 @@ useAgent.ts  一个 channel 的生命周期
   都能映射成选项按钮,现在问题以普通文本出现,用户照常打字回答
 - Codex daemon 模式,让 turn 活过 loom 重启
 - 工具输出截断没有视觉提示
+- 附件在气泡里只显示文件名,没有缩略图(要缩略图就得再加一个带鉴权的 GET,而且
+  那不是消息本身要说的事);上传过的文件从托盘里移除后仍留在磁盘上,没人引用而已

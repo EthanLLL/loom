@@ -140,7 +140,12 @@ defmodule Loom.Agent.Backend.ClaudeCode do
       first_turn?: true,
       port: nil,
       os_pid: nil,
-      ref: nil,
+      # Identity of the API call currently streaming. One turn makes several, and
+      # the SSE `index` restarts at 0 in each — see `block_id/2`.
+      message_id: nil,
+      # block_ids handed out by `content_block_start`, oldest first. The
+      # authoritative `assistant` messages consume them in the same order.
+      pending_blocks: [],
       buffer: "",
       tools: %{},
       # Set by interrupt/1 so the `result` that follows is recognised as the one
@@ -160,7 +165,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
       write(handle, message_line(text))
       # A fresh `ref` per turn keeps block ids from colliding across turns in
       # one long-lived process.
-      {:ok, %{handle | ref: turn_ref(), tools: %{}, interrupted?: false}}
+      {:ok, %{handle | tools: %{}, interrupted?: false}}
     end
   end
 
@@ -209,6 +214,8 @@ defmodule Loom.Agent.Backend.ClaudeCode do
            os_pid: os_pid(port),
            buffer: "",
            tools: %{},
+           message_id: nil,
+           pending_blocks: [],
            first_turn?: false
        }}
     end
@@ -359,19 +366,29 @@ defmodule Loom.Agent.Backend.ClaudeCode do
          "type" => "stream_event",
          "event" => %{"type" => "message_start", "message" => message}
        }) do
-    {%{handle | context_tokens: context_of(message["usage"] || %{})}, []}
+    {%{
+       handle
+       | message_id: message["id"],
+         # Each API call's blocks are self-contained: all of call N's
+         # `assistant` messages arrive before call N+1 starts, so clearing here
+         # bounds the list and drops anything that was never claimed.
+         pending_blocks: [],
+         context_tokens: context_of(message["usage"] || %{})
+     }, []}
   end
 
   defp translate(handle, %{"type" => "stream_event", "event" => event}) do
-    {handle, stream_event(handle, event)}
+    stream_event(handle, event)
   end
 
+  # Claude Code splits one API call's blocks across *several* `assistant`
+  # messages — one per block — so a block's position in `content` is not its
+  # position in the stream. Counting it there gave the tool_use event the text
+  # block's id, which made it clear the wrong placeholder and orphan its own.
   defp translate(handle, %{"type" => "assistant", "message" => %{"content" => content}})
        when is_list(content) do
-    content
-    |> Enum.with_index()
-    |> Enum.reduce({handle, []}, fn {block, index}, {acc, out} ->
-      {acc, produced} = assistant_block(acc, block, index)
+    Enum.reduce(content, {handle, []}, fn block, {acc, out} ->
+      {acc, produced} = assistant_block(acc, block)
       {acc, out ++ produced}
     end)
   end
@@ -473,19 +490,19 @@ defmodule Loom.Agent.Backend.ClaudeCode do
     end
   end
 
-  defp assistant_block(handle, %{"type" => "text", "text" => text}, index) do
-    {handle, [{:event, :assistant_text, %{block_id: block_id(handle, index), text: text}}]}
+  defp assistant_block(handle, %{"type" => "text", "text" => text}) do
+    {block_id, handle} = claim_block(handle, nil)
+    {handle, [{:event, :assistant_text, %{block_id: block_id, text: text}}]}
   end
 
-  defp assistant_block(handle, %{"type" => "thinking"} = block, index) do
-    {handle,
-     [
-       {:event, :thinking,
-        %{block_id: block_id(handle, index), text: Map.get(block, "thinking", "")}}
-     ]}
+  defp assistant_block(handle, %{"type" => "thinking"} = block) do
+    {block_id, handle} = claim_block(handle, nil)
+    {handle, [{:event, :thinking, %{block_id: block_id, text: Map.get(block, "thinking", "")}}]}
   end
 
-  defp assistant_block(handle, %{"type" => "tool_use", "id" => id, "name" => name} = block, index) do
+  defp assistant_block(handle, %{"type" => "tool_use", "id" => id, "name" => name} = block) do
+    {block_id, handle} = claim_block(handle, id)
+
     # Remembered so the matching tool_result, which only carries the id, can be
     # labelled with the tool that produced it.
     handle = %{handle | tools: Map.put(handle.tools, id, name)}
@@ -493,16 +510,40 @@ defmodule Loom.Agent.Backend.ClaudeCode do
     {handle,
      [
        {:event, :tool_use,
-        %{
-          id: id,
-          block_id: block_id(handle, index),
-          name: name,
-          input: Map.get(block, "input", %{})
-        }}
+        %{id: id, block_id: block_id, name: name, input: Map.get(block, "input", %{})}}
      ]}
   end
 
-  defp assistant_block(handle, _block, _index), do: {handle, []}
+  defp assistant_block(handle, _block), do: {handle, []}
+
+  # ── Matching events back to the deltas they supersede ─────────────────────
+
+  defp remember_block(handle, block_id, tool_id) do
+    %{handle | pending_blocks: handle.pending_blocks ++ [{block_id, tool_id}]}
+  end
+
+  # A tool_use carries an id that the SSE `content_block_start` also carried, so
+  # it can be matched exactly. Text and thinking have nothing to match on, so
+  # they take the oldest unclaimed block — which is correct because the SSE
+  # stream and the `assistant` messages arrive in the same order.
+  defp claim_block(handle, tool_id) do
+    pending = handle.pending_blocks
+
+    entry =
+      (tool_id && Enum.find(pending, fn {_id, tid} -> tid == tool_id end)) ||
+        List.first(pending)
+
+    case entry do
+      {block_id, _tid} ->
+        {block_id, %{handle | pending_blocks: List.delete(pending, entry)}}
+
+      nil ->
+        # No `content_block_start` was seen for this block. Should not happen
+        # with --include-partial-messages; a synthetic id keeps the event
+        # renderable and simply matches no placeholder.
+        {"#{handle.message_id || "m?"}.unstreamed", handle}
+    end
+  end
 
   # ── SSE passthrough ───────────────────────────────────────────────────────
   #
@@ -515,7 +556,10 @@ defmodule Loom.Agent.Backend.ClaudeCode do
          "index" => index,
          "content_block" => %{"type" => "tool_use", "id" => id, "name" => name}
        }) do
-    [{:delta, %{block_id: block_id(handle, index), type: :tool_use_start, name: name, id: id}}]
+    block_id = block_id(handle, index)
+
+    {remember_block(handle, block_id, id),
+     [{:delta, %{block_id: block_id, type: :tool_use_start, name: name, id: id}}]}
   end
 
   defp stream_event(handle, %{
@@ -523,10 +567,10 @@ defmodule Loom.Agent.Backend.ClaudeCode do
          "index" => index,
          "content_block" => %{"type" => type}
        }) do
-    [
-      {:delta,
-       %{block_id: block_id(handle, index), type: :block_start, block_type: atomize(type)}}
-    ]
+    block_id = block_id(handle, index)
+
+    {remember_block(handle, block_id, nil),
+     [{:delta, %{block_id: block_id, type: :block_start, block_type: atomize(type)}}]}
   end
 
   defp stream_event(handle, %{
@@ -534,7 +578,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
          "index" => index,
          "delta" => %{"type" => "text_delta", "text" => text}
        }) do
-    [{:delta, %{block_id: block_id(handle, index), type: :text, chunk: text}}]
+    {handle, [{:delta, %{block_id: block_id(handle, index), type: :text, chunk: text}}]}
   end
 
   defp stream_event(handle, %{
@@ -542,17 +586,17 @@ defmodule Loom.Agent.Backend.ClaudeCode do
          "index" => index,
          "delta" => %{"type" => "thinking_delta", "thinking" => text}
        }) do
-    [{:delta, %{block_id: block_id(handle, index), type: :thinking, chunk: text}}]
+    {handle, [{:delta, %{block_id: block_id(handle, index), type: :thinking, chunk: text}}]}
   end
 
   defp stream_event(handle, %{"type" => "content_block_stop", "index" => index}) do
-    [{:delta, %{block_id: block_id(handle, index), type: :block_end}}]
+    {handle, [{:delta, %{block_id: block_id(handle, index), type: :block_end}}]}
   end
 
   # `input_json_delta` and `signature_delta` are dropped on purpose: the
   # authoritative version arrives in the `assistant` message, and a client has
   # nothing useful to do with half a JSON argument list.
-  defp stream_event(_handle, _event), do: []
+  defp stream_event(handle, _event), do: {handle, []}
 
   defp atomize("text"), do: :text
   defp atomize("thinking"), do: :thinking
@@ -652,11 +696,17 @@ defmodule Loom.Agent.Backend.ClaudeCode do
     Application.get_env(:loom, Loom.Agent, [])[:workspace] || System.user_home!()
   end
 
-  # Qualifies block_ids so indexes from different turns never collide.
-  defp turn_ref, do: Base.url_encode64(:crypto.strong_rand_bytes(6), padding: false)
+  @doc """
+  Identity of one content block, stable between its deltas and its event.
 
-  defp block_id(%{ref: nil}, index), do: "r?.#{index}"
-  defp block_id(%{ref: ref}, index), do: "#{ref}.#{index}"
+  Qualified by the **API call's** message id, not by the turn. One agentic turn
+  makes an API call per tool round and the SSE `index` restarts at 0 in each, so
+  a per-turn qualifier made call 2's first block collide with call 1's — the
+  second answer streamed into the first one's placeholder, which is what
+  produced doubled text mid-turn.
+  """
+  def block_id(%{message_id: nil}, index), do: "m?.#{index}"
+  def block_id(%{message_id: id}, index), do: "#{id}.#{index}"
 
   # Claude Code requires a syntactically valid v4 UUID for --session-id, and
   # rejects anything else. Not worth a dependency.

@@ -9,6 +9,11 @@
   --blue: #388eff;
   --red: #ff54b0;
   --mono: "MesloLGL Nerd Font Mono", Menlo, Monaco, monospace;
+  /* One column width for everything in a conversation — prose, tool cards and
+     turn lines. Exact in characters because the whole UI is monospace: 100
+     columns is a comfortable line of text and still wide enough for shell
+     output, where the old prose measure (78) was cramped. */
+  --measure: 100ch;
 }
 
 .app {

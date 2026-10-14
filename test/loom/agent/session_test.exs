@@ -191,6 +191,72 @@ defmodule Loom.Agent.SessionTest do
     end
   end
 
+  describe "attachments" do
+    # Display text and model text deliberately differ: the event keeps what the
+    # user typed plus the file list as data, and only the backend's copy carries
+    # the paths. See `Loom.Agent.Files`.
+
+    defp attach(id, filename, content \\ "hi") do
+      tmp = Path.join(System.tmp_dir!(), "att-#{System.unique_integer([:positive])}")
+      File.write!(tmp, content)
+      {:ok, file} = Loom.Agent.Files.store(id, %{filename: filename, path: tmp})
+      File.rm(tmp)
+      file
+    end
+
+    test "the paths reach the backend and the bubble keeps the typed words" do
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.topic(id))
+      file = attach(id, "shot.png")
+
+      assert {:ok, :started} = Agent.submit(id, "what is wrong here", files: [file.path])
+
+      sent = BackendStub.await_turn()
+      assert sent =~ "what is wrong here"
+      assert sent =~ file.path
+
+      assert_receive {:agent_event, ^id, %{kind: :user, payload: payload}}, 500
+      # Not folded into the text: a path is 70 characters the user did not type.
+      assert payload.text == "what is wrong here"
+      assert [%{name: "shot.png"}] = payload.files
+    end
+
+    test "an attachment with nothing typed is still a message" do
+      # Dragging in a screenshot and pressing send is a normal way to ask.
+      id = new_session()
+      file = attach(id, "screenshot.png")
+
+      assert {:ok, :started} = Agent.submit(id, "", files: [file.path])
+      assert BackendStub.await_turn() =~ file.path
+      # And it names the session, which would otherwise show as an opaque id.
+      assert Agent.info(id).title == "screenshot.png"
+    end
+
+    test "a path outside the session is refused and nothing is sent" do
+      # The client supplies the path and the model reads whatever we name, so
+      # this is the one check that matters.
+      id = new_session()
+
+      assert {:error, {:not_an_attachment, "/etc/passwd"}} =
+               Agent.submit(id, "read this", files: ["/etc/passwd"])
+
+      BackendStub.refute_turn()
+      # Refused outright rather than sent without the attachment: a message
+      # whose subject silently vanished is worse than an error.
+      assert Agent.info(id).queue == []
+    end
+
+    test "a mid-turn message carries its attachments into the running turn" do
+      id = new_session()
+      Agent.submit(id, "start")
+      BackendStub.await_turn()
+      file = attach(id, "extra.txt")
+
+      assert {:ok, :steered} = Agent.submit(id, "also this", files: [file.path])
+      assert BackendStub.await_steer() =~ file.path
+    end
+  end
+
   describe "interrupting" do
     setup do
       id = new_session()
@@ -339,6 +405,27 @@ defmodule Loom.Agent.SessionTest do
       # A client that missed it gets the authoritative event instead, so there
       # is nothing to replay.
       refute Enum.any?(Store.read_events(id, 100), &(&1.kind == :text))
+    end
+
+    test "deltas are numbered so a client can drop one it already applied" do
+      # Not defensive: phoenix.js skips the leave push for a channel that has
+      # not finished joining, so a mount-remount leaves a second channel alive
+      # on the server and every delta is delivered twice. Events survived that
+      # because `seq` deduplicated them; text deltas append, so a double
+      # interleaved the output with itself.
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.topic(id))
+      Agent.submit(id, "hello")
+      BackendStub.await_turn()
+
+      backend_sends(id, [
+        {:delta, %{block_id: "b1", type: :text, chunk: "one"}},
+        {:delta, %{block_id: "b1", type: :text, chunk: "two"}}
+      ])
+
+      assert_receive {:agent_delta, ^id, %{chunk: "one", delta_seq: first}}, 500
+      assert_receive {:agent_delta, ^id, %{chunk: "two", delta_seq: second}}, 500
+      assert second > first
     end
 
     test "a failed turn is reported and ends the turn" do

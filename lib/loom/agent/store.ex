@@ -9,8 +9,12 @@ defmodule Loom.Agent.Store do
   keeps the transcript greppable with `tail`/`jq`, which matters because it is
   the thing you read by hand when debugging an agent.
 
-      <data_dir>/<id>/meta.json     header, rewritten in place
-      <data_dir>/<id>/events.jsonl  normalized transcript events, append-only
+      ~/.loom/sessions/<id>/meta.json     header, rewritten in place
+      ~/.loom/sessions/<id>/events.jsonl  normalized transcript events, append-only
+      ~/.loom/sessions/<id>/files/…        what the user attached to the session
+
+  Under the user's home rather than the release, because `priv/` is replaced
+  wholesale by a deploy and none of this should be.
 
   ## Why there is no message log
 
@@ -40,14 +44,99 @@ defmodule Loom.Agent.Store do
 
   # ── Layout ────────────────────────────────────────────────────────────────
 
+  @doc """
+  Loom's own directory — `~/.loom`, or `LOOM_HOME` when it is set.
+
+  Everything loom owns lives here: session headers, transcripts, and the files
+  a user attached. Deliberately not under the release, where a deploy would
+  replace it.
+  """
+  def home do
+    Application.get_env(:loom, :home) || Path.expand("~/.loom")
+  end
+
   @doc "Root directory for all session data."
   def data_dir do
-    Application.get_env(:loom, Loom.Agent, [])[:data_dir] ||
-      Path.join([:code.priv_dir(:loom), "agent_sessions"])
+    Application.get_env(:loom, Loom.Agent, [])[:data_dir] || Path.join(home(), "sessions")
   end
 
   @doc "Directory holding one session's header, logs, and session memory."
   def session_dir(id), do: Path.join(data_dir(), id)
+
+  @doc """
+  Directory holding the files a user attached to this session.
+
+  Inside the session directory on purpose: deleting a session takes its
+  attachments with it, and a path says on sight which conversation it belongs
+  to. See `Loom.Agent.Files`.
+  """
+  def files_dir(id), do: Path.join(session_dir(id), "files")
+
+  @doc """
+  Bring sessions written before the data directory moved to `~/.loom` along.
+
+  Copies, never moves, and skips any session that already exists in the new
+  location — so it is idempotent and cannot overwrite live state. Leaving the
+  old copy behind costs a few megabytes and is the difference between a mistake
+  here being annoying and being unrecoverable.
+
+  Per session rather than "only if the target directory is absent": an upload
+  or a new session creates that directory, and a boot after one of those must
+  still find the old conversations.
+  """
+  def migrate_legacy do
+    legacy = legacy_dir()
+
+    copied =
+      case File.ls(legacy) do
+        {:ok, ids} -> Enum.count(ids, &copy_legacy(legacy, &1))
+        {:error, _} -> 0
+      end
+
+    if copied > 0 do
+      Logger.info("Loom.Agent.Store copied #{copied} session(s) from #{legacy} to #{data_dir()}")
+    end
+
+    :ok
+  rescue
+    error ->
+      # A failed migration must not stop the node from booting: the old
+      # directory is untouched, so the worst case is sessions not showing up
+      # until someone looks at this line.
+      Logger.error("Loom.Agent.Store could not migrate legacy sessions: #{inspect(error)}")
+      :error
+  end
+
+  # Where sessions lived before `~/.loom`. Overridable so the migration can be
+  # tested against a directory of its own rather than the release's real one.
+  defp legacy_dir do
+    Application.get_env(:loom, Loom.Agent, [])[:legacy_dir] ||
+      Path.join(to_string(:code.priv_dir(:loom)), "agent_sessions")
+  end
+
+  defp copy_legacy(legacy, id) do
+    from = Path.join(legacy, id)
+    to = session_dir(id)
+
+    # A directory with no header is not a session — the old location collected
+    # a few stray temp directories from tests.
+    if File.regular?(Path.join(from, @meta_file)) do
+      # Entry by entry, never overwriting. A session that is already half in the
+      # new location — a header rewritten there while its transcript stayed
+      # behind — still gets the rest of itself back.
+      missing = Enum.reject(File.ls!(from), &File.exists?(Path.join(to, &1)))
+
+      if missing == [] do
+        false
+      else
+        File.mkdir_p!(to)
+        for entry <- missing, do: File.cp_r!(Path.join(from, entry), Path.join(to, entry))
+        true
+      end
+    else
+      false
+    end
+  end
 
   # ── Meta ──────────────────────────────────────────────────────────────────
 

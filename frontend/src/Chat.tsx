@@ -1,7 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { buildTimeline, isBusy, type TimelineItem } from "./agent"
+import { Markdown } from "./markdown"
 import { useAgent } from "./useAgent"
-import type { AgentInfo } from "./api"
+import {
+  useAttachments,
+  useFileDrop,
+  type Attachment,
+  type Attachments,
+} from "./useAttachments"
+import type { AgentFile, AgentInfo } from "./api"
 import "./Chat.css"
 
 type Props = {
@@ -26,8 +33,26 @@ export function Chat({
   const items = buildTimeline(transcript)
   const busy = isBusy(transcript)
 
+  const attachments = useAttachments(session.id)
+  // Dropping is accepted anywhere in the conversation, not just on the
+  // composer: by the time you have dragged a screenshot this far, aiming at a
+  // 40-pixel target is the last thing you want to do.
+  const drop = useFileDrop(attachments.add)
+
+  const send = (text: string) => {
+    submit(text, attachments.ready)
+    attachments.clear()
+  }
+
   return (
-    <div className="chat">
+    <div
+      className={"chat" + (drop.dragging ? " dragging" : "")}
+      {...drop.handlers}
+    >
+      {drop.dragging && (
+        <div className="drop-note">drop to attach to this conversation</div>
+      )}
+
       <header className="chat-header">
         {!sidebarOpen && (
           <button
@@ -90,7 +115,8 @@ export function Chat({
       <Composer
         busy={busy}
         interrupted={transcript.status === "interrupted"}
-        onSubmit={submit}
+        attachments={attachments}
+        onSubmit={send}
         onInterrupt={interrupt}
       />
     </div>
@@ -127,20 +153,26 @@ function Timeline({
 
   return (
     <div className="timeline" ref={ref} onScroll={onScroll}>
-      {truncatedBefore ? (
-        <div className="notice">
-          earlier messages are no longer kept in memory (up to #
-          {truncatedBefore})
-        </div>
-      ) : null}
+      {/* The scroll container is the outer element and the measure is this
+          one, so prose, tool cards and turn lines all share a single column
+          width — a card spanning the window while the text beside it stopped
+          half way across read as two different layouts. */}
+      <div className="timeline-inner">
+        {truncatedBefore ? (
+          <div className="notice">
+            earlier messages are no longer kept in memory (up to #
+            {truncatedBefore})
+          </div>
+        ) : null}
 
-      {items.length === 0 && (
-        <div className="empty">Send a message to start.</div>
-      )}
+        {items.length === 0 && (
+          <div className="empty">Send a message to start.</div>
+        )}
 
-      {items.map((item) => (
-        <Item key={item.key} item={item} onAnswer={onAnswer} />
-      ))}
+        {items.map((item) => (
+          <Item key={item.key} item={item} onAnswer={onAnswer} />
+        ))}
+      </div>
     </div>
   )
 }
@@ -156,16 +188,19 @@ function Item({
     case "user":
       return (
         <div className={"bubble user" + (item.pending ? " pending" : "")}>
-          <Rich text={item.text} />
+          {item.text.trim() !== "" && <Rich text={item.text} />}
+          {item.files.length > 0 && <SentFiles files={item.files} />}
           {item.queued && <span className="tag">queued</span>}
           {item.origin === "phone" && <span className="tag">phone</span>}
         </div>
       )
 
     case "assistant":
+      // The only place markdown is rendered. Tool output and the user's own
+      // words are shown verbatim — see `markdown.tsx`.
       return (
         <div className={"bubble assistant" + (item.streaming ? " live" : "")}>
-          <Rich text={item.text} />
+          <Markdown text={item.text} />
         </div>
       )
 
@@ -308,6 +343,33 @@ function QueuePanel({
   )
 }
 
+/**
+ * The attachments that went out with a message.
+ *
+ * Names, not thumbnails: showing the image would mean fetching it back through
+ * an authenticated request and is not what the message is about — the agent
+ * reads the file from the path, and the chip is there to say which file.
+ */
+function SentFiles({ files }: { files: AgentFile[] }) {
+  return (
+    <div className="files">
+      {files.map((file) => (
+        <span className="file" key={file.path} title={file.path}>
+          {fileIcon(file.content_type)} {file.name}
+          <span className="file-size">{formatBytes(file.size)}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function fileIcon(contentType: string): string {
+  if (contentType.startsWith("image/")) return "🖼"
+  if (contentType.startsWith("audio/")) return "🔊"
+  if (contentType.startsWith("video/")) return "🎞"
+  return "📄"
+}
+
 function ToolCard({
   item,
 }: {
@@ -389,16 +451,19 @@ const STATUS_LABELS: Record<string, string> = {
 function Composer({
   busy,
   interrupted,
+  attachments,
   onSubmit,
   onInterrupt,
 }: {
   busy: boolean
   interrupted: boolean
+  attachments: Attachments
   onSubmit: (text: string) => void
   onInterrupt: () => void
 }) {
   const [text, setText] = useState("")
   const ref = useRef<HTMLTextAreaElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
   // True between compositionstart and compositionend. Needed in addition to
   // `isComposing` because the two disagree across browsers — see below.
   const composingRef = useRef(false)
@@ -411,76 +476,145 @@ function Composer({
     el.style.height = Math.min(el.scrollHeight, 220) + "px"
   }, [text])
 
+  // An attachment on its own is a message: dragging in a screenshot and
+  // pressing send, with nothing typed, is a normal way to ask about it.
+  const sendable =
+    (text.trim() !== "" || attachments.ready.length > 0) && !attachments.uploading
+
   const send = () => {
-    const value = text.trim()
-    if (value === "") return
-    onSubmit(value)
+    if (!sendable) return
+    onSubmit(text.trim())
     setText("")
   }
 
   return (
     <div className="composer">
-      <textarea
-        ref={ref}
-        className="composer-input"
-        value={text}
-        rows={1}
-        placeholder={
-          busy
-            ? "Say something — it reaches the agent mid-turn…"
-            : interrupted
-              ? "Stopped. Type to continue — parked messages go with this one."
-              : "Message the agent…"
-        }
-        onChange={(e) => setText(e.target.value)}
-        onCompositionStart={() => {
-          composingRef.current = true
-        }}
-        onCompositionEnd={() => {
-          composingRef.current = false
-        }}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter" || e.shiftKey) return
-
-          // An IME uses Enter to commit the candidate, and that keystroke must
-          // not also send the message. Both guards are needed because the
-          // browsers disagree about ordering:
-          //
-          //   Chrome  — the committing keydown has isComposing === true.
-          //   Safari  — compositionend fires *after* that keydown, so
-          //             isComposing is already false; the ref is still true.
-          //
-          // Either way the commit is swallowed, and the next Enter (with no
-          // composition in progress) sends.
-          if (e.nativeEvent.isComposing || composingRef.current) return
-
-          e.preventDefault()
-          send()
-        }}
-      />
-      {busy && (
-        <button className="composer-btn stop" onClick={onInterrupt}>
-          stop
-        </button>
+      {attachments.items.length > 0 && (
+        <div className="tray">
+          {attachments.items.map((item) => (
+            <AttachmentChip
+              key={item.key}
+              item={item}
+              onRemove={() => attachments.remove(item.key)}
+            />
+          ))}
+        </div>
       )}
-      <button
-        className="composer-btn send"
-        onClick={send}
-        disabled={text.trim() === ""}
-      >
-        {interrupted ? "continue" : "send"}
-      </button>
+
+      <div className="composer-row">
+        <input
+          ref={picker}
+          className="composer-file"
+          type="file"
+          multiple
+          onChange={(e) => {
+            attachments.add(Array.from(e.target.files ?? []))
+            // Reset, or picking the same file twice in a row does nothing.
+            e.target.value = ""
+          }}
+        />
+        <button
+          className="composer-btn attach"
+          title="Attach files — or drop them anywhere in the conversation"
+          onClick={() => picker.current?.click()}
+        >
+          ＋
+        </button>
+
+        <textarea
+          ref={ref}
+          className="composer-input"
+          value={text}
+          rows={1}
+          placeholder={
+            busy
+              ? "Say something — it reaches the agent mid-turn…"
+              : interrupted
+                ? "Stopped. Type to continue — parked messages go with this one."
+                : "Message the agent…"
+          }
+          onChange={(e) => setText(e.target.value)}
+          // A pasted screenshot is the commonest attachment there is, and it
+          // never exists as a file on disk to pick.
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files)
+            if (files.length === 0) return
+            e.preventDefault()
+            attachments.add(files)
+          }}
+          onCompositionStart={() => {
+            composingRef.current = true
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.shiftKey) return
+
+            // An IME uses Enter to commit the candidate, and that keystroke
+            // must not also send the message. Both guards are needed because
+            // the browsers disagree about ordering:
+            //
+            //   Chrome  — the committing keydown has isComposing === true.
+            //   Safari  — compositionend fires *after* that keydown, so
+            //             isComposing is already false; the ref is still true.
+            //
+            // Either way the commit is swallowed, and the next Enter (with no
+            // composition in progress) sends.
+            if (e.nativeEvent.isComposing || composingRef.current) return
+
+            e.preventDefault()
+            send()
+          }}
+        />
+        {busy && (
+          <button className="composer-btn stop" onClick={onInterrupt}>
+            stop
+          </button>
+        )}
+        <button className="composer-btn send" onClick={send} disabled={!sendable}>
+          {attachments.uploading
+            ? "uploading…"
+            : interrupted
+              ? "continue"
+              : "send"}
+        </button>
+      </div>
     </div>
+  )
+}
+
+/** One pending attachment: uploading, failed, or ready to go. */
+function AttachmentChip({
+  item,
+  onRemove,
+}: {
+  item: Attachment
+  onRemove: () => void
+}) {
+  const state = item.error ? " failed" : item.file ? "" : " uploading"
+
+  return (
+    <span className={"tray-item" + state} title={item.error ?? item.file?.path}>
+      <span className="tray-name">{item.name}</span>
+      <span className="tray-note">
+        {item.error ?? (item.file ? formatBytes(item.size) : "…")}
+      </span>
+      <button className="tray-drop" title="Remove" onClick={onRemove}>
+        ×
+      </button>
+    </span>
   )
 }
 
 // ── Text rendering ─────────────────────────────────────────────────────────
 
 /**
- * Just enough markdown to make agent output readable: fenced blocks and inline
- * code. Deliberately not a markdown library — the model is told to be concise
- * and point at paths, so headings and tables are rare and a full parser would
- * be more surface than it is worth.
+ * Fenced blocks and inline code, nothing else.
+ *
+ * Used for the *user's* messages and for a question's prompt — text that was
+ * typed by a person, where turning a `*` into emphasis would be rewriting what
+ * they wrote. Assistant messages go through `Markdown` instead.
  */
 function Rich({ text }: { text: string }) {
   const parts = text.split("```")
@@ -579,6 +713,12 @@ function formatInput(input: Record<string, unknown>): string {
     return entries[0][1] as string
   }
   return JSON.stringify(input, null, 2)
+}
+
+function formatBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
+  if (n >= 1024) return `${Math.round(n / 1024)} KB`
+  return `${n} B`
 }
 
 function formatTokens(n: number): string {

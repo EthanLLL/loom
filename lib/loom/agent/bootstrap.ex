@@ -40,6 +40,10 @@ defmodule Loom.Agent.Bootstrap do
 
   @impl true
   def handle_continue(:restore, state) do
+    # Sessions used to live in the release's `priv/`. One-time, copy-only, and
+    # a no-op once `~/.loom/sessions` exists.
+    Store.migrate_legacy()
+
     metas = Store.list_metas()
 
     restored =

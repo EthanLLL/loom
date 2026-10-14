@@ -4,7 +4,7 @@ defmodule LoomWeb.AgentChannel do
   devices join `agent:<id>` at once and all of them both receive and send.
 
   Client → server:
-    - "submit"    : %{"text" => _, "client_msg_id" => _}
+    - "submit"    : %{"text" => _, "client_msg_id" => _, "files" => [%{"path" => _}]}
     - "interrupt" : %{}
 
   Server → client:
@@ -29,11 +29,17 @@ defmodule LoomWeb.AgentChannel do
 
       {:ok, snapshot} = Agent.attach(id, since_seq)
 
-      # Subscribe after the snapshot is taken. The session serialises both in
-      # its mailbox, so an event emitted between the two arrives as a broadcast
-      # with a seq above `last_seq` — it can be appended, not lost.
-      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.topic(id))
-
+      # No `Phoenix.PubSub.subscribe/2` here: `Phoenix.Channel.Server` already
+      # subscribed this process to `"agent:<id>"` on the endpoint's PubSub
+      # before `join/3` ran, and the session broadcasts on exactly that topic.
+      # Subscribing again put two entries in the registry for one process, so
+      # every broadcast was delivered twice. Events survived it — the client
+      # drops any `seq` it has already seen — but deltas are appended, so the
+      # doubling interleaved streamed text with itself.
+      #
+      # That subscription being in place *before* the snapshot is a feature: an
+      # event emitted in between arrives as a broadcast the client then ignores
+      # by seq, which is strictly better than a gap.
       {:ok, snapshot, socket |> assign(:session_id, id) |> assign(:device, device)}
     else
       {:error, %{reason: "unknown_session"}}
@@ -44,7 +50,8 @@ defmodule LoomWeb.AgentChannel do
   def handle_in("submit", %{"text" => text} = params, socket) when is_binary(text) do
     case Agent.submit(socket.assigns.session_id, text,
            origin: socket.assigns.device,
-           client_msg_id: Map.get(params, "client_msg_id")
+           client_msg_id: Map.get(params, "client_msg_id"),
+           files: file_paths(params)
          ) do
       {:ok, disposition} -> {:reply, {:ok, %{status: disposition}}, socket}
       {:error, reason} -> {:reply, {:error, %{reason: inspect(reason)}}, socket}
@@ -96,4 +103,17 @@ defmodule LoomWeb.AgentChannel do
 
   defp normalize_seq(seq) when is_integer(seq) and seq >= 0, do: seq
   defp normalize_seq(_), do: 0
+
+  # Attachments arrive as the objects `POST /api/agents/:id/files` returned, but
+  # only the path is trusted input to anything — and the session checks even
+  # that against its own files directory before the model hears about it.
+  defp file_paths(%{"files" => files}) when is_list(files) do
+    Enum.flat_map(files, fn
+      %{"path" => path} when is_binary(path) -> [path]
+      path when is_binary(path) -> [path]
+      _ -> []
+    end)
+  end
+
+  defp file_paths(_params), do: []
 end

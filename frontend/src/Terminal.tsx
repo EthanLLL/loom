@@ -140,6 +140,7 @@ export function Terminal({ sessionId, active }: Props) {
     // link). CC issues no matching query, so dropping these `?…R` reports breaks
     // the loop without swallowing anything CC is waiting on. Real user input
     // never matches this pattern.
+    // oxlint-disable-next-line no-control-regex -- matching ANSI escapes is the point
     const REPORT_REPLY = /^\x1b\[\?[\d;]*R$/
     const onData = term.onData((data) => {
       if (REPORT_REPLY.test(data)) return

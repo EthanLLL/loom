@@ -25,7 +25,8 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
       first_turn?: false,
       port: :fake_port,
       os_pid: nil,
-      ref: "turn1",
+      message_id: "msg_one",
+      pending_blocks: [],
       buffer: "",
       tools: %{},
       interrupted?: false,
@@ -47,6 +48,15 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
   end
 
   defp events(out), do: for({:event, kind, payload} <- out, do: {kind, payload})
+
+  defp ids(items) do
+    Enum.flat_map(items, fn
+      %{block_id: id} -> [id]
+      {_kind, %{block_id: id}} -> [id]
+      _ -> []
+    end)
+  end
+
   defp deltas(out), do: for({:delta, delta} <- out, do: delta)
 
   describe "init" do
@@ -73,7 +83,11 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
     test "SSE events become deltas and the assistant message becomes the event" do
       {_handle, out} =
         feed(handle(), [
-          %{"type" => "stream_event", "event" => %{"type" => "message_start", "message" => %{}}},
+          # Carries the id every later block_id is qualified by.
+          %{
+            "type" => "stream_event",
+            "event" => %{"type" => "message_start", "message" => %{"id" => "msg_one"}}
+          },
           %{
             "type" => "stream_event",
             "event" => %{
@@ -106,34 +120,56 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
         ])
 
       assert [
-               %{block_id: "turn1.0", type: :block_start, block_type: :text},
-               %{block_id: "turn1.0", type: :text, chunk: "O"},
-               %{block_id: "turn1.0", type: :text, chunk: "K"},
-               %{block_id: "turn1.0", type: :block_end}
+               %{block_id: "msg_one.0", type: :block_start, block_type: :text},
+               %{block_id: "msg_one.0", type: :text, chunk: "O"},
+               %{block_id: "msg_one.0", type: :text, chunk: "K"},
+               %{block_id: "msg_one.0", type: :block_end}
              ] = deltas(out)
 
       # The authoritative event carries the same block_id, so a client replaces
       # the placeholder it built from deltas rather than appending a duplicate.
-      assert [{:assistant_text, %{block_id: "turn1.0", text: "OK"}}] = events(out)
+      assert [{:assistant_text, %{block_id: "msg_one.0", text: "OK"}}] = events(out)
     end
 
-    test "block ids are qualified by the turn so indexes never collide" do
-      lines = [
-        %{
-          "type" => "stream_event",
-          "event" => %{
-            "type" => "content_block_delta",
-            "index" => 0,
-            "delta" => %{"type" => "text_delta", "text" => "x"}
+    test "block ids are qualified by the API call, not the turn" do
+      # One agentic turn makes an API call per tool round and the SSE `index`
+      # restarts at 0 in each. Qualifying by the turn made call 2's first block
+      # collide with call 1's, so the second answer streamed into the first
+      # one's placeholder — the doubled text seen mid-turn.
+      call = fn id, text ->
+        [
+          %{
+            "type" => "stream_event",
+            "event" => %{"type" => "message_start", "message" => %{"id" => id, "usage" => %{}}}
+          },
+          %{
+            "type" => "stream_event",
+            "event" => %{
+              "type" => "content_block_start",
+              "index" => 0,
+              "content_block" => %{"type" => "text"}
+            }
+          },
+          %{
+            "type" => "stream_event",
+            "event" => %{
+              "type" => "content_block_delta",
+              "index" => 0,
+              "delta" => %{"type" => "text_delta", "text" => text}
+            }
+          },
+          %{
+            "type" => "assistant",
+            "message" => %{"content" => [%{"type" => "text", "text" => text}]}
           }
-        }
-      ]
+        ]
+      end
 
-      {_h, a} = feed(handle(%{ref: "turnA"}), lines)
-      {_h, b} = feed(handle(%{ref: "turnB"}), lines)
+      {handle, first} = feed(handle(%{message_id: nil}), call.("msg_aaa", "first"))
+      {_handle, second} = feed(handle, call.("msg_bbb", "second"))
 
-      assert [%{block_id: "turnA.0"}] = deltas(a)
-      assert [%{block_id: "turnB.0"}] = deltas(b)
+      assert Enum.all?((deltas(first) ++ events(first)) |> ids(), &(&1 == "msg_aaa.0"))
+      assert Enum.all?((deltas(second) ++ events(second)) |> ids(), &(&1 == "msg_bbb.0"))
     end
 
     test "thinking is streamed and recorded separately from text" do
@@ -213,7 +249,7 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
           }
         ])
 
-      assert [%{type: :tool_use_start, name: "Bash", id: "toolu_1", block_id: "turn1.0"}] =
+      assert [%{type: :tool_use_start, name: "Bash", id: "toolu_1", block_id: "msg_one.0"}] =
                deltas(out)
 
       assert [{:tool_use, %{id: "toolu_1", name: "Bash", input: %{"command" => "ls"}}}] =

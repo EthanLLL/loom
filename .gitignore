@@ -41,3 +41,6 @@ npm-debug.log
 
 # Agent session state: one directory per conversation, written at runtime.
 /priv/agent_sessions/
+
+# Recordings made by frontend/tools/transcript.mjs — debugging artefacts.
+/frontend/tools/recordings/

@@ -21,7 +21,10 @@ defmodule LoomWeb.Endpoint do
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
+    # The multipart limit is per request and covers a whole drop of files;
+    # `Loom.Agent.Files` enforces the real per-file cap and reports it properly,
+    # while exceeding this one is a bare 413 from Plug.
+    parsers: [:urlencoded, {:multipart, length: 120_000_000}, :json],
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 

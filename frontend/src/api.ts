@@ -162,6 +162,47 @@ export async function deleteAgent(id: string): Promise<void> {
   }
 }
 
+/**
+ * A file stored under the session's own directory, as the server named it.
+ *
+ * `path` is absolute and goes to the model in the message it receives; the
+ * backend reads it with its own tools. The server re-checks it belongs to this
+ * session on submit, so a rewritten path is refused rather than read.
+ */
+export type AgentFile = {
+  name: string
+  path: string
+  size: number
+  content_type: string
+}
+
+/**
+ * Upload attachments for a session.
+ *
+ * Over HTTP rather than the channel: a 20 MB screenshot sent as a WebSocket
+ * frame would sit in front of every event and delta on the same socket.
+ */
+export async function uploadAgentFiles(
+  id: string,
+  files: File[],
+): Promise<AgentFile[]> {
+  const body = new FormData()
+  for (const file of files) body.append("files[]", file)
+
+  // No Content-Type header: the browser has to set the multipart boundary.
+  const res = await fetch(`/api/agents/${id}/files`, {
+    method: "POST",
+    headers: authHeaders(),
+    body,
+  })
+  if (res.status === 401) throw new UnauthorizedError()
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    throw new Error(detail?.error ?? `upload failed: ${res.status}`)
+  }
+  return (await res.json()).files
+}
+
 export type Tab = {
   id: string
   panes: string[] // session ids, left → right
