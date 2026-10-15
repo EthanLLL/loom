@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar"
 import { Terminal } from "./Terminal"
 import { useLobby } from "./useLobby"
 import { useNarrow } from "./useNarrow"
+import { useSwipe } from "./useSwipe"
 import {
   createAgent,
   createSession,
@@ -38,6 +39,16 @@ function App() {
   // PTY session ids, top to bottom in the right-hand column.
   const [ptyIds, setPtyIds] = useState<string[]>([])
   const openingTerminal = useRef(false)
+
+  // On a phone, swiping right over the chat pulls the drawer out and swiping
+  // left over the drawer puts it back. Not over the terminals: a shell has its
+  // own uses for a drag, and they are opened and closed by tapping.
+  const chatRef = useRef<HTMLDivElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
+  useSwipe(chatRef, "right", narrow && loaded && !drawerOpen && !terminalOpen, () =>
+    setDrawerOpen(true),
+  )
+  useSwipe(drawerRef, "left", narrow && drawerOpen, () => setDrawerOpen(false))
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "1" : "0")
@@ -147,7 +158,11 @@ function App() {
       {narrow ? (
         // Always mounted so it can slide rather than pop. Over the chat, not
         // beside it: a phone has no width to give a second column.
-        <div className={"drawer" + (drawerOpen ? " open" : "")} inert={!drawerOpen}>
+        <div
+          ref={drawerRef}
+          className={"drawer" + (drawerOpen ? " open" : "")}
+          inert={!drawerOpen}
+        >
           <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} />
           {sidebar}
         </div>
@@ -156,7 +171,7 @@ function App() {
       )}
 
       <main className="main">
-        <div className="main-chat">
+        <div className="main-chat" ref={chatRef}>
           {active ? (
             // Keyed by id so switching sessions rebuilds the channel and the
             // transcript rather than mixing two conversations.
