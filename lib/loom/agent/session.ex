@@ -248,7 +248,9 @@ defmodule Loom.Agent.Session do
         # re-sending a message the backend has already recorded.
         {:ok, interrupted(state, "the session was interrupted by a restart")}
       else
-        {:ok, %{state | status: restore_status(meta[:status])}}
+        state = %{state | status: restore_status(meta[:status])}
+        announce(state)
+        {:ok, state}
       end
     else
       {:error, reason} -> {:stop, {:restore_failed, reason}}
@@ -433,7 +435,7 @@ defmodule Loom.Agent.Session do
     # Record that we are not mid-turn, so a restart does not report a
     # deliberately stopped session as interrupted. A hard crash skips this and
     # leaves `status` as it was — which is what makes the restart notice.
-    persist_meta(%{state | status: settled_status(state)})
+    write_meta(%{state | status: settled_status(state)})
     Store.close_logs(state.logs)
     :ok
   catch
@@ -656,7 +658,25 @@ defmodule Loom.Agent.Session do
     state
   end
 
+  # Every header write is also a sidebar update: the header is exactly what
+  # the session list shows, so the two change together. See `announce/1`.
   defp persist_meta(state) do
+    write_meta(state)
+    announce(state)
+  end
+
+  # Not from `terminate/2`, which only writes. A session going away is announced
+  # by `Loom.Agent.stop_session/1` as a removal, and a summary sent on the way
+  # out would race it.
+  defp announce(state) do
+    Phoenix.PubSub.broadcast(
+      Loom.PubSub,
+      Loom.Agent.lobby_topic(),
+      {:agent_summary, meta(state)}
+    )
+  end
+
+  defp write_meta(state) do
     base = %{
       id: state.id,
       backend: state.backend,
@@ -710,7 +730,10 @@ defmodule Loom.Agent.Session do
       usage: state.usage,
       context_tokens: state.context_tokens,
       context_window: state.context_window,
-      turns: state.turns
+      turns: state.turns,
+      # Orders summaries: the lobby can deliver one that is older than the
+      # list a client just joined with, and `seq` says which is newer.
+      seq: state.seq
     }
   end
 end

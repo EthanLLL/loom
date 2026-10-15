@@ -111,6 +111,8 @@ export type AgentInfo = {
   context_tokens: number
   context_window: number | null
   turns: number
+  // Orders summaries from the lobby channel: the higher one is newer.
+  seq: number
 }
 
 export async function listAgents(): Promise<AgentInfo[]> {

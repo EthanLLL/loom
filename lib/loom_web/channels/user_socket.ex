@@ -3,6 +3,7 @@ defmodule LoomWeb.UserSocket do
 
   channel "terminal:*", LoomWeb.TerminalChannel
   channel "agent:*", LoomWeb.AgentChannel
+  channel "agents", LoomWeb.LobbyChannel
 
   @impl true
   def connect(%{"token" => token}, socket, _connect_info) do

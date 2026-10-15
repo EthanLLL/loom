@@ -1,34 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Chat } from "./Chat"
 import { Login } from "./Login"
 import { Sidebar } from "./Sidebar"
 import { Terminal } from "./Terminal"
+import { useLobby } from "./useLobby"
 import {
   createAgent,
   createSession,
   deleteAgent,
   deleteSession,
   getToken,
-  listAgents,
   listSessions,
   type AgentBackend,
-  type AgentInfo,
 } from "./api"
 import "./App.css"
-
-// The session list carries each agent's status and auto-generated title, and
-// both change while the server works. Polling is enough here (single tenant,
-// one list) and it is paused while the tab is hidden so a phone in a pocket
-// is not asking every few seconds.
-const POLL_MS = 5000
 
 const SIDEBAR_KEY = "loom_sidebar_open"
 
 function App() {
   const [authed, setAuthed] = useState(!!getToken())
-  const [sessions, setSessions] = useState<AgentInfo[]>([])
+  // Pushed by the server as sessions change; see `useLobby`.
+  const { sessions, loaded, upsert, drop } = useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
 
   // Remembered, because on a narrow screen you collapse it once and want it
   // to stay collapsed across reloads.
@@ -45,59 +38,28 @@ function App() {
     localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "1" : "0")
   }, [sidebarOpen])
 
-  const refresh = useCallback(async () => {
-    const list = await listAgents()
-    setSessions(list)
-    return list
-  }, [])
-
+  // Open the first session once the list arrives, and move off a session that
+  // disappears — deleted here or on another device.
   useEffect(() => {
-    if (!authed) return
-    ;(async () => {
-      try {
-        const list = await refresh()
-        setActiveId((current) => current ?? list[0]?.id ?? null)
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [authed, refresh])
-
-  useEffect(() => {
-    if (!authed) return
-    let timer = 0
-
-    const tick = () => {
-      if (!document.hidden) refresh().catch(() => {})
-      timer = window.setTimeout(tick, POLL_MS)
-    }
-    timer = window.setTimeout(tick, POLL_MS)
-
-    // Catch up immediately when the tab comes back rather than waiting out the
-    // interval — on a phone that is the moment the user is looking at it.
-    const onVisible = () => {
-      if (!document.hidden) refresh().catch(() => {})
-    }
-    document.addEventListener("visibilitychange", onVisible)
-
-    return () => {
-      window.clearTimeout(timer)
-      document.removeEventListener("visibilitychange", onVisible)
-    }
-  }, [authed, refresh])
+    if (!loaded) return
+    setActiveId((current) =>
+      current && sessions.some((s) => s.id === current)
+        ? current
+        : (sessions[0]?.id ?? null),
+    )
+  }, [loaded, sessions])
 
   // The backend is chosen here and never again: the conversation lives in that
   // engine's own store, so there is nothing to migrate if it changes.
   const create = async (backend: AgentBackend) => {
     const session = await createAgent(backend)
-    setSessions((list) => [...list, session])
+    upsert(session)
     setActiveId(session.id)
   }
 
   const remove = async (id: string) => {
     await deleteAgent(id)
-    const list = await refresh()
-    setActiveId((current) => (current === id ? (list[0]?.id ?? null) : current))
+    drop(id)
   }
 
   // ── Terminals ────────────────────────────────────────────────────────────
@@ -151,7 +113,7 @@ function App() {
   }
 
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
-  if (loading) return <div className="loading">connecting…</div>
+  if (!loaded) return <div className="loading">connecting…</div>
 
   const active = sessions.find((s) => s.id === activeId) ?? null
 

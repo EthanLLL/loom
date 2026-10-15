@@ -40,6 +40,14 @@ const FONT =
   "'MesloLGL Nerd Font Mono', Menlo, Monaco, 'Courier New', " +
   "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', monospace"
 
+// xterm takes pixels, not CSS, so follow the root size (see index.css) by hand:
+// a point under body text, which keeps a laptop at the old 14. Read once per
+// terminal; a window crossing a breakpoint keeps its size until reopened.
+function terminalFontSize(): number {
+  const root = parseFloat(getComputedStyle(document.documentElement).fontSize)
+  return Number.isFinite(root) ? Math.round(root) - 1 : 14
+}
+
 type Props = {
   sessionId: string
   active: boolean
@@ -56,7 +64,7 @@ export function Terminal({ sessionId, active }: Props) {
 
     const term = new Xterm({
       fontFamily: FONT,
-      fontSize: 14,
+      fontSize: terminalFontSize(),
       cursorBlink: true,
       allowProposedApi: true,
       theme: THEME,

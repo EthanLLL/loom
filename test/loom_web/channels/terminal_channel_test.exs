@@ -3,6 +3,15 @@ defmodule LoomWeb.TerminalChannelTest do
 
   alias LoomWeb.UserSocket
 
+  # The suite ends with `System.halt`, which does not stop the application, so
+  # a terminal left running keeps its shell alive — and the node waits on it
+  # forever. Stop every terminal a test opened.
+  setup do
+    on_exit(fn ->
+      for %{id: id} <- Loom.Terminal.list_sessions(), do: Loom.Terminal.stop_session(id)
+    end)
+  end
+
   defp join_terminal(id) do
     {:ok, _pid} = Loom.Terminal.start_session(id, cols: 80, rows: 24)
 

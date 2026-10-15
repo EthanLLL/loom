@@ -204,7 +204,8 @@ defmodule Loom.Agent.Backend.ClaudeCode do
           :use_stdio,
           :hide,
           args: @base_args ++ session_args(handle),
-          cd: handle.cwd
+          cd: handle.cwd,
+          env: Loom.ChildEnv.port_env()
         ])
 
       {:ok,

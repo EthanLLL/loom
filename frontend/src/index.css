@@ -6,3 +6,30 @@ body,
   background: #010c18;
   overflow: hidden;
 }
+
+/* Every font size in the app is in rem, so this is the one knob. 1rem is body
+   text. Percentages rather than px so a browser's own font-size preference
+   still scales it. */
+html {
+  font-size: 93.75%; /* 15px */
+}
+
+/* Phones: 16px is also the floor below which iOS zooms the page when an input
+   is focused, and the composer is 1rem. */
+@media (max-width: 640px) {
+  html {
+    font-size: 100%;
+  }
+}
+
+@media (min-width: 1600px) {
+  html {
+    font-size: 100%; /* 16px */
+  }
+}
+
+@media (min-width: 2200px) {
+  html {
+    font-size: 112.5%; /* 18px */
+  }
+}

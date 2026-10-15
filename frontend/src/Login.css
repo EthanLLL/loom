@@ -19,7 +19,7 @@
 
 .login-title {
   color: #38ff9d;
-  font-size: 26px;
+  font-size: 2rem;
   font-weight: bold;
   text-align: center;
   letter-spacing: 2px;
@@ -32,7 +32,7 @@
   background: #010c18;
   color: #ecdef4;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 1.077rem;
   outline: none;
 }
 
@@ -42,7 +42,7 @@
 
 .login-error {
   color: #ff54b0;
-  font-size: 12px;
+  font-size: 0.923rem;
   text-align: center;
 }
 
@@ -53,7 +53,7 @@
   background: #1376f9;
   color: #010c18;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 1.077rem;
   font-weight: bold;
   cursor: pointer;
 }

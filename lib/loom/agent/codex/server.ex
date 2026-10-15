@@ -190,7 +190,8 @@ defmodule Loom.Agent.Codex.Server do
            :exit_status,
            :use_stdio,
            :hide,
-           args: ["app-server"]
+           args: ["app-server"],
+           env: Loom.ChildEnv.port_env()
          ])}
     end
   end

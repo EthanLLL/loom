@@ -12,7 +12,6 @@ defmodule Loom.Terminal.Session do
 
   require Logger
 
-  @default_shell System.get_env("SHELL") || "/bin/zsh"
   # Bytes of recent output retained for replay-on-reconnect.
   @buffer_limit 256 * 1024
 
@@ -51,11 +50,11 @@ defmodule Loom.Terminal.Session do
     id = Keyword.fetch!(opts, :id)
     cols = Keyword.get(opts, :cols, 80)
     rows = Keyword.get(opts, :rows, 24)
-    shell = Keyword.get(opts, :shell, @default_shell)
+    shell = Keyword.get_lazy(opts, :shell, &default_shell/0)
     title = Keyword.get(opts, :title)
 
     env =
-      System.get_env()
+      Loom.ChildEnv.map()
       |> Map.put("TERM", "xterm-256color")
       |> Map.put("COLORTERM", "truecolor")
 
@@ -77,9 +76,7 @@ defmodule Loom.Terminal.Session do
       )
 
     # The shell's OS pid. ExPTY spawns it via forkpty + setsid(), so the shell
-    # is a session/process-group leader: killing the negative pid (the whole
-    # group) also reaps async workers it forked (zsh instant-prompt/zinit
-    # helpers) that have re-parented away and would otherwise be orphaned.
+    # leads its own session — which is what `terminate/2` kills. See there.
     os_pid =
       try do
         :sys.get_state(pty).pid
@@ -163,14 +160,17 @@ defmodule Loom.Terminal.Session do
     # forever, since ExPTY is unlinked (it uses GenServer.start, not start_link).
     #
     # If ExPTY is still alive, the shell hasn't exited on its own, so os_pid is
-    # still valid (not yet reaped/reused): kill the whole process group. The
-    # shell is a group leader (forkpty + setsid), so the negative pid also
-    # reaps async workers it forked (zsh instant-prompt/zinit helpers) that
-    # re-parented to init and would otherwise be orphaned. If ExPTY already
-    # died (:pty_exit), the child is already gone — skip the group kill to avoid
-    # SIGKILLing an unrelated process that reused the pid.
+    # still valid (not yet reaped/reused): kill everything in the shell's
+    # *session*. The shell is a session leader (forkpty + setsid), and its async
+    # workers re-parent to init but stay in that session. Killing only the
+    # process group is not enough: powerlevel10k puts its gitstatusd workers in
+    # process groups of their own, and they hold the PTY open — so they leaked
+    # one set per closed terminal, and kept a `mix test` node from ever exiting.
+    # If ExPTY already died (:pty_exit), the child is already gone — skip the
+    # kill to avoid SIGKILLing an unrelated session that reused the pid.
     if Process.alive?(state.pty) do
       if state.os_pid && state.os_pid > 1 do
+        System.cmd("pkill", ["-KILL", "-s", "#{state.os_pid}"], stderr_to_stdout: true)
         System.cmd("kill", ["-KILL", "-#{state.os_pid}"], stderr_to_stdout: true)
       end
 
@@ -208,4 +208,8 @@ defmodule Loom.Terminal.Session do
       rows: state.rows
     }
   end
+
+  # Read when a terminal opens, not when this module compiles: a module
+  # attribute would bake in the `SHELL` of whoever ran `mix release`.
+  defp default_shell, do: System.get_env("SHELL") || "/bin/zsh"
 end

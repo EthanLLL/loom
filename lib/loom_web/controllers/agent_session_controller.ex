@@ -88,7 +88,8 @@ defmodule LoomWeb.AgentSessionController do
       usage: info.usage,
       context_tokens: info.context_tokens,
       context_window: info.context_window,
-      turns: info.turns
+      turns: info.turns,
+      seq: info.seq
     }
   end
 end

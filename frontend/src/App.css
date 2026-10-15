@@ -22,7 +22,7 @@
   background: var(--bg);
   color: var(--fg);
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 1rem;
 }
 
 .loading,
@@ -41,7 +41,8 @@
 /* ── Sidebar ─────────────────────────────────────────────────────────── */
 
 .sidebar {
-  flex: 0 0 240px;
+  /* Grows with the font so titles keep their length; capped for phones. */
+  flex: 0 0 min(18.5rem, 80vw);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -80,7 +81,7 @@
   border: none;
   border-radius: 6px;
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: 1.154rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -132,7 +133,7 @@
 .session-when {
   flex: 0 0 auto;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: 0.846rem;
 }
 
 .session-del {
@@ -143,7 +144,7 @@
   border: none;
   border-radius: 4px;
   color: var(--fg-dim);
-  font-size: 14px;
+  font-size: 1.077rem;
   line-height: 1;
   cursor: pointer;
   visibility: hidden;
@@ -249,7 +250,7 @@
   padding: 4px 6px 4px 10px;
   color: var(--fg-dim);
   background: var(--bg-raised);
-  font-size: 11px;
+  font-size: 0.846rem;
 }
 
 .pane-actions {
@@ -268,7 +269,7 @@
   border-radius: 4px;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 1.077rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -335,7 +336,7 @@
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 12px;
+  font-size: 0.923rem;
   text-align: left;
   cursor: pointer;
 }
@@ -358,7 +359,7 @@
   border-radius: 3px;
   background: var(--line);
   color: var(--fg-dim);
-  font-size: 9px;
+  font-size: 0.692rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -378,6 +379,6 @@
   border-radius: 7px;
   background: var(--blue);
   color: var(--bg);
-  font-size: 9px;
+  font-size: 0.692rem;
   text-align: center;
 }

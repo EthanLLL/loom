@@ -18,8 +18,12 @@ Environment=HOME=/home/ubuntu
 Environment=LANG=C.UTF-8
 Environment=SHELL=/usr/bin/zsh
 Environment=LOOM_ENV_FILE=/home/ubuntu/loom/.env
-# claude / codex live in ~/.local/bin; systemd's default PATH has neither.
-Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Inherited by everything loom spawns — agents and terminal shells — so it is
+# the user's toolchain, not just what loom needs: claude / codex (~/.local/bin),
+# Elixir + OTP, node (nvm's install, by version), Go and nvim. systemd's default
+# PATH has none of them. Loom drops its own release dirs from it for children
+# (Loom.ChildEnv).
+Environment=PATH=/home/ubuntu/.local/bin:/home/ubuntu/.elixir-install/installs/elixir/1.20.4-otp-28/bin:/home/ubuntu/.elixir-install/installs/otp/28.4/bin:/home/ubuntu/.nvm/versions/node/v24.22.0/bin:/usr/local/go/bin:/home/ubuntu/go/bin:/opt/nvim-linux-arm64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Promote a staged release (built with `mix release --path .../loom.next`).
 # A no-op when nothing is staged.
 ExecStartPre=/home/ubuntu/loom/rel/systemd/promote-next.sh

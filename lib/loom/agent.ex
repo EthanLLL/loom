@@ -43,8 +43,13 @@ defmodule Loom.Agent do
   """
   def stop_session(id) do
     case Registry.lookup(Loom.Agent.Registry, id) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(Loom.Agent.SessionSupervisor, pid)
-      [] -> {:error, :not_found}
+      [{pid, _}] ->
+        result = DynamicSupervisor.terminate_child(Loom.Agent.SessionSupervisor, pid)
+        Phoenix.PubSub.broadcast(Loom.PubSub, lobby_topic(), {:agent_removed, id})
+        result
+
+      [] ->
+        {:error, :not_found}
     end
   end
 
@@ -77,6 +82,16 @@ defmodule Loom.Agent do
   defdelegate attach(id, since_seq \\ 0), to: Session
   defdelegate info(id), to: Session
   defdelegate topic(id), to: Session
+
+  @doc """
+  The topic the session list lives on.
+
+  Each session broadcasts `{:agent_summary, info}` whenever its header changes —
+  status, title, queue, usage — and `stop_session/1` broadcasts
+  `{:agent_removed, id}`. That is everything a sidebar needs, so it never has to
+  poll.
+  """
+  def lobby_topic, do: "agents"
 
   defp safe_info(id) do
     Session.info(id)

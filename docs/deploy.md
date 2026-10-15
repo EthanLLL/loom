@@ -114,6 +114,24 @@ ingress:
   - service: http_status:404
 ```
 
+### 在 loom 里部署 loom
+
+这台机器上实际在用的 unit 文件是 `rel/systemd/loom.service`（`User=ubuntu`，跑在
+`~/loom` 下）。改了它之后要重新 `cp` 到 `/etc/systemd/system/`，再执行
+`daemon-reload`。
+
+在 loom 里跑的 agent 也在这个 service 的进程树里，重启 loom 会把它自己也杀掉。所以
+agent 不能直接重启，而是走 `rel/deploy.sh`：
+
+1. 把 release 打到 `_build/prod/rel/loom.next`，正在跑的那份不动。
+2. 调用 `Loom.Restarter.request()`。等**所有**会话的 turn 都结束了（包括发起部署的
+   这个），`System.stop()` 停掉节点。
+3. `Restart=always` 把它拉起来，`ExecStartPre` 的 `promote-next.sh` 先把
+   `loom.next` 换上来，旧版本保留成 `loom.prev`。
+
+等不到所有会话空闲的话，请求 10 分钟后自动作废，不会强制重启。也不做自动回滚：
+新版本起不来时，systemd 连续失败 5 次后就停止重试，这时手动把 `loom.prev` 挪回去。
+
 ## 7. 两个会咬人的限制
 
 - **Cloudflare 免费/Pro 版请求体上限 100 MB。** 附件单文件上限是 25 MB,所以正常
