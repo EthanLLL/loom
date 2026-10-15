@@ -5,19 +5,60 @@ export class UnauthorizedError extends Error {
   }
 }
 
-// Token lives in sessionStorage → cleared when the browser closes, so every
-// new browser session must re-enter the password.
+// Token lives in localStorage, so it survives the app being closed. On iOS the
+// only way to reload a home-screen web app is to kill it, and sessionStorage
+// made every reload a password prompt. The server's 30-day max_age is what
+// eventually logs a device out.
 const TOKEN_KEY = "loom_token"
 
+// Who to tell when the server stops accepting the token. Set once by `App`.
+let unauthorizedListener: (() => void) | null = null
+
+export function onUnauthorized(listener: () => void) {
+  unauthorizedListener = listener
+}
+
+// A 401 means the token is dead — expired after its 30 days, or signed with a
+// secret that has since changed. Kept, it would be sent forever, so it goes and
+// the app falls back to the login screen.
+function unauthorized(): UnauthorizedError {
+  clearToken()
+  unauthorizedListener?.()
+  return new UnauthorizedError()
+}
+
+/**
+ * Ask the server whether the token is still good, logging out if not.
+ *
+ * Needed because most of the app talks over the socket, and a socket refused
+ * at connect only reports "error" — the same as being offline. One HTTP request
+ * tells the two apart.
+ */
+export async function checkAuth(): Promise<void> {
+  if (!getToken()) return
+  const res = await fetch("/api/layout", { headers: authHeaders() }).catch(() => null)
+  if (res?.status === 401) unauthorized()
+}
+
 export function getToken(): string | null {
-  return sessionStorage.getItem(TOKEN_KEY)
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (token) return token
+
+  // A login from before the move. Carried over once rather than asking again.
+  const old = sessionStorage.getItem(TOKEN_KEY)
+  if (old) {
+    localStorage.setItem(TOKEN_KEY, old)
+    sessionStorage.removeItem(TOKEN_KEY)
+  }
+  return old
 }
 
 export function setToken(token: string) {
-  sessionStorage.setItem(TOKEN_KEY, token)
+  localStorage.setItem(TOKEN_KEY, token)
 }
 
 export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY)
   sessionStorage.removeItem(TOKEN_KEY)
 }
 
@@ -49,7 +90,7 @@ export type SessionInfo = {
 
 export async function listSessions(): Promise<SessionInfo[]> {
   const res = await fetch("/api/sessions", { headers: authHeaders() })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`listSessions failed: ${res.status}`)
   const data = await res.json()
   return data.sessions
@@ -61,7 +102,7 @@ export async function createSession(title?: string): Promise<SessionInfo> {
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(title ? { title } : {}),
   })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`createSession failed: ${res.status}`)
   return res.json()
 }
@@ -71,7 +112,7 @@ export async function deleteSession(id: string): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok && res.status !== 404) {
     throw new Error(`deleteSession failed: ${res.status}`)
   }
@@ -117,7 +158,7 @@ export type AgentInfo = {
 
 export async function listAgents(): Promise<AgentInfo[]> {
   const res = await fetch("/api/agents", { headers: authHeaders() })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`listAgents failed: ${res.status}`)
   const data = await res.json()
   return data.sessions
@@ -131,7 +172,7 @@ export async function createAgent(backend: AgentBackend): Promise<AgentInfo> {
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ backend }),
   })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`createAgent failed: ${res.status}`)
   return res.json()
 }
@@ -146,7 +187,7 @@ export async function renameAgent(
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ title }),
   })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`renameAgent failed: ${res.status}`)
   return res.json()
 }
@@ -158,7 +199,7 @@ export async function deleteAgent(id: string): Promise<void> {
     method: "DELETE",
     headers: authHeaders(),
   })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok && res.status !== 404) {
     throw new Error(`deleteAgent failed: ${res.status}`)
   }
@@ -194,7 +235,7 @@ export type OutputFile = AgentFile & {
 export async function downloadAgentOutput(id: string, path: string): Promise<void> {
   const url = `/api/agents/${id}/output/${path.split("/").map(encodeURIComponent).join("/")}`
   const res = await fetch(url, { headers: authHeaders() })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (res.status === 404) throw new Error("the file is no longer there")
   if (!res.ok) throw new Error(`download failed: ${res.status}`)
 
@@ -228,7 +269,7 @@ export async function uploadAgentFiles(
     headers: authHeaders(),
     body,
   })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) {
     const detail = await res.json().catch(() => null)
     throw new Error(detail?.error ?? `upload failed: ${res.status}`)
@@ -248,7 +289,7 @@ export type Layout = {
 
 export async function getLayout(): Promise<Layout> {
   const res = await fetch("/api/layout", { headers: authHeaders() })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`getLayout failed: ${res.status}`)
   return res.json()
 }
@@ -259,7 +300,7 @@ export async function putLayout(layout: Layout): Promise<Layout> {
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(layout),
   })
-  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`putLayout failed: ${res.status}`)
   return res.json()
 }

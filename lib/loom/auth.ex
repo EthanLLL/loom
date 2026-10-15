@@ -2,13 +2,14 @@ defmodule Loom.Auth do
   @moduledoc """
   Minimal single-password auth. The password is configured via `LOOM_PASSWORD`.
   On success we mint a signed token (no DB, no expiry logic beyond the signing
-  max_age); the client keeps it in sessionStorage so it's dropped when the
-  browser closes — i.e. every new browser session must re-enter the password.
+  max_age); the client keeps it in localStorage, so a device stays logged in
+  until the token expires — closing an iOS home-screen app is how it reloads,
+  and a password prompt on every reload was the alternative.
   """
 
   @salt "loom auth token"
-  # Long max_age: expiry isn't a product goal here, sessionStorage handles the
-  # "new browser → re-login" behavior.
+  # The only expiry there is: the client keeps the token until this runs out
+  # (or a 401 clears it).
   @max_age 60 * 60 * 24 * 30
 
   @doc "Verify a plaintext password against the configured one (constant-time)."

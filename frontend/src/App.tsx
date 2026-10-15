@@ -11,10 +11,13 @@ import {
   createSession,
   deleteAgent,
   deleteSession,
+  checkAuth,
   getToken,
   listSessions,
+  onUnauthorized,
   type AgentBackend,
 } from "./api"
+import { dropSocket } from "./socket"
 import "./App.css"
 
 const SIDEBAR_KEY = "loom_sidebar_open"
@@ -26,6 +29,16 @@ function App() {
   const { sessions, loaded, upsert, drop } = useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(null)
   const narrow = useNarrow()
+
+  // The token outlives the app now (see `getToken`), so a stored one can be
+  // dead. Checked once on open, and any 401 later lands here too.
+  useEffect(() => {
+    onUnauthorized(() => {
+      dropSocket()
+      setAuthed(false)
+    })
+    void checkAuth()
+  }, [])
 
   // Remembered, because you collapse it once and want it to stay collapsed
   // across reloads. Desktop only: on a phone the sidebar is a drawer over the
