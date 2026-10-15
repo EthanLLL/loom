@@ -840,4 +840,9 @@ h3.md-h {
   .composer {
     padding-inline: 10px;
   }
+
+  /* The keyboard covers the home indicator, so its padding is just a gap. */
+  .keyboard .composer {
+    padding-bottom: 8px;
+  }
 }
