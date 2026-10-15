@@ -1,0 +1,35 @@
+# loom on this EC2 box. Install:
+#   sudo cp rel/systemd/loom.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now loom
+[Unit]
+Description=loom
+After=network-online.target
+Wants=network-online.target
+# A release that crashes on boot is retried five times a minute, then left
+# down — never an endless restart loop.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=ubuntu
+WorkingDirectory=/home/ubuntu/loom
+Environment=HOME=/home/ubuntu
+Environment=LANG=C.UTF-8
+Environment=SHELL=/usr/bin/zsh
+Environment=LOOM_ENV_FILE=/home/ubuntu/loom/.env
+# claude / codex live in ~/.local/bin; systemd's default PATH has neither.
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Promote a staged release (built with `mix release --path .../loom.next`).
+# A no-op when nothing is staged.
+ExecStartPre=/home/ubuntu/loom/rel/systemd/promote-next.sh
+ExecStart=/home/ubuntu/loom/_build/prod/rel/loom/bin/loom start
+# Any exit — crash or a deliberate System.stop() — is restarted.
+Restart=always
+RestartSec=3
+# agents spawn claude/codex and their children; stop the whole tree.
+KillMode=control-group
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
