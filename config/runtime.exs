@@ -40,6 +40,20 @@ config :loom, Loom.Agent,
   # the model composes absolute paths from it.
   workspace: System.get_env("LOOM_WORKSPACE")
 
+# Parses `LOOM_BIND`, defaulting to loopback. A hostname is not accepted: a
+# typo there would silently fall back to all interfaces in most parsers, which
+# is the one mistake that must not be easy to make.
+bind_address = fn
+  nil ->
+    {127, 0, 0, 1}
+
+  value ->
+    case value |> String.trim() |> to_charlist() |> :inet.parse_address() do
+      {:ok, ip} -> ip
+      {:error, _} -> raise "LOOM_BIND is not an IP address: #{inspect(value)}"
+    end
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
@@ -53,7 +67,9 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  # Only used for generated absolute URLs, of which loom has none — it is the
+  # hostname Cloudflare serves, recorded for completeness.
+  host = System.get_env("PHX_HOST") || "localhost"
 
   config :loom, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
@@ -65,13 +81,25 @@ if config_env() == :prod do
   config :loom, LoomWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
-      # Bind only to loopback: nginx on the same host proxies to us. Nothing
-      # should hit Phoenix directly from outside.
-      ip: {127, 0, 0, 1},
+      # Loopback only. `cloudflared` runs on the same host and dials *out* to
+      # Cloudflare, so nothing has to listen on a public interface and the
+      # security group needs no inbound rule at all. Overridable for the case
+      # where the tunnel runs elsewhere — but then whatever can reach that
+      # port has an unsandboxed agent behind one password, so narrow the
+      # ingress to the tunnel host.
+      ip: bind_address.(System.get_env("LOOM_BIND")),
       port: String.to_integer(System.get_env("PORT", "4000"))
     ],
-    # TLS is terminated at CloudFront and the request is proxied through nginx,
-    # so the Origin/Host headers won't match our own host. Accept all origins.
+    # The request arrives proxied, with the edge's own Host/Origin, so neither
+    # matches our configured host. Both checks are off deliberately:
+    #
+    #   check_origin: false  — accept the proxied Origin
+    #   no force_ssl         — TLS ends at Cloudflare; the last hop is plain
+    #                          HTTP over loopback, and redirecting to https
+    #                          here would loop forever
+    #
+    # Auth does not depend on either: every API route checks the bearer token
+    # and the socket checks it in `connect/2`.
     check_origin: false,
     secret_key_base: secret_key_base
 

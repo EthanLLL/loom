@@ -5,6 +5,10 @@ defmodule LoomWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :browser do
+    plug :accepts, ["html"]
+  end
+
   pipeline :authed_api do
     plug :accepts, ["json"]
     plug LoomWeb.Plugs.RequireAuth
@@ -32,5 +36,15 @@ defmodule LoomWeb.Router do
 
     get "/layout", LayoutController, :show
     put "/layout", LayoutController, :update
+  end
+
+  # The UI itself. Last so it can never shadow an API route, and only `/` —
+  # see `LoomWeb.SpaController`. Unauthenticated on purpose: the app shell is
+  # a login form until the password is entered, and every route that touches a
+  # session is behind `RequireAuth` or the socket's token check.
+  scope "/", LoomWeb do
+    pipe_through :browser
+
+    get "/", SpaController, :index
   end
 end

@@ -2,14 +2,18 @@ defmodule LoomWeb do
   @moduledoc """
   The entrypoint for defining the web interface: controllers, channels, etc.
 
-  This is a JSON API + WebSocket backend only — no HTML/LiveView. The UI is a
-  separate frontend app (see `frontend/`).
+  This is a JSON API + WebSocket backend — no HTML templates, no LiveView. The
+  UI is a separate Vite app (see `frontend/`) whose build output is served from
+  `priv/static` by `Plug.Static`, so one BEAM process serves both and there is
+  no web server in front.
 
       use LoomWeb, :controller
       use LoomWeb, :channel
   """
 
-  def static_paths, do: ~w(favicon.ico robots.txt)
+  # `assets`, `fonts` and `index.html` are the Vite build, copied in by
+  # `mix assets.deploy`. Nothing else in `priv/static` is reachable.
+  def static_paths, do: ~w(assets fonts favicon.ico favicon.svg icons.svg robots.txt index.html)
 
   def router do
     quote do

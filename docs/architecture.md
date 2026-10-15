@@ -5,9 +5,10 @@ agent 本体交给 Claude Code 或 Codex。
 
 - 本文是 **loom 自己**的结构。
 - 后端(CC / Codex)的协议细节和实测数据在 [backends.md](backends.md)。
+- 部署(EC2 + Cloudflare 隧道、`.env`、前端怎么被伺服)在 [deploy.md](deploy.md)。
 - PTY 终端(`Loom.Terminal.*`)保留,和 agent 共存 —— 那条路是给人用的终端。
 
-最后更新 2026-10-14,194 个测试。
+最后更新 2026-10-15,199 个测试。
 
 ---
 

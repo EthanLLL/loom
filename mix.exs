@@ -57,8 +57,20 @@ defmodule Loom.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get"],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      setup: ["deps.get", "cmd --cd frontend pnpm install"],
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
+
+      # Build the frontend into `priv/static`, where `Plug.Static` serves it
+      # from. Run before `mix release`: the release copies `priv` as it finds
+      # it, so an unbuilt frontend ships as a release that serves no UI.
+      "assets.deploy": [
+        "cmd --cd frontend pnpm install --frozen-lockfile",
+        "cmd --cd frontend pnpm build",
+        # Replace rather than merge: Vite fingerprints filenames, so a merge
+        # accumulates every asset of every past build in the release forever.
+        "cmd rm -rf priv/static/assets priv/static/fonts priv/static/index.html",
+        "cmd cp -R frontend/dist/. priv/static/"
+      ]
     ]
   end
 end

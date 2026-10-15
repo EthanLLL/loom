@@ -11,11 +11,21 @@ defmodule LoomWeb.Endpoint do
     same_site: "Lax"
   ]
 
-  # TLS terminates at CloudFront; the WS arrives proxied through nginx, so its
+  # TLS terminates at the edge (Cloudflare) and the WS arrives proxied, so its
   # Origin won't match our host. Auth is enforced by the token in connect/2.
   socket "/socket", LoomWeb.UserSocket,
     websocket: [check_origin: false],
     longpoll: false
+
+  # The frontend, straight from the release. There is no web server in front,
+  # so if this is not here nothing serves the UI at all and the browser gets
+  # only `/api`. Vite fingerprints every asset filename, which is what makes
+  # the long cache on versioned requests safe.
+  plug Plug.Static,
+    at: "/",
+    from: :loom,
+    gzip: false,
+    only: LoomWeb.static_paths()
 
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]

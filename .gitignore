@@ -44,3 +44,10 @@ npm-debug.log
 
 # Recordings made by frontend/tools/transcript.mjs — debugging artefacts.
 /frontend/tools/recordings/
+
+# Frontend build copied in by `mix assets.deploy` — a build artefact.
+# (/priv/static/assets/ is already ignored above.)
+/priv/static/fonts/
+/priv/static/index.html
+/priv/static/favicon.svg
+/priv/static/icons.svg
