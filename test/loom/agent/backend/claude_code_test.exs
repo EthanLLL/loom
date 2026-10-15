@@ -334,6 +334,37 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
     end
   end
 
+  describe "compaction" do
+    test "a compact_boundary is reported, and its size becomes the context" do
+      # Verbatim shape from a manual `/compact`. The turn that follows is an
+      # empty `result/success` with no API call, so without this the UI shows
+      # nothing and the old size until the next turn.
+      {handle, out} =
+        feed(handle(%{context_tokens: 15_723}), [
+          %{
+            "type" => "system",
+            "subtype" => "compact_boundary",
+            "session_id" => @session_id,
+            "compact_metadata" => %{
+              "trigger" => "manual",
+              "pre_tokens" => 15_723,
+              "post_tokens" => 1257,
+              "cumulative_dropped_tokens" => 14_466,
+              "duration_ms" => 5263
+            }
+          },
+          %{"type" => "result", "subtype" => "success", "result" => "", "usage" => %{}}
+        ])
+
+      assert [
+               {:compacted, %{trigger: "manual", pre_tokens: 15_723, post_tokens: 1257}},
+               {:turn_done, %{context_tokens: 1257}}
+             ] = events(out)
+
+      assert handle.context_tokens == 1257
+    end
+  end
+
   describe "turn completion" do
     test "the process is kept, so the next turn starts warm" do
       # Measured: turn 2 on the same process reaches `init` in 0.02 s against

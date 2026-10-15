@@ -107,6 +107,14 @@ defmodule Loom.Agent.Codex.Server do
     GenServer.call(__MODULE__, {:steer, thread_id, turn_id, text}, @call_timeout)
   end
 
+  @doc """
+  Compact a thread's context. Replies `{}` at once; the work arrives as an
+  ordinary turn (`turn/started` … `turn/completed`) on the thread.
+  """
+  def compact(thread_id) do
+    GenServer.call(__MODULE__, {:request, "thread/compact/start", %{"threadId" => thread_id}})
+  end
+
   @doc "Abort a running turn."
   def interrupt(thread_id, turn_id) do
     GenServer.call(__MODULE__, {:interrupt, thread_id, turn_id}, @call_timeout)

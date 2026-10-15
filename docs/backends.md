@@ -179,6 +179,7 @@ resp {} → thread/status/changed {idle} → turn/completed {status: "interrupte
 | `result/error_during_execution` + `interrupted?` | 什么都不发 |
 | `result/*` 其他 | `:turn_failed` |
 | `system/permission_denied` | automode 下不该出现,`Logger.error` |
+| `system/compact_boundary` | `:compacted`(带 pre/post tokens);`post_tokens` 当作当前上下文 |
 
 `stream_event` 包的是原始 Anthropic SSE,正是 `block_id` 协议当初照着设计的东西 ——
 这一层几乎零成本。`input_json_delta` / `signature_delta` 刻意丢掉:半截 JSON 参数对
@@ -198,7 +199,7 @@ resp {} → thread/status/changed {idle} → turn/completed {status: "interrupte
 | `thread/tokenUsage/updated` | 上下文和窗口(见 §6.1) |
 | `turn/completed` status=interrupted | 什么都不发 |
 | `turn/completed` | `:turn_done` |
-| `thread/compacted` | 一行 notice |
+| `item/completed` (contextCompaction) | `:compacted`(`thread/compacted` 已废弃,0.162 不再发) |
 
 工具名映射:`commandExecution` → `shell`、`fileChange` → `apply_patch`、
 `webSearch` → `web_search`、`mcpToolCall` → `item["tool"]`。
@@ -350,6 +351,24 @@ crash-loop 会把整个 application 带下去。内部重生则退化成 `port: 
 
 ---
 
+### 6.9 `/compact`:CC 透传,Codex 要翻译
+
+实测(PINEAPPLE 记忆测试,压缩后两边都答对):
+
+- **CC**:`/compact` 当普通消息写进 stdin 就会真的执行。输出是 `system/status compacting`
+  → `system/compact_boundary`(`compact_metadata: trigger=manual pre_tokens=15723
+  post_tokens=1257 duration_ms=5263`)→ 两条字符串 content 的 `user`(摘要和
+  `<local-command-stdout>`)→ 一条**空的** `result/success`。中间没有 API 调用,所以
+  `message_start` 不会来,上下文只能取 `post_tokens`。
+- **Codex**:app-server **不跑斜杠命令**,`turn/start` 发 `/compact` 模型只会回个
+  "OK"。要调 `thread/compact/start {threadId}`:立刻回 `{}`,然后是一个普通 turn
+  (`turn/started` → `item contextCompaction` → `turn/completed`),所以 interrupt 也照常。
+  压缩后的 `tokenUsage.last` 输入全是 0,不能当上下文,保留旧值等下一个 turn。
+- 所以 Codex 适配器只把**整条恰好是** `/compact` 的消息翻译成 RPC;运行中 steer 一个
+  `/compact` 会被拒,进队列,等这个 turn 结束再单独跑。
+
+---
+
 ## 7. 不做的
 
 **权限确认。** Codex 侧是免费的 —— server→client 的 JSON-RPC request
@@ -371,7 +390,7 @@ Codex `approvalPolicy: "never"` + `sandbox: "danger-full-access"`。
 永久挂住,连错误都没有,比拒绝糟得多。
 
 **自己做 compaction / memory。** 后端在做:CC 的 `--autocompact <auto|tokens>`,Codex 的
-`thread/compact/start` + `thread/compacted`。memory 退化成我们递过去的一个字符串
+`thread/compact/start`(见 §6.9)。memory 退化成我们递过去的一个字符串
 (`thread/start` 的 `developerInstructions` / CC 的 `--append-system-prompt`)。
 
 ---

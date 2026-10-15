@@ -34,7 +34,9 @@ defmodule Loom.Agent.Backend.Codex do
 
   ## Compaction and usage are reported, not implemented
 
-  `thread/compacted` is forwarded as an event, and `thread/tokenUsage/updated`
+  Compaction is the backend's: a `contextCompaction` item is forwarded as an
+  event, and `/compact` typed by the user becomes `thread/compact/start` — the
+  app-server does not run slash commands itself. `thread/tokenUsage/updated`
   gives the numbers outright — including the model's context window, which Codex
   reports and Claude Code only hints at. This is the part of the old design that
   the backend does for us.
@@ -116,6 +118,10 @@ defmodule Loom.Agent.Backend.Codex do
   end
 
   def run_turn(handle, text) when is_binary(text) do
+    if compact?(text), do: compact(handle), else: start_turn(handle, text)
+  end
+
+  defp start_turn(handle, text) do
     case Server.start_turn(handle.thread_id, text) do
       {:ok, turn_id} ->
         {:ok, %{handle | turn_id: turn_id, aborted?: false, tools: %{}}}
@@ -125,6 +131,21 @@ defmodule Loom.Agent.Backend.Codex do
     end
   end
 
+  # The response carries no turn id; `turn/started` supplies it, as it does for
+  # a normal turn, so `interrupt/1` works on a compaction too.
+  defp compact(handle) do
+    case Server.compact(handle.thread_id) do
+      {:ok, _} -> {:ok, %{handle | turn_id: nil, aborted?: false, tools: %{}}}
+      {:error, reason} -> {:error, describe_error(reason)}
+    end
+  end
+
+  # Unlike Claude Code, the app-server does not run slash commands: `/compact`
+  # sent as a turn is read by the model as text (measured: it replied "OK" and
+  # nothing was compacted). So the exact command is turned into the RPC.
+  # Anything else — `/compact` merged with other queued lines, say — stays text.
+  defp compact?(text), do: String.trim(text) == "/compact"
+
   @impl Backend
   def steer(%{turn_id: nil}, _text) do
     # No turn to join. The session falls back to starting one.
@@ -132,12 +153,18 @@ defmodule Loom.Agent.Backend.Codex do
   end
 
   def steer(handle, text) when is_binary(text) do
-    # `expectedTurnId` makes this safe: if the turn ended between the session
-    # deciding to steer and this call landing, the server refuses rather than
-    # delivering the message into the next turn.
-    case Server.steer(handle.thread_id, handle.turn_id, text) do
-      {:ok, _} -> {:ok, handle}
-      {:error, reason} -> {:error, describe_error(reason)}
+    if compact?(text) do
+      # A compaction cannot join a turn. Refusing puts it in the session's
+      # queue, so it runs when this turn ends instead of being read as text.
+      {:error, "compaction waits for the running turn"}
+    else
+      # `expectedTurnId` makes this safe: if the turn ended between the session
+      # deciding to steer and this call landing, the server refuses rather than
+      # delivering the message into the next turn.
+      case Server.steer(handle.thread_id, handle.turn_id, text) do
+        {:ok, _} -> {:ok, handle}
+        {:error, reason} -> {:error, describe_error(reason)}
+      end
     end
   end
 
@@ -228,13 +255,9 @@ defmodule Loom.Agent.Backend.Codex do
        handle
        | usage: usage,
          # `last`, never `total` — see the moduledoc.
-         context_tokens: get_in(usage, ["last", "inputTokens"]) || handle.context_tokens,
+         context_tokens: context_of(usage) || handle.context_tokens,
          context_window: usage["modelContextWindow"] || handle.context_window
      }, []}
-  end
-
-  defp translate(handle, "thread/compacted", _params) do
-    {handle, [{:event, :compacted, %{}}]}
   end
 
   defp translate(handle, "item/started", %{"item" => item}) do
@@ -284,6 +307,16 @@ defmodule Loom.Agent.Backend.Codex do
   # in this UI. Dropped rather than guessed at.
   defp translate(handle, _method, _params), do: {handle, []}
 
+  # A compaction reports `last` with every input field 0 (measured), which is
+  # "no API call", not "empty context". Keep the old figure until the next turn
+  # measures the compacted one, as Claude Code's side does.
+  defp context_of(usage) do
+    case get_in(usage, ["last", "inputTokens"]) do
+      tokens when is_integer(tokens) and tokens > 0 -> tokens
+      _ -> nil
+    end
+  end
+
   # `delta` is the usual field; some notifications carry `chunk` or a nested
   # object instead. Anything unrecognised is serialised rather than swallowed.
   defp chunk(%{"delta" => delta}) when is_binary(delta), do: delta
@@ -331,6 +364,7 @@ defmodule Loom.Agent.Backend.Codex do
   end
 
   # `userMessage` is our own text echoed back. It is already in the transcript.
+  # `contextCompaction` is reported when it completes; see `item_completed/3`.
   defp item_started(handle, _type, _item), do: {handle, []}
 
   defp item_completed(handle, "agentMessage", item) do
@@ -361,6 +395,13 @@ defmodule Loom.Agent.Backend.Codex do
           output: tool_output(type, item)
         }}
      ]}
+  end
+
+  # What `thread/compact/start` (or an automatic compaction) produces. This
+  # replaced the `thread/compacted` notification, which the schema now marks
+  # deprecated and 0.162 no longer sends (measured).
+  defp item_completed(handle, "contextCompaction", _item) do
+    {handle, [{:event, :compacted, %{}}]}
   end
 
   defp item_completed(handle, _type, _item), do: {handle, []}

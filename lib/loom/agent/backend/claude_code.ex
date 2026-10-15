@@ -1,6 +1,10 @@
 defmodule Loom.Agent.Backend.ClaudeCode do
   @moduledoc """
-  Claude Code as the engine: one `claude -p` process per turn, nothing at rest.
+  Claude Code as the engine: one long-lived `claude -p` process per session,
+  spoken to over stdin/stdout in stream-json, and let go when the session idles.
+
+  (An earlier version spawned a process per turn and tore it down on `result`.
+  Every turn paid the cold start for it; see `docs/backends.md` §6.4.)
 
   ## One process per session, kept warm between turns
 
@@ -41,6 +45,11 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   text on a command line. stdin avoids both.)
 
   stdin is never closed. The process is reclaimed by killing it, not by EOF.
+
+  Slash commands ride the same pipe. `/compact` typed as a message is run by
+  Claude Code itself (measured: 15.7K → 1.3K tokens, earlier context still
+  recalled), and reports back only as a `compact_boundary` — see `translate/2`.
+  Codex has no such passthrough; `Loom.Agent.Backend.Codex` intercepts it.
 
   ## Interrupting asks politely, because killing would burn the warm process
 
@@ -163,8 +172,8 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   def run_turn(handle, text) when is_binary(text) do
     with {:ok, handle} <- ensure_process(handle) do
       write(handle, message_line(text))
-      # A fresh `ref` per turn keeps block ids from colliding across turns in
-      # one long-lived process.
+      # Block ids need no per-turn reset: they are qualified by the API call's
+      # message id, which is unique across turns. See `block_id/2`.
       {:ok, %{handle | tools: %{}, interrupted?: false}}
     end
   end
@@ -291,11 +300,15 @@ defmodule Loom.Agent.Backend.ClaudeCode do
     {:ok, handle, Enum.reverse(out)}
   end
 
-  # Only reachable when the process died on its own: a `result` and an
-  # `interrupt` both tear the port down, and a closed port delivers no exit
-  # status. So this always means the turn ended with nothing to explain it —
-  # and a session left sitting in `:running` with no reason is the failure mode
-  # that makes a background agent look hung.
+  # Only reachable when the process died on its own: the one we kill ourselves
+  # (`release/1`, `stop/1`) is forgotten first, so its exit status falls to the
+  # clause below. So this always means the process went away with nothing to
+  # explain it — and a session left sitting in `:running` with no reason is the
+  # failure mode that makes a background agent look hung.
+  #
+  # It fires between turns too (a crash while idle). The session then records a
+  # failure for a turn that was not running, which is noisy but honest; the
+  # next `run_turn/2` respawns via `ensure_process/1` either way.
   def decode(%{port: port} = handle, {port, {:exit_status, status}}) do
     {:ok, %{handle | port: nil, os_pid: nil},
      [
@@ -349,6 +362,34 @@ defmodule Loom.Agent.Backend.ClaudeCode do
           name: message["tool_name"],
           status: :error,
           output: message["message"] || "permission denied"
+        }}
+     ]}
+  end
+
+  # A compaction, typed (`/compact` goes through stdin like any message, and
+  # Claude Code runs it) or automatic. Measured on a manual one:
+  #
+  #     compact_metadata: trigger=manual pre_tokens=15723 post_tokens=1257
+  #
+  # followed by an empty `result/success` — the turn says nothing else, so this
+  # is the only sign it happened. No API call follows it, so `post_tokens` is
+  # also the only honest context size until the next turn's `message_start`.
+  defp translate(handle, %{"type" => "system", "subtype" => "compact_boundary"} = message) do
+    meta = message["compact_metadata"] || %{}
+
+    handle =
+      case meta["post_tokens"] do
+        tokens when is_integer(tokens) -> %{handle | context_tokens: tokens}
+        _ -> handle
+      end
+
+    {handle,
+     [
+       {:event, :compacted,
+        %{
+          trigger: meta["trigger"],
+          pre_tokens: meta["pre_tokens"],
+          post_tokens: meta["post_tokens"]
         }}
      ]}
   end

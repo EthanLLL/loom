@@ -132,8 +132,39 @@ defmodule Loom.Agent.Backend.CodexTest do
     end
 
     test "compaction is reported, not implemented" do
-      {_handle, out} = feed(handle(), "thread/compacted", %{"threadId" => @thread})
+      # Captured from `thread/compact/start` on 0.162.1: the work is an item on
+      # an ordinary turn, and `thread/compacted` is no longer sent.
+      item = %{"type" => "contextCompaction", "id" => "01a13f17-7eb7-7c82-ae85-6175cb5d1ba2"}
+
+      {_handle, started} =
+        feed(handle(), "item/started", %{"threadId" => @thread, "item" => item})
+
+      assert started == []
+
+      {_handle, out} = feed(handle(), "item/completed", %{"threadId" => @thread, "item" => item})
       assert [{:compacted, %{}}] = events(out)
+    end
+
+    test "the all-zero usage a compaction reports does not zero the context" do
+      # Measured right after a compaction: `last` has every input field at 0.
+      # That is "no API call", not an empty conversation.
+      {handle, _} =
+        feed(handle(%{context_tokens: 11_304}), "thread/tokenUsage/updated", %{
+          "threadId" => @thread,
+          "tokenUsage" => %{
+            "last" => %{"inputTokens" => 0, "totalTokens" => 7158, "outputTokens" => 0},
+            "modelContextWindow" => 258_400
+          }
+        })
+
+      assert handle.context_tokens == 11_304
+    end
+
+    test "/compact cannot join a running turn, so it waits in the queue" do
+      # Steered in, the model would read it as text. Refusing is what makes the
+      # session queue it and run it as its own turn once this one ends.
+      assert {:error, _} = Codex.steer(handle(), "/compact")
+      assert {:error, _} = Codex.steer(handle(), "  /compact\n")
     end
   end
 

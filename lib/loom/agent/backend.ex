@@ -39,9 +39,11 @@ defmodule Loom.Agent.Backend do
   The implementations are not symmetric, and pretending otherwise is what makes
   the abstraction leak:
 
-    * **Claude Code** is spawned per turn (`claude -p --resume <uuid>`) and exits
-      when the turn ends. At rest a session owns no OS process at all. The
-      conversation survives in `~/.claude/projects/<cwd-slug>/<uuid>.jsonl`.
+    * **Claude Code** is one `claude -p` process per session, spawned on the
+      first turn and kept between turns, then killed by `release/1` once the
+      session idles. The conversation survives in
+      `~/.claude/projects/<cwd-slug>/<uuid>.jsonl`, so the next turn after a
+      release respawns with `--resume <uuid>` and pays only the cold start.
 
     * **Codex** runs as a single long-lived `codex app-server` shared by every
       codex session on the node, addressed by `threadId`. Starting a turn is a
@@ -157,9 +159,9 @@ defmodule Loom.Agent.Backend do
 
   A turn aborted this way must surface as a `:turn_aborted` event, never as an
   error. Claude Code reports a graceful interrupt as `result/error_during_execution`,
-  which is a lie — but it is also avoidable: killing the process group mid-turn
-  leaves the conversation resumable (measured), so the implementation synthesises
-  the event itself rather than parsing one out of a misleading result.
+  which is a lie, so its `decode/2` swallows the result of an interrupt it asked
+  for and the session reports the stop itself. (Killing would avoid the lie but
+  throw away the warm process.)
   """
   @callback interrupt(handle) :: {:ok, handle} | {:error, term()}
 
