@@ -351,6 +351,22 @@
   justify-content: center;
 }
 
+.text-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 0.923rem;
+  cursor: pointer;
+}
+
+.text-btn:hover {
+  background: var(--blue);
+  color: var(--bg);
+}
+
 /* Which engine, per row. Short because the sidebar is narrow and the colour
    carries most of it. */
 .session-backend {
@@ -381,4 +397,107 @@
   color: var(--bg);
   font-size: 0.692rem;
   text-align: center;
+}
+
+
+/* ── Phones ──────────────────────────────────────────────────────────────
+   Below 640px (the same breakpoint as `useNarrow` and the font step in
+   index.css) the columns stop sharing the width. The sidebar becomes a drawer
+   over the chat, and the terminals cover it entirely: half of a phone is too
+   narrow for either. */
+
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.drawer.open {
+  pointer-events: auto;
+}
+
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.drawer.open .drawer-scrim {
+  opacity: 1;
+}
+
+.drawer .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 78vw;
+  max-width: 22rem;
+  box-shadow: 4px 0 24px rgb(0 0 0 / 50%);
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+}
+
+.drawer.open .sidebar {
+  transform: none;
+}
+
+.pane-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.narrow-only {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .main {
+    position: relative;
+  }
+
+  .terminal-column {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    border-left: none;
+  }
+
+  .narrow-only {
+    display: inline;
+  }
+
+  .wide-only {
+    display: none;
+  }
+
+  /* Finger-sized. */
+  .icon-btn {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .pane-btn {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .session {
+    padding: 10px 8px;
+  }
+}
+
+/* No hover on a touch screen, so the delete button would never appear. It is
+   shown, and deleting asks first; see `remove` in App.tsx. */
+@media (hover: none) {
+  .session-del {
+    visibility: visible;
+  }
 }

@@ -430,11 +430,17 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
         items.push({ key, kind: "error", text: String(p.message ?? "error") })
         break
 
-      case "compacted":
+      case "compacted": {
         // The backend compacted its own context. Worth one line so a jump in
-        // the token count has an explanation.
-        items.push({ key, kind: "notice", text: "the backend compacted its context" })
+        // the token count has an explanation. Claude Code reports the sizes;
+        // Codex does not, and its count catches up on the next turn.
+        const pre = Number(p.pre_tokens)
+        const post = Number(p.post_tokens)
+        let text = p.trigger === "auto" ? "context compacted automatically" : "context compacted"
+        if (pre > 0 && post > 0) text += `: ${kTokens(pre)} → ${kTokens(post)}`
+        items.push({ key, kind: "notice", text })
         break
+      }
 
       case "renamed":
         break
@@ -508,6 +514,12 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
 
 function streamFor(t: Transcript, blockId: string): string {
   return t.toolStreams.find((s) => s.blockId === blockId)?.text ?? ""
+}
+
+// 15723 → "16K", 1257 → "1.3K": one decimal only where it carries anything.
+function kTokens(n: number): string {
+  if (n < 1000) return String(n)
+  return n < 10_000 ? `${(n / 1000).toFixed(1)}K` : `${Math.round(n / 1000)}K`
 }
 
 export function newClientMsgId(): string {

@@ -3,8 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <!-- viewport-fit: draw under the notch and home indicator; the CSS pads
+         with env(safe-area-inset-*). interactive-widget: shrink the layout
+         when the keyboard opens (Chrome), so the composer stays above it. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#010c18" />
+    <title>loom</title>
   </head>
   <body>
     <div id="root"></div>

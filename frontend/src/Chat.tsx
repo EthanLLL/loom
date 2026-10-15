@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { buildTimeline, isBusy, type TimelineItem } from "./agent"
 import { Markdown } from "./markdown"
 import { useAgent } from "./useAgent"
@@ -81,9 +81,13 @@ export function Chat({
               title="How big the conversation is now, against the model's window"
             >
               {formatTokens(transcript.contextTokens)}
-              {transcript.contextWindow
-                ? ` / ${formatTokens(transcript.contextWindow)}`
-                : ""}
+              {/* The window is fixed per model; on a phone the header has no
+                  room for a number that never changes. */}
+              {transcript.contextWindow ? (
+                <span className="wide-only">
+                  {` / ${formatTokens(transcript.contextWindow)}`}
+                </span>
+              ) : null}
             </span>
           )}
           <button
@@ -91,7 +95,9 @@ export function Chat({
             onClick={onToggleTerminal}
             title="Toggle terminals (they open in your home directory)"
           >
-            terminal{terminalCount > 1 ? ` ${terminalCount}` : ""}
+            <span className="wide-only">terminal</span>
+            <span className="narrow-only">&gt;_</span>
+            {terminalCount > 1 ? ` ${terminalCount}` : ""}
           </button>
         </div>
       </header>
@@ -428,8 +434,8 @@ function TurnLine({ item }: { item: Extract<TimelineItem, { kind: "turn" }> }) {
 }
 
 function StatusPill({ status, queued }: { status: string; queued: number }) {
-  // `starting` is the backend booting — seconds for Claude Code, which spawns
-  // a process per turn. Saying so beats looking hung.
+  // `starting` is the backend booting — seconds for a cold Claude Code
+  // process. Saying so beats looking hung.
   const label = STATUS_LABELS[status] ?? status
   return (
     <span className={"chip status " + status}>
@@ -468,13 +474,45 @@ function Composer({
   // `isComposing` because the two disagree across browsers — see below.
   const composingRef = useRef(false)
 
-  // Grow with the content instead of scrolling inside a two-line box.
-  useEffect(() => {
+  // One line with the buttons beside it until the text needs more; then the
+  // text gets the full width and the buttons drop to a row underneath.
+  const [multiline, setMultiline] = useState(false)
+  // How long the text was when it first wrapped. Going multiline widens the
+  // box, so the same text may fit on one line again — leaving at that point
+  // would flip straight back. The font is monospace, so length tracks width.
+  const wrappedAt = useRef(0)
+
+  useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
+    const style = getComputedStyle(el)
+    const line = parseFloat(style.lineHeight)
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+
+    if (text === "") {
+      // The placeholder can wrap too, and is not worth a second line.
+      wrappedAt.current = 0
+      setMultiline(false)
+      el.style.height = ""
+      return
+    }
+
     el.style.height = "auto"
-    el.style.height = Math.min(el.scrollHeight, 220) + "px"
-  }, [text])
+    const content = el.scrollHeight - padding
+
+    if (!multiline && (text.includes("\n") || content > line * 1.5)) {
+      wrappedAt.current = text.length
+      setMultiline(true)
+      return // measured again in the wider layout
+    }
+    if (multiline && !text.includes("\n") && text.length < wrappedAt.current) {
+      setMultiline(false)
+      return
+    }
+
+    // Grow to six lines, then scroll inside.
+    el.style.height = Math.min(content, line * MAX_LINES) + padding + "px"
+  }, [text, multiline])
 
   // An attachment on its own is a message: dragging in a screenshot and
   // pressing send, with nothing typed, is a normal way to ask about it.
@@ -501,7 +539,7 @@ function Composer({
         </div>
       )}
 
-      <div className="composer-row">
+      <div className={"composer-box" + (multiline ? " multiline" : "")}>
         <input
           ref={picker}
           className="composer-file"
@@ -518,7 +556,7 @@ function Composer({
           title="Attach files — or drop them anywhere in the conversation"
           onClick={() => picker.current?.click()}
         >
-          ＋
+          <PlusIcon />
         </button>
 
         <textarea
@@ -528,9 +566,9 @@ function Composer({
           rows={1}
           placeholder={
             busy
-              ? "Say something — it reaches the agent mid-turn…"
+              ? "Steer the agent mid-turn…"
               : interrupted
-                ? "Stopped. Type to continue — parked messages go with this one."
+                ? "Stopped — type to continue"
                 : "Message the agent…"
           }
           onChange={(e) => setText(e.target.value)}
@@ -567,20 +605,76 @@ function Composer({
             send()
           }}
         />
-        {busy && (
-          <button className="composer-btn stop" onClick={onInterrupt}>
-            stop
-          </button>
-        )}
-        <button className="composer-btn send" onClick={send} disabled={!sendable}>
-          {attachments.uploading
-            ? "uploading…"
-            : interrupted
-              ? "continue"
-              : "send"}
-        </button>
+
+        <div className="composer-actions">
+          {busy && (
+            <button
+              className="composer-btn stop"
+              onClick={onInterrupt}
+              title="Stop the turn"
+            >
+              <StopIcon />
+            </button>
+          )}
+          {/* While the agent works, an empty box has nothing to send and the
+              stop button is the one that matters. */}
+          {!(busy && !sendable) && (
+            <button
+              className="composer-btn send"
+              onClick={send}
+              disabled={!sendable}
+              title={
+                attachments.uploading
+                  ? "Uploading…"
+                  : interrupted
+                    ? "Continue"
+                    : busy
+                      ? "Send — it reaches the agent mid-turn"
+                      : "Send"
+              }
+            >
+              <SendIcon />
+            </button>
+          )}
+        </div>
       </div>
     </div>
+  )
+}
+
+// Past this the box scrolls instead of eating the conversation.
+const MAX_LINES = 6
+
+// Inline rather than an icon font: three glyphs do not justify a dependency,
+// and the Nerd Font's versions sit on the text baseline instead of centred.
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" aria-hidden>
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" aria-hidden>
+      <path
+        d="M12 19V5M6 11l6-6 6 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden>
+      <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+    </svg>
   )
 }
 

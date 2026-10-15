@@ -4,6 +4,7 @@ import { Login } from "./Login"
 import { Sidebar } from "./Sidebar"
 import { Terminal } from "./Terminal"
 import { useLobby } from "./useLobby"
+import { useNarrow } from "./useNarrow"
 import {
   createAgent,
   createSession,
@@ -16,18 +17,22 @@ import {
 import "./App.css"
 
 const SIDEBAR_KEY = "loom_sidebar_open"
+const TOUCH = matchMedia("(hover: none)")
 
 function App() {
   const [authed, setAuthed] = useState(!!getToken())
   // Pushed by the server as sessions change; see `useLobby`.
   const { sessions, loaded, upsert, drop } = useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const narrow = useNarrow()
 
-  // Remembered, because on a narrow screen you collapse it once and want it
-  // to stay collapsed across reloads.
+  // Remembered, because you collapse it once and want it to stay collapsed
+  // across reloads. Desktop only: on a phone the sidebar is a drawer over the
+  // chat, which starts closed and closes again once you pick something.
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_KEY) !== "0",
   )
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const [terminalOpen, setTerminalOpen] = useState(false)
   // PTY session ids, top to bottom in the right-hand column.
@@ -55,9 +60,18 @@ function App() {
     const session = await createAgent(backend)
     upsert(session)
     setActiveId(session.id)
+    setDrawerOpen(false)
+  }
+
+  const select = (id: string) => {
+    setActiveId(id)
+    setDrawerOpen(false)
   }
 
   const remove = async (id: string) => {
+    // A mouse has to hover to even see the button; a finger can hit it while
+    // scrolling the list, and the history does not come back.
+    if (TOUCH.matches && !confirm("Delete this session and its history?")) return
     await deleteAgent(id)
     drop(id)
   }
@@ -117,17 +131,28 @@ function App() {
 
   const active = sessions.find((s) => s.id === activeId) ?? null
 
+  const sidebar = (
+    <Sidebar
+      sessions={sessions}
+      activeId={activeId}
+      onSelect={select}
+      onCreate={create}
+      onDelete={remove}
+      onCollapse={() => (narrow ? setDrawerOpen(false) : setSidebarOpen(false))}
+    />
+  )
+
   return (
     <div className="app">
-      {sidebarOpen && (
-        <Sidebar
-          sessions={sessions}
-          activeId={activeId}
-          onSelect={setActiveId}
-          onCreate={create}
-          onDelete={remove}
-          onCollapse={() => setSidebarOpen(false)}
-        />
+      {narrow ? (
+        // Always mounted so it can slide rather than pop. Over the chat, not
+        // beside it: a phone has no width to give a second column.
+        <div className={"drawer" + (drawerOpen ? " open" : "")} inert={!drawerOpen}>
+          <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} />
+          {sidebar}
+        </div>
+      ) : (
+        sidebarOpen && sidebar
       )}
 
       <main className="main">
@@ -138,8 +163,10 @@ function App() {
             <Chat
               key={active.id}
               session={active}
-              sidebarOpen={sidebarOpen}
-              onToggleSidebar={() => setSidebarOpen((open) => !open)}
+              sidebarOpen={!narrow && sidebarOpen}
+              onToggleSidebar={() =>
+                narrow ? setDrawerOpen(true) : setSidebarOpen((open) => !open)
+              }
               terminalOpen={terminalOpen}
               terminalCount={ptyIds.length}
               onToggleTerminal={toggleTerminal}
@@ -149,13 +176,13 @@ function App() {
               <p>No session selected.</p>
               <div className="backend-choice">
                 <button
-                  className="composer-btn send"
+                  className="text-btn"
                   onClick={() => create("claude_code")}
                 >
                   new Claude Code session
                 </button>
                 <button
-                  className="composer-btn send"
+                  className="text-btn"
                   onClick={() => create("codex")}
                 >
                   new Codex session
@@ -176,7 +203,20 @@ function App() {
             {ptyIds.map((id, index) => (
               <div className="terminal-pane" key={id}>
                 <div className="pane-head">
-                  <span>terminal {index + 1}</span>
+                  <span className="pane-title">
+                    {/* On a phone the terminals cover the chat, and the
+                        header's toggle with it. */}
+                    {narrow && index === 0 && (
+                      <button
+                        className="pane-btn"
+                        onClick={() => setTerminalOpen(false)}
+                        title="Back to the chat"
+                      >
+                        ‹
+                      </button>
+                    )}
+                    terminal {index + 1}
+                  </span>
                   <span className="pane-actions">
                     {/* On every pane rather than once, so it does not move
                         around as terminals are closed. */}

@@ -86,7 +86,7 @@ export type AgentBackend = "claude_code" | "codex"
 
 /**
  * `starting` is the gap between asking the backend to begin and it saying
- * anything — Claude Code spawns a process per turn and takes seconds to boot.
+ * anything — a cold Claude Code process takes seconds to boot.
  * Without a state for it the UI looks hung.
  *
  * `interrupted` is not a transition but a resting state: the turn was stopped

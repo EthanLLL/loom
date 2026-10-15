@@ -2,6 +2,9 @@ html,
 body,
 #root {
   height: 100%;
+  /* The visible height on a phone, which `100%` is not once the browser's
+     toolbar or the keyboard takes part of it. */
+  height: 100dvh;
   margin: 0;
   background: #010c18;
   overflow: hidden;
