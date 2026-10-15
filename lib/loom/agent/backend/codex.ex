@@ -63,10 +63,13 @@ defmodule Loom.Agent.Backend.Codex do
 
   @impl Backend
   def start(_session_id, meta) do
-    opts = [cwd: Backend.meta_get(meta, :codex_cwd) || default_cwd()]
+    opts = [
+      cwd: Backend.meta_get(meta, :codex_cwd) || default_cwd(),
+      developer_instructions: Backend.meta_get(meta, :instructions)
+    ]
 
     case Server.start_thread(opts) do
-      {:ok, thread_id} -> {:ok, new(thread_id)}
+      {:ok, thread_id} -> {:ok, new(thread_id, opts[:developer_instructions])}
       {:error, reason} -> {:error, describe_error(reason)}
     end
   end
@@ -80,20 +83,27 @@ defmodule Loom.Agent.Backend.Codex do
   end
 
   defp resume_thread(id, meta) do
-    case Server.resume_thread(id, []) do
+    instructions = Backend.meta_get(meta, :instructions)
+
+    case Server.resume_thread(id, resume_opts(instructions)) do
       {:ok, ^id} ->
         # A turn id recorded before a restart refers to a turn that is no longer
         # running — the server would reject an interrupt for it anyway.
-        {:ok, %{new(id) | turn_id: Backend.meta_get(meta, :codex_turn_id)}}
+        {:ok, %{new(id, instructions) | turn_id: Backend.meta_get(meta, :codex_turn_id)}}
 
       {:error, reason} ->
         {:error, describe_error(reason)}
     end
   end
 
-  defp new(thread_id) do
+  # Given again on every resume, including the silent one after an app-server
+  # respawn, so the thread is never running without them.
+  defp resume_opts(instructions), do: [developer_instructions: instructions]
+
+  defp new(thread_id, instructions) do
     %{
       thread_id: thread_id,
+      instructions: instructions,
       turn_id: nil,
       aborted?: false,
       stale?: false,
@@ -111,7 +121,7 @@ defmodule Loom.Agent.Backend.Codex do
   # Reattaching before starting the turn is what makes a restart invisible to
   # the user beyond the one turn that died.
   def run_turn(%{stale?: true} = handle, text) do
-    case Server.resume_thread(handle.thread_id, []) do
+    case Server.resume_thread(handle.thread_id, resume_opts(handle.instructions)) do
       {:ok, _} -> run_turn(%{handle | stale?: false}, text)
       {:error, reason} -> {:error, describe_error(reason)}
     end

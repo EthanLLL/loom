@@ -116,6 +116,9 @@ defmodule Loom.Agent.Backend do
   Must not return until the backend's own identifier is known or can be derived,
   because the session persists it immediately — a crash between "started" and
   "recorded" would orphan a conversation we can never find again.
+
+  `meta[:instructions]`, when present, is loom's addition to the backend's own
+  system prompt — today, where to put files for the user (`Loom.Agent.Output`).
   """
   @callback start(session_id :: String.t(), meta :: map()) ::
               {:ok, handle} | {:error, term()}
@@ -125,6 +128,8 @@ defmodule Loom.Agent.Backend do
 
   Called on restore and after a crash. Both backends locate a conversation by
   uuid alone — no working directory needed — so `meta` only has to carry the id.
+  It also carries `:instructions`, as for `start/2`: neither backend keeps an
+  appended system prompt with the conversation, so it is given again here.
 
   Codex enforces a single writer per thread with a lock file that survives an
   ungraceful kill, so this is also where a stale lock belonging to *our own*

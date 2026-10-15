@@ -137,6 +137,7 @@ channel 层(`LoomWeb.AgentChannel`)不持有任何会话状态,只做转发。
 ~/.loom/sessions/<id>/meta.json     header,原地重写(temp + rename)
 ~/.loom/sessions/<id>/events.jsonl  规范化的 transcript,append-only
 ~/.loom/sessions/<id>/files/…        用户上传的附件
+~/.loom/sessions/<id>/output/…       agent 给用户的产出(下载)
 ```
 
 `~/.loom`(或 `LOOM_HOME`)而不是 release 的 `priv/`:部署会整个替换 `priv/`,而这些
@@ -195,6 +196,29 @@ content 格式(`run_turn/2` 还是收字符串)。两边都实测过:传一张�
 指名的任何文件 —— 所以 `Files.verify/2` 拒绝任何不在本会话 `files/` 下的路径。agent
 本来就没沙箱、自己想读也能读;要守的是"客户端不能靠改一个字段让它悄悄去读"。文件名同理
 按敌意字符串处理(`../`、NUL、Windows 路径、4 KB 的名字),CJK 原样保留。
+
+## 4.2 产出(下载)
+
+附件的反方向:agent 做出来给用户的文件(xlsx、pptx、图……)放在会话目录下的
+`output/`,下载走 `GET /api/agents/:id/output/*path`。实现在 `Loom.Agent.Output`。
+
+**靠约定,不靠猜。** 后端想往哪写就往哪写,所以只能事先约好地方:loom 把绝对路径写进
+后端的系统提示 —— CC 用 `--append-system-prompt`(每次 spawn 都带,它不是对话状态),
+Codex 用 thread/start 和 thread/resume 的 `developerInstructions`。不用环境变量,因为
+Codex 是所有会话共用一个 app-server,没有"每会话一个进程"可以注入。
+
+**turn 结束时扫,不是每次 tool_use 后扫。** 会话启动时给目录拍个快照,每个 turn 结束
+(done / failed / interrupt 三种都算)再比一次,新增或变化的文件发一条持久化事件
+`:output_files`,放在 `turn_done` 之前。不按 tool 扫:tool_result 只说明那条命令结束了,
+后台进程可能还在写;脚本反复覆盖同一个文件会发三次。重启后重新拍快照,旧文件不会重复
+通知。隐藏文件、Office 的 `~$` 锁文件、symlink 都不算产出。
+
+**卡片来自目录,不来自回复。** 模型被要求用 `[name](output/<path>)` 链接文件,前端把这种
+链接渲染成下载按钮;但就算它忘了写、写错了,卡片照样在。
+
+**下载要鉴权,所以不用 nginx、也不用 `<a href>`。** 路由在 bearer token 后面,`<a>`
+带不了 header,前端 fetch 成 blob 再触发下载。`Output.resolve/2` 和 `Files.verify/2`
+同一个规矩:展开后必须在本会话 `output/` 下,中间任何一级是 symlink 都拒绝。
 
 ---
 

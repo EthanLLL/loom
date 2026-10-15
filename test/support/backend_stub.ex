@@ -68,6 +68,9 @@ defmodule Loom.BackendStub do
   @doc "Make the next `resume/2` fail, as a locked codex thread would."
   def fail_next_resume, do: GenServer.call(__MODULE__, :fail_next_resume)
 
+  @doc "The `meta` the most recent `start/2` or `resume/2` was given."
+  def last_meta, do: GenServer.call(__MODULE__, :last_meta)
+
   @impl GenServer
   def init(opts) do
     {:ok,
@@ -76,7 +79,8 @@ defmodule Loom.BackendStub do
        fail_turn: false,
        fail_resume: false,
        fail_steer: false,
-       released: 0
+       released: 0,
+       last_meta: nil
      }}
   end
 
@@ -85,6 +89,9 @@ defmodule Loom.BackendStub do
 
   def handle_call(:fail_next_resume, _from, state),
     do: {:reply, :ok, %{state | fail_resume: true}}
+
+  def handle_call({:meta, meta}, _from, state), do: {:reply, :ok, %{state | last_meta: meta}}
+  def handle_call(:last_meta, _from, state), do: {:reply, state.last_meta, state}
 
   def handle_call({:turn, text}, _from, state) do
     if state.notify, do: send(state.notify, {:stub_turn, text})
@@ -133,10 +140,15 @@ defmodule Loom.BackendStub do
   # ── Backend ───────────────────────────────────────────────────────────────
 
   @impl Loom.Agent.Backend
-  def start(session_id, _meta), do: {:ok, %{session_id: session_id, ref: "stub-#{session_id}"}}
+  def start(session_id, meta) do
+    :ok = GenServer.call(__MODULE__, {:meta, meta})
+    {:ok, %{session_id: session_id, ref: "stub-#{session_id}"}}
+  end
 
   @impl Loom.Agent.Backend
-  def resume(session_id, %{stub_ref: ref}) when is_binary(ref) do
+  def resume(session_id, %{stub_ref: ref} = meta) when is_binary(ref) do
+    :ok = GenServer.call(__MODULE__, {:meta, meta})
+
     case GenServer.call(__MODULE__, :resuming) do
       :ok -> {:ok, %{session_id: session_id, ref: ref}}
       {:error, reason} -> {:error, reason}

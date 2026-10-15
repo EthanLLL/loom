@@ -1,4 +1,4 @@
-import type { AgentFile, AgentInfo, AgentStatus, AgentUsage } from "./api"
+import type { AgentFile, AgentInfo, AgentStatus, AgentUsage, OutputFile } from "./api"
 
 /**
  * The client half of the agent protocol.
@@ -324,6 +324,9 @@ export type TimelineItem =
       result: ToolResult | null
     }
   | { key: string; kind: "question"; question: string; options: string[] }
+  // What a turn left in the output directory, offered for download. `more`
+  // counts files past the server's cap.
+  | { key: string; kind: "outputs"; files: OutputFile[]; more: number }
   | { key: string; kind: "notice"; text: string }
   | { key: string; kind: "error"; text: string }
   | {
@@ -441,6 +444,15 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
         items.push({ key, kind: "notice", text })
         break
       }
+
+      case "output_files":
+        items.push({
+          key,
+          kind: "outputs",
+          files: (p.files as OutputFile[] | undefined) ?? [],
+          more: Number(p.more ?? 0),
+        })
+        break
 
       case "renamed":
         break

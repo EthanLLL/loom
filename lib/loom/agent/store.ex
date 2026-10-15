@@ -12,6 +12,7 @@ defmodule Loom.Agent.Store do
       ~/.loom/sessions/<id>/meta.json     header, rewritten in place
       ~/.loom/sessions/<id>/events.jsonl  normalized transcript events, append-only
       ~/.loom/sessions/<id>/files/…        what the user attached to the session
+      ~/.loom/sessions/<id>/output/…       what the agent made for the user
 
   Under the user's home rather than the release, because `priv/` is replaced
   wholesale by a deploy and none of this should be.
@@ -71,6 +72,12 @@ defmodule Loom.Agent.Store do
   to. See `Loom.Agent.Files`.
   """
   def files_dir(id), do: Path.join(session_dir(id), "files")
+
+  @doc """
+  Directory the agent writes deliverables into for the user to download. The
+  other direction from `files_dir/1`; see `Loom.Agent.Output`.
+  """
+  def output_dir(id), do: Path.join(session_dir(id), "output")
 
   @doc """
   Bring sessions written before the data directory moved to `~/.loom` along.

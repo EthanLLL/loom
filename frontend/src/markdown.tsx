@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react"
+import { createContext, useContext, useMemo, type ReactNode } from "react"
 import { marked, type Token, type Tokens } from "marked"
 
 /**
@@ -33,6 +33,18 @@ import { marked, type Token, type Tokens } from "marked"
  * fence on its own, and a half-written table stays a paragraph until its
  * delimiter row arrives. Both read fine mid-stream.
  */
+/**
+ * How a link into the session's output directory is rendered.
+ *
+ * The agent is asked to write `[name](output/<path>)` for files it made (see
+ * `Loom.Agent.Output`). That is not a URL the browser can follow — the file is
+ * behind the API's token — so whoever renders the conversation supplies the
+ * element, and without one such a link is shown like any other.
+ */
+export const OutputLink = createContext<
+  ((path: string, label: ReactNode) => ReactNode) | null
+>(null)
+
 export function Markdown({ text }: { text: string }) {
   const tokens = useMemo(() => marked.lexer(text, { gfm: true }), [text])
   return <div className="md">{blocks(tokens)}</div>
@@ -149,6 +161,8 @@ function inlineOrText(token: Tokens.Text): ReactNode {
 }
 
 function Inline({ token }: { token: Token }): ReactNode {
+  const renderOutput = useContext(OutputLink)
+
   switch (token.type) {
     case "text":
       return inlineOrText(token as Tokens.Text)
@@ -173,6 +187,9 @@ function Inline({ token }: { token: Token }): ReactNode {
 
     case "link": {
       const t = token as Tokens.Link
+      const output = outputPath(t.href)
+      if (output !== null && renderOutput) return renderOutput(output, inline(t.tokens))
+
       const href = safeHref(t.href)
       // An unsafe scheme still shows its label and its target, just not as
       // something clickable — silently dropping either would hide what the
@@ -214,6 +231,21 @@ function align(value: "center" | "left" | "right" | null) {
 // Everything else — `javascript:`, `data:`, `vbscript:` — is refused. The model
 // composes these from pages it fetched, so the scheme is not trustworthy.
 const SAFE_SCHEME = /^(https?:|mailto:|#|\/|\.{0,2}\/)/i
+
+// `output/report.xlsx` or `./output/report.xlsx`, percent-decoded, since the
+// model escapes spaces to keep the link valid. Anything with `..` is left to be
+// an ordinary (and useless) relative link; the server would refuse it anyway.
+function outputPath(href: string): string | null {
+  const m = /^(?:\.\/)?output\/(.+)$/.exec((href ?? "").trim())
+  if (!m) return null
+  let path: string
+  try {
+    path = decodeURIComponent(m[1])
+  } catch {
+    path = m[1]
+  }
+  return path.split("/").includes("..") ? null : path
+}
 
 function safeHref(href: string): string | null {
   const trimmed = (href ?? "").trim()

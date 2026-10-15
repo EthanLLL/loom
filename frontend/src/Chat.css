@@ -629,6 +629,52 @@ pre.code {
   opacity: 0.65;
 }
 
+/* What the agent made. The same chip as an attachment, but a button: it sits
+   alone in the transcript rather than inside a bubble, and it does something. */
+.outputs {
+  margin: 2px 0 4px;
+}
+
+.file.download,
+.md-download {
+  font: inherit;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  text-align: left;
+}
+
+.file.download {
+  font-size: 0.846rem;
+  color: var(--fg);
+}
+
+.file.download:hover,
+.md-download:hover {
+  border-color: var(--blue);
+}
+
+/* Inside prose a download reads as a link, so it does not break the line. */
+.md-download {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.file.download.busy,
+.md-download.busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.file.download.failed,
+.md-download.failed {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 /* Drag-and-drop lands anywhere in the conversation, so the hint is a band at
    the top rather than a full-area overlay — an overlay over the transcript
    would hide what you are attaching the file to. */

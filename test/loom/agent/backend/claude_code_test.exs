@@ -592,6 +592,16 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
       refute handle.first_turn?
     end
 
+    test "loom's instructions are kept for every spawn, fresh or resumed" do
+      # `--append-system-prompt` is a flag, not conversation state: a respawn
+      # after a release that forgot it would run without them.
+      {:ok, fresh} = ClaudeCode.start("a_1", %{instructions: "save files in /x"})
+      {:ok, resumed} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id, instructions: "y"})
+
+      assert fresh.instructions == "save files in /x"
+      assert resumed.instructions == "y"
+    end
+
     test "a resumed handle does not re-use --session-id" do
       {:ok, handle} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id})
       refute handle.first_turn?

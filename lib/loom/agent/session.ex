@@ -81,6 +81,7 @@ defmodule Loom.Agent.Session do
 
   alias Loom.Agent.Backend
   alias Loom.Agent.Files
+  alias Loom.Agent.Output
   alias Loom.Agent.Store
 
   # How many events stay in memory for replay. A client that has been away
@@ -188,10 +189,11 @@ defmodule Loom.Agent.Session do
         | backend: backend,
           title: Keyword.get(opts, :title),
           created_at: System.system_time(:millisecond),
-          logs: logs
+          logs: logs,
+          outputs: outputs(id)
       }
 
-      case Backend.impl(backend).start(id, backend_meta(opts)) do
+      case Backend.impl(backend).start(id, backend_meta(id, opts)) do
         {:ok, handle} ->
           state = %{state | handle: handle}
           persist_meta(state)
@@ -218,14 +220,27 @@ defmodule Loom.Agent.Session do
 
   # `:cwd` is only ever a test or operator override. A session has no project
   # root; the backend falls back to `:workspace` (or the user's home).
-  defp backend_meta(opts) do
-    %{cc_cwd: Keyword.get(opts, :cwd), codex_cwd: Keyword.get(opts, :cwd)}
+  defp backend_meta(id, opts) do
+    %{
+      cc_cwd: Keyword.get(opts, :cwd),
+      codex_cwd: Keyword.get(opts, :cwd),
+      instructions: Output.instructions(id)
+    }
+  end
+
+  # The directory as the session starts. Made first, so the agent can write
+  # straight into it; snapshotted so that only what a turn produces is
+  # announced — a restart must not re-offer every file made last week.
+  defp outputs(id) do
+    Output.ensure_dir(id)
+    Output.snapshot(id)
   end
 
   defp restore(id, meta) do
     with {:ok, backend} <- recorded_backend(meta),
          {:ok, logs} <- Store.open_logs(id),
-         {:ok, handle} <- reattach(backend, id, meta, logs) do
+         {:ok, handle} <-
+           reattach(backend, id, Map.put(meta, :instructions, Output.instructions(id)), logs) do
       state = %{
         blank_state(id)
         | backend: backend,
@@ -239,7 +254,8 @@ defmodule Loom.Agent.Session do
           context_tokens: meta[:context_tokens] || 0,
           context_window: meta[:context_window],
           turns: meta[:turns] || 0,
-          logs: logs
+          logs: logs,
+          outputs: outputs(id)
       }
 
       if meta[:status] in ["running", "starting"] do
@@ -313,7 +329,9 @@ defmodule Loom.Agent.Session do
       context_window: nil,
       turns: 0,
       # Timer that releases the warm backend process once nothing is happening.
-      release_timer: nil
+      release_timer: nil,
+      # The output directory as of the last turn's end. See `Loom.Agent.Output`.
+      outputs: %{}
     }
   end
 
@@ -349,7 +367,9 @@ defmodule Loom.Agent.Session do
   def handle_call(:interrupt, _from, state) do
     case Backend.impl(state.backend).interrupt(state.handle) do
       {:ok, handle} ->
-        {:reply, :ok, interrupted(%{state | handle: handle}, "interrupted")}
+        # Whatever the turn wrote before it was stopped is still the user's.
+        state = collect_outputs(%{state | handle: handle})
+        {:reply, :ok, interrupted(state, "interrupted")}
 
       {:error, reason} ->
         # The turn may well be dead anyway, but claiming it stopped when the
@@ -504,12 +524,14 @@ defmodule Loom.Agent.Session do
   defp apply_out(state, {:event, :turn_done, payload}) do
     state
     |> record_usage(payload)
+    |> collect_outputs()
     |> emit(:turn_done, Map.take(payload, [:stop_reason, :context_tokens, :context_window]))
     |> finish_turn()
   end
 
   defp apply_out(state, {:event, :turn_failed, payload}) do
     state
+    |> collect_outputs()
     |> emit(:error, %{message: failure_message(payload)})
     |> finish_turn()
   end
@@ -578,6 +600,17 @@ defmodule Loom.Agent.Session do
     |> emit(:status, %{status: :interrupted, queued: length(state.queue), message: message})
     |> set_status(:interrupted)
     |> schedule_release()
+  end
+
+  # Announce what the turn left in the output directory. Before the turn's own
+  # closing event, so the card sits with the reply that made the files.
+  defp collect_outputs(state) do
+    now = Output.snapshot(state.id)
+
+    case Output.changes(state.outputs, now) do
+      {[], _} -> %{state | outputs: now}
+      {files, more} -> emit(%{state | outputs: now}, :output_files, %{files: files, more: more})
+    end
   end
 
   # ── Keeping the backend warm ────────────────────────────────────────────

@@ -178,6 +178,37 @@ export type AgentFile = {
   content_type: string
 }
 
+/** A file the agent left in the session's output directory. */
+export type OutputFile = AgentFile & {
+  // Already announced by an earlier turn and rewritten since.
+  updated: boolean
+}
+
+/**
+ * Download one of a session's outputs.
+ *
+ * Fetched rather than linked: the route is behind the bearer token, and an
+ * `<a href>` cannot send one. The blob is handed to a throwaway link so the
+ * browser treats it as a download under the file's own name.
+ */
+export async function downloadAgentOutput(id: string, path: string): Promise<void> {
+  const url = `/api/agents/${id}/output/${path.split("/").map(encodeURIComponent).join("/")}`
+  const res = await fetch(url, { headers: authHeaders() })
+  if (res.status === 401) throw new UnauthorizedError()
+  if (res.status === 404) throw new Error("the file is no longer there")
+  if (!res.ok) throw new Error(`download failed: ${res.status}`)
+
+  const href = URL.createObjectURL(await res.blob())
+  const a = document.createElement("a")
+  a.href = href
+  a.download = path.split("/").pop() ?? path
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoked late: Safari reads the blob after `click()` returns.
+  setTimeout(() => URL.revokeObjectURL(href), 60_000)
+}
+
 /**
  * Upload attachments for a session.
  *

@@ -146,6 +146,9 @@ defmodule Loom.Agent.Backend.ClaudeCode do
     %{
       session_id: session_id,
       cwd: Backend.meta_get(meta, :cc_cwd) || default_cwd(),
+      # Appended to Claude Code's own system prompt on every spawn — it is a
+      # flag, not something the conversation remembers across `--resume`.
+      instructions: Backend.meta_get(meta, :instructions),
       first_turn?: true,
       port: nil,
       os_pid: nil,
@@ -212,7 +215,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
           :exit_status,
           :use_stdio,
           :hide,
-          args: @base_args ++ session_args(handle),
+          args: @base_args ++ session_args(handle) ++ instruction_args(handle),
           cd: handle.cwd,
           env: Loom.ChildEnv.port_env()
         ])
@@ -237,6 +240,11 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   # it. Passing both is rejected by the CLI.
   defp session_args(%{first_turn?: true, session_id: id}), do: ["--session-id", id]
   defp session_args(%{session_id: id}), do: ["--resume", id]
+
+  defp instruction_args(%{instructions: text}) when is_binary(text) and text != "",
+    do: ["--append-system-prompt", text]
+
+  defp instruction_args(_handle), do: []
 
   defp message_line(text) do
     Jsonl.line(%{"type" => "user", "message" => %{"role" => "user", "content" => text}})

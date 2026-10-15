@@ -569,4 +569,116 @@ defmodule Loom.Agent.SessionTest do
       assert_receive {:agent_event, ^id, %{kind: :queue, payload: %{queued: 1}}}, 500
     end
   end
+  describe "output files" do
+    # What the agent left for the user is announced once per turn, from the
+    # directory itself rather than from what the model said. See
+    # `Loom.Agent.Output`.
+
+    defp write_output(id, rel, content) do
+      path = Path.join(Store.output_dir(id), rel)
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, content)
+    end
+
+    defp output_events(id) do
+      {:ok, snapshot} = Agent.attach(id, 0)
+      for %{kind: :output_files, payload: payload} <- snapshot.events, do: payload
+    end
+
+    test "the backend is told where to put them, and the directory exists" do
+      id = new_session()
+      instructions = BackendStub.last_meta()[:instructions]
+
+      assert instructions =~ Store.output_dir(id)
+      assert File.dir?(Store.output_dir(id))
+    end
+
+    test "a finished turn announces what it wrote, before the turn closes" do
+      id = new_session()
+      Agent.submit(id, "make a spreadsheet")
+      BackendStub.await_turn()
+
+      write_output(id, "report.xlsx", "xlsx")
+      write_output(id, "charts/q3.png", "png")
+      finish_turn(id)
+
+      assert [%{files: files, more: 0}] = output_events(id)
+      assert Enum.map(files, & &1.path) == ["charts/q3.png", "report.xlsx"]
+      assert %{name: "q3.png", size: 3, content_type: "image/png", updated: false} = hd(files)
+
+      {:ok, snapshot} = Agent.attach(id, 0)
+      kinds = Enum.map(snapshot.events, & &1.kind)
+      assert Enum.find_index(kinds, &(&1 == :output_files)) <
+               Enum.find_index(kinds, &(&1 == :turn_done))
+    end
+
+    test "an unchanged file is not announced again; a rewritten one is, as updated" do
+      id = new_session()
+      Agent.submit(id, "one")
+      BackendStub.await_turn()
+      write_output(id, "report.xlsx", "v1")
+      finish_turn(id)
+
+      Agent.submit(id, "nothing new")
+      BackendStub.await_turn()
+      finish_turn(id)
+      assert length(output_events(id)) == 1
+
+      Agent.submit(id, "again")
+      BackendStub.await_turn()
+      write_output(id, "report.xlsx", "version two")
+      finish_turn(id)
+
+      assert [_, %{files: [%{path: "report.xlsx", updated: true, size: 11}]}] = output_events(id)
+    end
+
+    test "hidden files and Office lock files are not deliverables" do
+      id = new_session()
+      Agent.submit(id, "go")
+      BackendStub.await_turn()
+      write_output(id, ".scratch", "x")
+      write_output(id, "~$report.xlsx", "x")
+      finish_turn(id)
+
+      assert output_events(id) == []
+    end
+
+    test "a failed or interrupted turn still hands over what it wrote" do
+      id = new_session()
+      Agent.submit(id, "go")
+      BackendStub.await_turn()
+      write_output(id, "partial.csv", "a,b")
+      backend_sends(id, [{:event, :turn_failed, %{reason: "boom"}}])
+      assert [%{files: [%{path: "partial.csv"}]}] = output_events(id)
+
+      Agent.submit(id, "again")
+      BackendStub.await_turn()
+      write_output(id, "half.csv", "a")
+      Agent.interrupt(id)
+      assert [_, %{files: [%{path: "half.csv"}]}] = output_events(id)
+    end
+
+    test "a restart does not re-announce files from before it" do
+      id = new_session()
+      write_output(id, "old.txt", "made before the restart")
+
+      [{pid, _}] = Registry.lookup(Loom.Agent.Registry, id)
+      ref = Process.monitor(pid)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}, 1_000
+
+      assert_eventually(fn ->
+        match?([{new, _}] when new != pid, Registry.lookup(Loom.Agent.Registry, id))
+      end)
+
+      # And a resume is told too: an appended system prompt is not part of the
+      # conversation the backend stores.
+      assert BackendStub.last_meta()[:instructions] =~ Store.output_dir(id)
+
+      Agent.submit(id, "go")
+      BackendStub.await_turn()
+      finish_turn(id)
+      assert output_events(id) == []
+    end
+  end
 end

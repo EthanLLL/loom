@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef, useState } from "react"
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { buildTimeline, isBusy, type TimelineItem } from "./agent"
-import { Markdown } from "./markdown"
+import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
 import {
   useAttachments,
@@ -8,7 +8,7 @@ import {
   type Attachment,
   type Attachments,
 } from "./useAttachments"
-import type { AgentFile, AgentInfo } from "./api"
+import { downloadAgentOutput, type AgentFile, type AgentInfo, type OutputFile } from "./api"
 import "./Chat.css"
 
 type Props = {
@@ -104,11 +104,19 @@ export function Chat({
 
       {joinError && <div className="chat-banner">{joinError}</div>}
 
-      <Timeline
-        items={items}
-        truncatedBefore={transcript.truncatedBefore}
-        onAnswer={submit}
-      />
+      {/* `output/…` links in a reply become downloads from this session. */}
+      <OutputLink.Provider
+        value={(path, label) => (
+          <DownloadLink sessionId={session.id} path={path} label={label} />
+        )}
+      >
+        <Timeline
+          items={items}
+          sessionId={session.id}
+          truncatedBefore={transcript.truncatedBefore}
+          onAnswer={submit}
+        />
+      </OutputLink.Provider>
 
       {transcript.queue.length > 0 && (
         <QueuePanel
@@ -133,10 +141,12 @@ export function Chat({
 
 function Timeline({
   items,
+  sessionId,
   truncatedBefore,
   onAnswer,
 }: {
   items: TimelineItem[]
+  sessionId: string
   truncatedBefore: number | null
   onAnswer: (text: string) => void
 }) {
@@ -176,7 +186,7 @@ function Timeline({
         )}
 
         {items.map((item) => (
-          <Item key={item.key} item={item} onAnswer={onAnswer} />
+          <Item key={item.key} item={item} sessionId={sessionId} onAnswer={onAnswer} />
         ))}
       </div>
     </div>
@@ -185,9 +195,11 @@ function Timeline({
 
 function Item({
   item,
+  sessionId,
   onAnswer,
 }: {
   item: TimelineItem
+  sessionId: string
   onAnswer: (text: string) => void
 }) {
   switch (item.kind) {
@@ -237,6 +249,9 @@ function Item({
           )}
         </div>
       )
+
+    case "outputs":
+      return <OutputFiles sessionId={sessionId} files={item.files} more={item.more} />
 
     case "turn":
       return <TurnLine item={item} />
@@ -366,6 +381,88 @@ function SentFiles({ files }: { files: AgentFile[] }) {
         </span>
       ))}
     </div>
+  )
+}
+
+/**
+ * What a turn left in the output directory, one button per file.
+ *
+ * Comes from the server scanning the directory, not from the reply, so it is
+ * here even when the model forgot to mention the file. See `Loom.Agent.Output`.
+ */
+function OutputFiles({
+  sessionId,
+  files,
+  more,
+}: {
+  sessionId: string
+  files: OutputFile[]
+  more: number
+}) {
+  return (
+    <div className="files outputs">
+      {files.map((file) => (
+        <DownloadLink
+          key={file.path}
+          sessionId={sessionId}
+          path={file.path}
+          className="file download"
+          label={
+            <>
+              {fileIcon(file.content_type)} {file.path}
+              <span className="file-size">
+                {formatBytes(file.size)}
+                {file.updated ? " · updated" : ""}
+              </span>
+            </>
+          }
+        />
+      ))}
+      {more > 0 && <span className="file">+{more} more</span>}
+    </div>
+  )
+}
+
+/**
+ * A button that fetches one output and hands it to the browser as a download.
+ *
+ * A button, not a link: the file is behind the API token. The label stays put
+ * while it downloads and the failure, if any, replaces it — a file deleted
+ * since the turn is the usual one.
+ */
+function DownloadLink({
+  sessionId,
+  path,
+  label,
+  className = "md-download",
+}: {
+  sessionId: string
+  path: string
+  label: ReactNode
+  className?: string
+}) {
+  const [state, setState] = useState<"idle" | "busy" | { error: string }>("idle")
+
+  const start = () => {
+    if (state === "busy") return
+    setState("busy")
+    downloadAgentOutput(sessionId, path).then(
+      () => setState("idle"),
+      (e: Error) => setState({ error: e.message }),
+    )
+  }
+
+  const failed = typeof state === "object"
+  return (
+    <button
+      type="button"
+      className={className + (state === "busy" ? " busy" : "") + (failed ? " failed" : "")}
+      title={failed ? state.error : `Download ${path}`}
+      onClick={start}
+    >
+      {label}
+      {failed && <span className="file-size">{state.error}</span>}
+    </button>
   )
 }
 
