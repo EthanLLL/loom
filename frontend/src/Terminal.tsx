@@ -81,6 +81,24 @@ export function Terminal({ sessionId, active }: Props) {
     term.loadAddon(unicode11)
     term.unicode.activeVersion = "11"
 
+    // OSC 52 (`ESC ] 52 ; <target> ; <base64> BEL`) is how a program in the
+    // shell — nvim, tmux — puts text on the clipboard of whatever terminal is
+    // showing it; the server has no clipboard of its own. Writes only: a read
+    // (`?`) would hand the browser's clipboard to anything running remotely,
+    // so it is swallowed unanswered.
+    term.parser.registerOscHandler(52, (data) => {
+      const b64 = data.slice(data.indexOf(";") + 1)
+      if (b64 === "?") return true
+      try {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+        void navigator.clipboard?.writeText(new TextDecoder().decode(bytes))
+          .catch(() => {})
+      } catch {
+        // Not base64; ignore it like any other malformed sequence.
+      }
+      return true
+    })
+
     term.open(el)
     termRef.current = term
     fitRef.current = fit
