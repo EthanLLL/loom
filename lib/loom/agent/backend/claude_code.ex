@@ -648,10 +648,13 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   # nothing useful to do with half a JSON argument list.
   defp stream_event(handle, _event), do: {handle, []}
 
+  # Block types are the API's to add to (`redacted_thinking`,
+  # `server_tool_use`, …). An unknown one stays a string: it reaches the client
+  # as the same JSON either way, and an atom per new name would never be freed.
   defp atomize("text"), do: :text
   defp atomize("thinking"), do: :thinking
   defp atomize("tool_use"), do: :tool_use
-  defp atomize(other), do: String.to_atom(other)
+  defp atomize(other), do: other
 
   defp describe(content) when is_binary(content), do: content
 

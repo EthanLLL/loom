@@ -131,6 +131,29 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
       assert [{:assistant_text, %{block_id: "msg_one.0", text: "OK"}}] = events(out)
     end
 
+    test "an unknown block type stays a string rather than minting an atom" do
+      type = "brand_new_block_#{System.unique_integer([:positive])}"
+
+      {_handle, out} =
+        feed(handle(), [
+          %{
+            "type" => "stream_event",
+            "event" => %{"type" => "message_start", "message" => %{"id" => "msg_new"}}
+          },
+          %{
+            "type" => "stream_event",
+            "event" => %{
+              "type" => "content_block_start",
+              "index" => 0,
+              "content_block" => %{"type" => type}
+            }
+          }
+        ])
+
+      assert [%{type: :block_start, block_type: ^type}] = deltas(out)
+      assert_raise ArgumentError, fn -> String.to_existing_atom(type) end
+    end
+
     test "block ids are qualified by the API call, not the turn" do
       # One agentic turn makes an API call per tool round and the SSE `index`
       # restarts at 0 in each. Qualifying by the turn made call 2's first block
