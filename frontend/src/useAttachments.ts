@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { uploadAgentFiles, type AgentFile } from "./api"
+import { attachmentUrl, seedBlobUrl, uploadAgentFiles, type AgentFile } from "./api"
 
 /**
  * One row in the composer's attachment tray.
@@ -13,6 +13,10 @@ export type Attachment = {
   key: string
   name: string
   size: number
+  type: string
+  // An image shown from the local copy, so the thumbnail is there before the
+  // upload finishes.
+  preview: string | null
   // Set once the server has the file; `null` means still uploading.
   file: AgentFile | null
   error: string | null
@@ -51,6 +55,8 @@ export function useAttachments(sessionId: string | null): Attachments {
         key: `a${nextKey.current++}`,
         name: file.name,
         size: file.size,
+        type: file.type,
+        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
         file: null,
         error: null,
       }))
@@ -60,9 +66,13 @@ export function useAttachments(sessionId: string | null): Attachments {
       // batching would let an oversized fourth file void three good ones.
       files.forEach((file, i) => {
         uploadAgentFiles(sessionId, [file])
-          .then(([stored]) =>
-            patch(rows[i].key, stored ? { file: stored } : { error: "not stored" }),
-          )
+          .then(([stored]) => {
+            // The sent bubble will ask for this file by its server URL; it can
+            // have the local copy instead. Never revoked for the same reason.
+            const preview = rows[i].preview
+            if (stored && preview) seedBlobUrl(attachmentUrl(sessionId, stored.path), preview)
+            patch(rows[i].key, stored ? { file: stored } : { error: "not stored" })
+          })
           .catch((e: unknown) =>
             patch(rows[i].key, {
               error: e instanceof Error ? e.message : "upload failed",

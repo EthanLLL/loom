@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { buildTimeline, foldFinished, isBusy, type TimelineItem } from "./agent"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
@@ -8,7 +8,15 @@ import {
   type Attachment,
   type Attachments,
 } from "./useAttachments"
-import { downloadAgentOutput, type AgentFile, type AgentInfo, type OutputFile } from "./api"
+import {
+  attachmentUrl,
+  blobUrl,
+  downloadAgentOutput,
+  outputUrl,
+  type AgentFile,
+  type AgentInfo,
+  type OutputFile,
+} from "./api"
 import "./Chat.css"
 
 type Props = {
@@ -264,7 +272,7 @@ function Item({
       return (
         <div className={"bubble user" + (item.pending ? " pending" : "")}>
           {item.text.trim() !== "" && <Rich text={item.text} />}
-          {item.files.length > 0 && <SentFiles files={item.files} />}
+          {item.files.length > 0 && <SentFiles sessionId={sessionId} files={item.files} />}
           {item.queued && <span className="tag">queued</span>}
           {item.origin === "phone" && <span className="tag">phone</span>}
         </div>
@@ -424,28 +432,129 @@ function QueuePanel({
   )
 }
 
+// ── File cards ─────────────────────────────────────────────────────────────
+
 /**
- * The attachments that went out with a message.
- *
- * Names, not thumbnails: showing the image would mean fetching it back through
- * an authenticated request and is not what the message is about — the agent
- * reads the file from the path, and the chip is there to say which file.
+ * One file as a small square: an image shows itself, anything else its
+ * extension and name. The same card everywhere a file appears — waiting in the
+ * composer, sent with a message, or left by the agent for download — so a file
+ * looks the same on its way in and on its way out.
  */
-function SentFiles({ files }: { files: AgentFile[] }) {
+function FileCard({
+  name,
+  image,
+  busy = false,
+  error,
+  title,
+  onClick,
+  onRemove,
+}: {
+  name: string
+  // Where the thumbnail comes from: a local object URL, or a promise of one
+  // for a file behind the API token. `null` for anything not an image.
+  image: string | Promise<string> | null
+  busy?: boolean
+  error?: string | null
+  title: string
+  onClick?: () => void
+  onRemove?: () => void
+}) {
+  const [src, unreachable] = useResolved(image)
+  // A format the browser cannot draw (HEIC, say), or a file that could not be
+  // fetched, falls back to the plain card.
+  const [broken, setBroken] = useState(false)
+  const failedImage = broken || unreachable
+  const showImage = image !== null && !failedImage && src !== null
+  const loading = busy || (image !== null && !failedImage && src === null && !error)
+
+  return (
+    <span
+      className={
+        "file-card" +
+        (showImage ? " image" : "") +
+        (error ? " failed" : "") +
+        (onClick ? " clickable" : "")
+      }
+      title={error ? `${name}: ${error}` : title}
+      onClick={onClick}
+    >
+      {showImage ? (
+        <img src={src} alt={name} onError={() => setBroken(true)} />
+      ) : (
+        <>
+          <span className="file-ext">{extension(name)}</span>
+          <span className="file-name">{name}</span>
+        </>
+      )}
+      {loading && <span className="file-spinner" aria-label="loading" />}
+      {onRemove && (
+        <button
+          className="file-drop"
+          title="Remove"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+        >
+          ×
+        </button>
+      )}
+    </span>
+  )
+}
+
+/** A thumbnail source, settled: `[src, failed]`, src `null` until it arrives. */
+function useResolved(image: string | Promise<string> | null): [string | null, boolean] {
+  const [state, setState] = useState<[string | null, boolean]>([
+    typeof image === "string" ? image : null,
+    false,
+  ])
+
+  useEffect(() => {
+    if (image === null || typeof image === "string") {
+      setState([image, false])
+      return
+    }
+    let live = true
+    setState([null, false])
+    image.then(
+      (url) => live && setState([url, false]),
+      () => live && setState([null, true]),
+    )
+    return () => {
+      live = false
+    }
+  }, [image])
+
+  return state
+}
+
+function extension(name: string): string {
+  const dot = name.lastIndexOf(".")
+  return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).slice(0, 5).toUpperCase() : "FILE"
+}
+
+const isImage = (contentType: string | undefined) => !!contentType?.startsWith("image/")
+
+/** The attachments that went out with a message. */
+function SentFiles({ sessionId, files }: { sessionId: string; files: AgentFile[] }) {
   return (
     <div className="files">
       {files.map((file) => (
-        <span className="file" key={file.path} title={file.path}>
-          {fileIcon(file.content_type)} {file.name}
-          <span className="file-size">{formatBytes(file.size)}</span>
-        </span>
+        <FileCard
+          key={file.path}
+          name={file.name}
+          image={isImage(file.content_type) ? blobUrl(attachmentUrl(sessionId, file.path)) : null}
+          title={`${file.name} · ${formatBytes(file.size)}`}
+        />
       ))}
     </div>
   )
 }
 
 /**
- * What a turn left in the output directory, one button per file.
+ * What a turn left in the output directory, one card per file; a click
+ * downloads it.
  *
  * Comes from the server scanning the directory, not from the reply, so it is
  * here even when the model forgot to mention the file. See `Loom.Agent.Output`.
@@ -462,24 +571,35 @@ function OutputFiles({
   return (
     <div className="files outputs">
       {files.map((file) => (
-        <DownloadLink
-          key={file.path}
-          sessionId={sessionId}
-          path={file.path}
-          className="file download"
-          label={
-            <>
-              {fileIcon(file.content_type)} {file.path}
-              <span className="file-size">
-                {formatBytes(file.size)}
-                {file.updated ? " · updated" : ""}
-              </span>
-            </>
-          }
-        />
+        <OutputCard key={file.path} sessionId={sessionId} file={file} />
       ))}
-      {more > 0 && <span className="file">+{more} more</span>}
+      {more > 0 && <span className="file-card more">+{more}</span>}
     </div>
+  )
+}
+
+function OutputCard({ sessionId, file }: { sessionId: string; file: OutputFile }) {
+  const [state, setState] = useState<"idle" | "busy" | { error: string }>("idle")
+  const name = file.path.split("/").pop() ?? file.path
+
+  const start = () => {
+    if (state === "busy") return
+    setState("busy")
+    downloadAgentOutput(sessionId, file.path).then(
+      () => setState("idle"),
+      (e: Error) => setState({ error: e.message }),
+    )
+  }
+
+  return (
+    <FileCard
+      name={name}
+      image={isImage(file.content_type) ? blobUrl(outputUrl(sessionId, file.path)) : null}
+      busy={state === "busy"}
+      error={typeof state === "object" ? state.error : null}
+      title={`Download ${file.path} · ${formatBytes(file.size)}${file.updated ? " · updated" : ""}`}
+      onClick={start}
+    />
   )
 }
 
@@ -524,13 +644,6 @@ function DownloadLink({
       {failed && <span className="file-size">{state.error}</span>}
     </button>
   )
-}
-
-function fileIcon(contentType: string): string {
-  if (contentType.startsWith("image/")) return "🖼"
-  if (contentType.startsWith("audio/")) return "🔊"
-  if (contentType.startsWith("video/")) return "🎞"
-  return "📄"
 }
 
 function ToolCard({
@@ -982,18 +1095,15 @@ function AttachmentChip({
   item: Attachment
   onRemove: () => void
 }) {
-  const state = item.error ? " failed" : item.file ? "" : " uploading"
-
   return (
-    <span className={"tray-item" + state} title={item.error ?? item.file?.path}>
-      <span className="tray-name">{item.name}</span>
-      <span className="tray-note">
-        {item.error ?? (item.file ? formatBytes(item.size) : "…")}
-      </span>
-      <button className="tray-drop" title="Remove" onClick={onRemove}>
-        ×
-      </button>
-    </span>
+    <FileCard
+      name={item.name}
+      image={item.preview}
+      busy={!item.file && !item.error}
+      error={item.error}
+      title={`${item.name} · ${formatBytes(item.size)}`}
+      onRemove={onRemove}
+    />
   )
 }
 

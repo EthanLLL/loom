@@ -225,6 +225,50 @@ export type OutputFile = AgentFile & {
   updated: boolean
 }
 
+export function outputUrl(id: string, path: string): string {
+  return `/api/agents/${id}/output/${path.split("/").map(encodeURIComponent).join("/")}`
+}
+
+/** Where an attachment can be read back. `path` is the one `store` returned. */
+export function attachmentUrl(id: string, path: string): string {
+  return `/api/agents/${id}/files/${encodeURIComponent(path.split("/").pop() ?? path)}`
+}
+
+// One object URL per file, for the life of the page: a transcript re-renders
+// and remounts constantly, and a thumbnail must not be fetched each time.
+const blobs = new Map<string, Promise<string>>()
+
+/**
+ * An authenticated file as something `<img src>` can show.
+ *
+ * The routes are behind the bearer token, which an `<img>` cannot send, so the
+ * file is fetched and handed over as an object URL.
+ */
+export function blobUrl(url: string): Promise<string> {
+  let p = blobs.get(url)
+  if (!p) {
+    p = fetch(url, { headers: authHeaders() }).then(async (res) => {
+      if (res.status === 401) throw unauthorized()
+      if (!res.ok) throw new Error(`${res.status}`)
+      return URL.createObjectURL(await res.blob())
+    })
+    // A failure is kept too: the transcript re-renders on every delta, and
+    // retrying each time would be a request per streamed chunk. A reload
+    // starts over.
+    p.catch(() => {})
+    blobs.set(url, p)
+  }
+  return p
+}
+
+/**
+ * Hand `blobUrl` a copy it already has: the image a user just attached is on
+ * this device, so its bubble needs no round trip.
+ */
+export function seedBlobUrl(url: string, objectUrl: string) {
+  if (!blobs.has(url)) blobs.set(url, Promise.resolve(objectUrl))
+}
+
 /**
  * Download one of a session's outputs.
  *
@@ -233,8 +277,7 @@ export type OutputFile = AgentFile & {
  * browser treats it as a download under the file's own name.
  */
 export async function downloadAgentOutput(id: string, path: string): Promise<void> {
-  const url = `/api/agents/${id}/output/${path.split("/").map(encodeURIComponent).join("/")}`
-  const res = await fetch(url, { headers: authHeaders() })
+  const res = await fetch(outputUrl(id, path), { headers: authHeaders() })
   if (res.status === 401) throw unauthorized()
   if (res.status === 404) throw new Error("the file is no longer there")
   if (!res.ok) throw new Error(`download failed: ${res.status}`)

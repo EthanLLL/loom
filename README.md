@@ -52,6 +52,7 @@ Everything except `POST /api/login` needs `Authorization: Bearer <token>`
 | `GET` `POST` | `/api/agents` | List / create agent sessions (`backend` is required) |
 | `PATCH` `DELETE` | `/api/agents/:id` | Rename / delete |
 | `POST` | `/api/agents/:id/files` | Upload an attachment |
+| `GET` | `/api/agents/:id/files/:name` | Read an attachment back (thumbnails) |
 | `GET` | `/api/agents/:id/output/*path` | Download a file the agent produced |
 | `GET` `POST` | `/api/sessions` | List / create terminals |
 | `DELETE` | `/api/sessions/:id` | Stop a terminal |

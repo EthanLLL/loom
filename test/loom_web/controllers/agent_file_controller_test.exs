@@ -106,4 +106,33 @@ defmodule LoomWeb.AgentFileControllerTest do
 
     assert json_response(conn, 401)
   end
+
+  describe "reading an attachment back" do
+    test "serves a file this session stored", %{conn: conn, id: id} do
+      post(conn, ~p"/api/agents/#{id}/files", %{
+        "files" => [upload("shot.png", "PNG", "image/png")]
+      })
+
+      conn = get(conn, "/api/agents/#{id}/files/shot.png")
+      assert response(conn, 200) == "PNG"
+    end
+
+    test "anything outside the session's files is a 404", %{conn: conn, id: id} do
+      File.mkdir_p!(Store.files_dir(id))
+      File.write!(Path.join(Store.session_dir(id), "meta-ish.json"), "{}")
+
+      for name <- ["missing.png", "..", "%2e%2e", "..%2fmeta-ish.json"] do
+        assert json_response(get(conn, "/api/agents/#{id}/files/#{name}"), 404),
+               "#{name} should not be served"
+      end
+    end
+
+    test "an unknown session is a 404", %{conn: conn} do
+      assert json_response(get(conn, "/api/agents/a_nobody/files/x.png"), 404)
+    end
+
+    test "requires a token", %{id: id} do
+      assert json_response(get(build_conn(), "/api/agents/#{id}/files/x.png"), 401)
+    end
+  end
 end

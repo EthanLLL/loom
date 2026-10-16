@@ -17,6 +17,7 @@ defmodule LoomWeb.AgentFileController do
 
   alias Loom.Agent
   alias Loom.Agent.Files
+  alias Loom.Agent.Store
 
   # POST /api/agents/:id/files — multipart, one or many `files[]`.
   def create(conn, %{"id" => id} = params) do
@@ -30,6 +31,18 @@ defmodule LoomWeb.AgentFileController do
 
       true ->
         store_all(conn, id, uploads(params))
+    end
+  end
+
+  # GET /api/agents/:id/files/:name — an attachment read back, for the
+  # thumbnail in the bubble that sent it. The same check as a submit: only a
+  # regular file inside this session's own `files/` is served.
+  def show(conn, %{"id" => id, "name" => name}) do
+    with true <- Agent.exists?(id),
+         {:ok, [file]} <- Files.verify(id, [Path.join(Store.files_dir(id), name)]) do
+      send_download(conn, {:file, file.path}, filename: file.name)
+    else
+      _ -> conn |> put_status(:not_found) |> json(%{error: "no such attachment"})
     end
   end
 

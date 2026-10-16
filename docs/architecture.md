@@ -133,6 +133,12 @@ is no base64 and no multimodal content block.
 - **The displayed text is not what the model gets.** The user's text and the
   attachment list are stored separately. Only the copy sent to the backend
   carries the paths.
+- **Files show as small cards**, the same in the composer, in a sent bubble
+  and for a download: an image shows a thumbnail, anything else its extension
+  and name. The thumbnail of an attachment you just added comes from the local
+  copy. Otherwise it is fetched with the token, from
+  `GET /api/agents/:id/files/:name` or the output route, and cached for the
+  page.
 - **A path is a capability.** `Files.verify/2` rejects anything outside this
   session's `files/`, and file names are treated as hostile.
 
@@ -232,4 +238,4 @@ it's CSS".
 - `:question` events (CC `AskUserQuestion`, Codex `requestUserInput`). Today a
   question arrives as plain text.
 - Turns that survive a Loom restart (a Codex daemon mode).
-- Attachment thumbnails, and cleanup of uploads that were removed from the tray.
+- Cleanup of uploads that were removed from the tray.

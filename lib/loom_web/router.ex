@@ -33,6 +33,7 @@ defmodule LoomWeb.Router do
     delete "/agents/:id", AgentSessionController, :delete
 
     post "/agents/:id/files", AgentFileController, :create
+    get "/agents/:id/files/:name", AgentFileController, :show
     get "/agents/:id/output/*path", AgentOutputController, :show
 
     get "/layout", LayoutController, :show
