@@ -1099,3 +1099,10 @@ h3.md-h {
   color: var(--red);
   font-size: 0.846rem;
 }
+
+/* A message's time, quiet enough to read past. */
+.bubble .clock {
+  margin-left: 8px;
+  color: var(--fg-dim);
+  font-size: 0.769rem;
+}

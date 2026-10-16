@@ -99,6 +99,10 @@ defmodule Loom.Agent.Session do
   # open overnight costs nothing.
   @idle_release_ms :timer.minutes(15)
 
+  # What counts as the session being used, for `last_active_at`. Not `:status`:
+  # a restart restores every session, and must not make them all "just now".
+  @activity [:user, :assistant_text, :turn_done]
+
   # ── Public API ──────────────────────────────────────────────────────────
 
   def start_link(opts) do
@@ -188,11 +192,14 @@ defmodule Loom.Agent.Session do
   defp start_fresh(id, opts) do
     with {:ok, backend} <- requested_backend(opts),
          {:ok, logs} <- Store.open_logs(id) do
+      now = System.system_time(:millisecond)
+
       state = %{
         blank_state(id)
         | backend: backend,
           title: Keyword.get(opts, :title),
-          created_at: System.system_time(:millisecond),
+          created_at: now,
+          last_active_at: now,
           logs: logs,
           outputs: outputs(id)
       }
@@ -245,13 +252,16 @@ defmodule Loom.Agent.Session do
          {:ok, logs} <- Store.open_logs(id),
          {:ok, handle} <-
            reattach(backend, id, Map.put(meta, :instructions, Output.instructions(id)), logs) do
+      transcript = Store.read_events(id, @transcript_limit)
+
       state = %{
         blank_state(id)
         | backend: backend,
           handle: handle,
           title: meta[:title],
           created_at: meta[:created_at],
-          transcript: Store.read_events(id, @transcript_limit),
+          last_active_at: last_active(transcript) || meta[:created_at],
+          transcript: transcript,
           seq: meta[:seq] || 0,
           queue: restore_queue(meta[:queue]),
           usage: meta[:usage],
@@ -313,6 +323,9 @@ defmodule Loom.Agent.Session do
       handle: nil,
       title: nil,
       created_at: nil,
+      # When the last message went either way; orders the sidebar. Derived from
+      # the transcript on restore rather than stored.
+      last_active_at: nil,
       status: :idle,
       # Normalized events for clients, newest first.
       transcript: [],
@@ -716,7 +729,26 @@ defmodule Loom.Agent.Session do
     Phoenix.PubSub.broadcast(Loom.PubSub, topic(state.id), {:agent_event, state.id, event})
 
     {transcript, truncated_before} = retain([event | state.transcript], state.truncated_before)
-    %{state | seq: seq, transcript: transcript, truncated_before: truncated_before}
+    state = %{state | seq: seq, transcript: transcript, truncated_before: truncated_before}
+
+    cond do
+      kind not in @activity ->
+        state
+
+      # A message moves the session to the top of the list at once. Turn ends
+      # change the status and are announced by that anyway.
+      kind == :user ->
+        state = %{state | last_active_at: event.at}
+        announce(state)
+        state
+
+      true ->
+        %{state | last_active_at: event.at}
+    end
+  end
+
+  defp last_active(transcript) do
+    Enum.find_value(transcript, fn event -> event.kind in @activity && event.at end)
   end
 
   defp retain(transcript, truncated_before) do
@@ -821,6 +853,7 @@ defmodule Loom.Agent.Session do
       backend_label: Backend.label(state.backend),
       title: state.title,
       created_at: state.created_at,
+      last_active_at: state.last_active_at,
       status: state.status,
       queued: length(state.queue),
       queue: state.queue,

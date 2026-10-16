@@ -559,6 +559,17 @@ defmodule Loom.Agent.SessionTest do
     end
   end
 
+  test "a message makes the session active and is announced at once" do
+    id = new_session()
+    Phoenix.PubSub.subscribe(Loom.PubSub, Agent.lobby_topic())
+    created = Agent.info(id).last_active_at
+    Process.sleep(5)
+
+    Agent.submit(id, "/cron")
+    assert_receive {:agent_summary, %{id: ^id, last_active_at: active}}, 500
+    assert active > created
+  end
+
   describe "/cron" do
     test "lists the scheduled jobs and never reaches the backend" do
       id = new_session()

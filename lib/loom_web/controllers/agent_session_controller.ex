@@ -82,6 +82,7 @@ defmodule LoomWeb.AgentSessionController do
       backend: info.backend,
       backend_label: info.backend_label,
       created_at: info.created_at,
+      last_active_at: info.last_active_at,
       status: info.status,
       queued: info.queued,
       queue: info.queue,

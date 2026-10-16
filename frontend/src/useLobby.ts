@@ -78,9 +78,12 @@ export function useLobby(enabled: boolean): Lobby {
     }
   }, [enabled, upsert, drop])
 
+  // Most recently active first, so the conversation you are in stays on top.
   const sessions = useMemo(
-    () => [...byId.values()].sort((a, b) => a.created_at - b.created_at),
+    () => [...byId.values()].sort((a, b) => lastActive(b) - lastActive(a)),
     [byId],
   )
   return { sessions, loaded, upsert, drop }
 }
+
+export const lastActive = (s: AgentInfo) => s.last_active_at ?? s.created_at

@@ -321,6 +321,7 @@ function Item({
           {item.queued && <span className="tag">queued</span>}
           {item.origin === "phone" && <span className="tag">phone</span>}
           {item.origin === "cron" && <span className="tag">⏰ cron</span>}
+          {item.at && <Clock at={item.at} />}
         </div>
       )
 
@@ -390,6 +391,7 @@ const when = (iso: string | null) =>
         weekday: "short",
         hour: "2-digit",
         minute: "2-digit",
+        hour12: false,
       })
     : "never"
 
@@ -841,8 +843,31 @@ function TurnLine({ item }: { item: Extract<TimelineItem, { kind: "turn" }> }) {
         : `${formatTokens(item.contextTokens)} ctx`,
     )
   }
-  if (parts.length === 0) return null
-  return <div className="turn-line">{parts.join(" · ")}</div>
+  return (
+    <div className="turn-line">
+      <Clock at={item.at} />
+      {parts.map((part) => ` · ${part}`)}
+    </div>
+  )
+}
+
+// A message's time: just the clock today, the date as well before that. The
+// full timestamp is on hover.
+function Clock({ at }: { at: number }) {
+  const date = new Date(at)
+  const today = date.toDateString() === new Date().toDateString()
+  const text = date.toLocaleString(undefined, {
+    ...(today ? {} : { month: "short", day: "numeric" }),
+    ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+  return (
+    <time className="clock" dateTime={date.toISOString()} title={date.toLocaleString()}>
+      {text}
+    </time>
+  )
 }
 
 function StatusPill({ status, queued }: { status: string; queued: number }) {

@@ -130,10 +130,15 @@
   color: var(--fg);
 }
 
+/* Fixed width and right-aligned, so the engine tags after it line up whether
+   the age is "now" or "23h". */
 .session-when {
   flex: 0 0 auto;
+  min-width: 3ch;
+  text-align: right;
   color: var(--fg-dim);
   font-size: 0.846rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .session-del {

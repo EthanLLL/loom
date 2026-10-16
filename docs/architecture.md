@@ -126,7 +126,10 @@ tool card's `block_id`, the same pattern as text.
   ids go into `backend_ref` and are used for dedup on reattach.
 - **Multiple devices.** A client joins with the last `seq` it saw and receives
   only the gap. PubSub does the fan-out. The channel holds no state.
-- **Session list.** It is pushed on the `agents` lobby channel, not polled.
+- **Session list.** It is pushed on the `agents` lobby channel, not polled,
+  and ordered by `last_active_at`: the last user message, reply or turn end.
+  Status events do not count, so a restart does not make every session "now".
+  It is derived from the transcript on restore, not stored.
 
 ## 4. Storage
 

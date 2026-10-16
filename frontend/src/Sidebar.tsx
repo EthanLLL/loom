@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo } from "./api"
+import { lastActive } from "./useLobby"
 
 type Props = {
   sessions: AgentInfo[]
@@ -18,6 +19,14 @@ export function Sidebar({
   onDelete,
   onCollapse,
 }: Props) {
+  // Ages are relative, so they go stale without any new data. A local clock,
+  // not a poll: nothing is fetched.
+  const [, setNow] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [])
+
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
@@ -43,17 +52,22 @@ export function Sidebar({
           >
             <span className={"dot " + s.status} title={s.status} />
             <span className="session-label">{s.title ?? s.id}</span>
-            {/* Which engine is running it is not a detail: the two behave
-                differently and the binding is permanent. */}
-            <span className={"session-backend " + s.backend}>
-              {SHORT[s.backend] ?? s.backend}
-            </span>
             {s.queued > 0 && (
               <span className="session-queued" title="queued messages">
                 {s.queued}
               </span>
             )}
-            <span className="session-when">{when(s.created_at)}</span>
+            <span
+              className="session-when"
+              title={"last active " + new Date(lastActive(s)).toLocaleString()}
+            >
+              {when(lastActive(s))}
+            </span>
+            {/* Which engine is running it is not a detail: the two behave
+                differently and the binding is permanent. */}
+            <span className={"session-backend " + s.backend}>
+              {SHORT[s.backend] ?? s.backend}
+            </span>
             <button
               className="session-del"
               title="Delete session and its history"

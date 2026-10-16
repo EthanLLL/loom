@@ -141,6 +141,9 @@ export type AgentInfo = {
   backend: AgentBackend
   backend_label: string
   created_at: number
+  // The last message either way, as ms since the epoch: what orders the
+  // sidebar and what its age shows. Older servers do not send it.
+  last_active_at?: number
   status: AgentStatus
   queued: number
   // The parked messages themselves, so an interrupted session can show what is

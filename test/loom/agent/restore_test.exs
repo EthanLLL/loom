@@ -322,4 +322,18 @@ defmodule Loom.Agent.RestoreTest do
       assert {:ok, _pid} = Agent.restore_session(id)
     end
   end
+
+  test "last activity is the last message, not the restart" do
+    id = new_session()
+    Agent.submit(id, "hello")
+    BackendStub.await_turn()
+    active = Agent.info(id).last_active_at
+    assert active >= Agent.info(id).created_at
+
+    stop_and_wait(id)
+    Process.sleep(20)
+    {:ok, _} = Agent.restore_session(id)
+
+    assert Agent.info(id).last_active_at == active
+  end
 end

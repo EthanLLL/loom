@@ -322,6 +322,9 @@ export type TimelineItem =
       // received, not in `text` — see `Loom.Agent.Files`.
       files: AgentFile[]
       origin?: string
+      // When the server took it, ms since the epoch. Absent while it is still
+      // our own optimistic bubble.
+      at?: number
       queued: boolean
       pending: boolean
     }
@@ -351,6 +354,7 @@ export type TimelineItem =
   | {
       key: string
       kind: "turn"
+      at: number
       contextTokens: number
       contextWindow: number | null
     }
@@ -381,6 +385,7 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
           text: String(p.text ?? ""),
           files: (p.files as AgentFile[] | undefined) ?? [],
           origin: p.origin as string | undefined,
+          at: event.at,
           queued: p.status === "queued",
           pending: false,
         })
@@ -497,6 +502,7 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
         items.push({
           key,
           kind: "turn",
+          at: event.at,
           contextTokens: Number(p.context_tokens ?? 0),
           contextWindow: (p.context_window as number | null) ?? null,
         })
