@@ -133,6 +133,40 @@
 
 /* ── Timeline ────────────────────────────────────────────────────────── */
 
+/* Holds the scroller and the button floating over its bottom edge, which
+   cannot live inside the scroller without scrolling away with it. */
+.timeline-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.to-bottom {
+  position: absolute;
+  z-index: 2;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--fg);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+  cursor: pointer;
+}
+
+.to-bottom:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
 .timeline {
   flex: 1 1 auto;
   min-height: 0;

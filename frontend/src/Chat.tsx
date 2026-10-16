@@ -155,14 +155,31 @@ function Timeline({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
+  // The ref decides whether to follow; this only drives the button, so a
+  // scroll that does not cross the line re-renders nothing.
+  const [pinned, setPinned] = useState(true)
+  // Set while `toBottom` scrolls. A smooth scroll fires scroll events all the
+  // way down, and judging those by position would unpin it again — and bring
+  // the button straight back — before it lands.
+  const jumpingRef = useRef(false)
 
   // Only follow the output when the user is already at the bottom; scrolling up
   // to read something while the agent streams must not yank them back down.
   const onScroll = () => {
     const el = ref.current
     if (!el) return
-    pinnedRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (jumpingRef.current) {
+      if (!atBottom) return
+      jumpingRef.current = false
+    }
+    pinnedRef.current = atBottom
+    setPinned(atBottom)
+  }
+
+  // The user taking over mid-jump wins.
+  const cancelJump = () => {
+    jumpingRef.current = false
   }
 
   useLayoutEffect(() => {
@@ -170,28 +187,65 @@ function Timeline({
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
   }, [items])
 
+  const toBottom = () => {
+    const el = ref.current
+    if (!el) return
+    // Pinned straight away, not when the smooth scroll lands: output arriving
+    // mid-scroll should be followed, not left behind.
+    pinnedRef.current = true
+    setPinned(true)
+    jumpingRef.current = true
+    // A long transcript is tens of thousands of pixels: smooth all the way it
+    // takes seconds. Cut to a screen above the end, then glide the rest, which
+    // still shows which way it went.
+    const end = el.scrollHeight - el.clientHeight
+    if (end - el.scrollTop > el.clientHeight * 2) el.scrollTop = end - el.clientHeight
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+  }
+
   return (
-    <div className="timeline" ref={ref} onScroll={onScroll}>
-      {/* The scroll container is the outer element and the measure is this
-          one, so prose, tool cards and turn lines all share a single column
-          width — a card spanning the window while the text beside it stopped
-          half way across read as two different layouts. */}
-      <div className="timeline-inner">
-        {truncatedBefore ? (
-          <div className="notice">
-            earlier messages are no longer kept in memory (up to #
-            {truncatedBefore})
-          </div>
-        ) : null}
+    <div className="timeline-wrap">
+      <div
+        className="timeline"
+        ref={ref}
+        onScroll={onScroll}
+        onWheel={cancelJump}
+        onTouchStart={cancelJump}
+      >
+        {/* The scroll container is the outer element and the measure is this
+            one, so prose, tool cards and turn lines all share a single column
+            width — a card spanning the window while the text beside it stopped
+            half way across read as two different layouts. */}
+        <div className="timeline-inner">
+          {truncatedBefore ? (
+            <div className="notice">
+              earlier messages are no longer kept in memory (up to #
+              {truncatedBefore})
+            </div>
+          ) : null}
 
-        {items.length === 0 && (
-          <div className="empty">Send a message to start.</div>
-        )}
+          {items.length === 0 && (
+            <div className="empty">Send a message to start.</div>
+          )}
 
-        {items.map((item) => (
-          <Item key={item.key} item={item} sessionId={sessionId} onAnswer={onAnswer} />
-        ))}
+          {items.map((item) => (
+            <Item key={item.key} item={item} sessionId={sessionId} onAnswer={onAnswer} />
+          ))}
+        </div>
       </div>
+
+      {/* Outside the scroller, so it stays put over the composer instead of
+          scrolling away with the conversation. */}
+      {!pinned && (
+        <button
+          className="to-bottom"
+          onClick={toBottom}
+          title="Jump to the latest"
+          aria-label="Jump to the latest"
+        >
+          <DownIcon />
+        </button>
+      )}
     </div>
   )
 }
@@ -775,6 +829,21 @@ function TerminalIcon() {
     <svg viewBox="0 0 24 24" width="1.15em" height="1.15em" aria-hidden>
       <path
         d="M5 8l4 4-4 4M12 17h7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function DownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" aria-hidden>
+      <path
+        d="M12 5v14M6 13l6 6 6-6"
         fill="none"
         stroke="currentColor"
         strokeWidth="2.2"

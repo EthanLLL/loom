@@ -38,3 +38,20 @@ html {
     font-size: 112.5%; /* 18px */
   }
 }
+
+/* No scrollbars anywhere: sidebar, transcript, tool output, the composer, the
+   terminals. Every one of them scrolls by wheel, trackpad or touch, and a bar
+   only took width and drew a light stripe down a dark UI. The transcript has a
+   jump-to-bottom button for the one thing a bar was good for. */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* xterm 6 draws its own scrollbar out of DOM, not the native one above. */
+.xterm .xterm-scrollable-element > .scrollbar {
+  display: none !important;
+}
