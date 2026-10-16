@@ -209,6 +209,12 @@ defmodule Loom.Agent.Codex.Server do
     %{"clientInfo" => %{"name" => "loom", "version" => version}}
   end
 
+  # Sent on thread/resume as well as thread/start: a resumed thread does not
+  # keep the access it was started with, it falls back to ~/.codex/config.toml
+  # (read-only, no network, for an untrusted cwd like $HOME). Every restart
+  # resumes every session, so leaving these off resume quietly sandboxed them.
+  @access %{"sandbox" => "danger-full-access", "approvalPolicy" => "never"}
+
   @impl GenServer
   def handle_call(:available?, _from, state), do: {:reply, state.port != nil, state}
 
@@ -220,11 +226,8 @@ defmodule Loom.Agent.Codex.Server do
 
   def handle_call({:start_thread, owner, opts}, from, state) do
     params =
-      %{
-        "cwd" => opts[:cwd] || System.user_home!(),
-        "sandbox" => "danger-full-access",
-        "approvalPolicy" => "never"
-      }
+      %{"cwd" => opts[:cwd] || System.user_home!()}
+      |> Map.merge(@access)
       |> maybe_put("developerInstructions", opts[:developer_instructions])
       |> maybe_put("model", opts[:model])
 
@@ -234,6 +237,7 @@ defmodule Loom.Agent.Codex.Server do
   def handle_call({:resume_thread, owner, thread_id, opts}, from, state) do
     params =
       %{"threadId" => thread_id, "excludeTurns" => true}
+      |> Map.merge(@access)
       |> maybe_put("developerInstructions", opts[:developer_instructions])
 
     {:noreply,
@@ -437,7 +441,7 @@ defmodule Loom.Agent.Codex.Server do
       Logger.warning("Codex.Server: clearing stale writer lock for #{thread_id}")
       release_lock(state, thread_id)
 
-      params = %{"threadId" => thread_id, "excludeTurns" => true}
+      params = Map.merge(%{"threadId" => thread_id, "excludeTurns" => true}, @access)
       send_request(state, "thread/resume", params, {:claim_retry, from, owner, thread_id})
     else
       GenServer.reply(from, {:error, reason})
