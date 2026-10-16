@@ -112,26 +112,33 @@ function App() {
       return
     }
 
-    if (ptyIds.length === 0) {
-      // Guarded against a double click: `ptyIds` is still empty for the second
-      // call, which would spawn a second shell nobody asked for.
-      if (openingTerminal.current) return
-      openingTerminal.current = true
+    // Guarded against a double click: the second call would see no shells
+    // yet and spawn one nobody asked for.
+    if (openingTerminal.current) return
+    openingTerminal.current = true
 
-      try {
-        // Adopt whatever shells are already running before starting another,
-        // so a page reload reattaches instead of piling up PTYs.
-        const existing = await listSessions().catch(() => [])
-        const ids =
-          existing.length > 0
-            ? [...existing]
-                .sort((a, b) => a.created_at - b.created_at)
-                .map((s) => s.id)
-            : [(await createSession("terminal")).id]
-        setPtyIds(ids)
-      } finally {
-        openingTerminal.current = false
+    try {
+      // Ask the server every time rather than trusting what this page last
+      // saw: a shell may have been opened on another device, or have exited
+      // while the column was hidden. Shells already on screen keep their
+      // places; new ones go after them, oldest first. Only when nothing is
+      // running is a new one started.
+      const live = await listSessions().catch(() => null)
+      if (live === null) {
+        if (ptyIds.length === 0) return
+      } else if (live.length === 0) {
+        setPtyIds([(await createSession("terminal")).id])
+      } else {
+        const alive = new Set(live.map((s) => s.id))
+        const kept = ptyIds.filter((id) => alive.has(id))
+        const added = [...live]
+          .sort((a, b) => a.created_at - b.created_at)
+          .map((s) => s.id)
+          .filter((id) => !kept.includes(id))
+        setPtyIds([...kept, ...added])
       }
+    } finally {
+      openingTerminal.current = false
     }
 
     setTerminalOpen(true)
@@ -246,8 +253,19 @@ function App() {
                     terminal {index + 1}
                   </span>
                   <span className="pane-actions">
-                    {/* On every pane rather than once, so it does not move
-                        around as terminals are closed. */}
+                    {/* On every pane rather than once, so they do not move
+                        around as terminals are closed. Hiding leaves the
+                        shells running; the header's toggle brings them back.
+                        A phone has its back arrow for that instead. */}
+                    {!narrow && (
+                      <button
+                        className="pane-btn"
+                        onClick={() => setTerminalOpen(false)}
+                        title="Hide terminals (they keep running)"
+                      >
+                        −
+                      </button>
+                    )}
                     <button
                       className="pane-btn"
                       onClick={addTerminal}
