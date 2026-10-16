@@ -2,7 +2,7 @@
 
 Loom hands the agent itself to these two CLIs. Everything below was measured,
 not read from docs. Measured with Claude Code 2.1.296 and Codex 0.162.1, on
-2026-10-14. Loom's own structure is in [architecture.md](architecture.md).
+2026-10-14, on a macOS arm64 laptop unless noted. Loom's own structure is in [architecture.md](architecture.md).
 
 ## 1. Why not our own loop
 
@@ -124,11 +124,21 @@ That is why `events.jsonl` is only the display truth.
 
 ### 6.6 CC flags
 
-- `--setting-sources user` keeps user MCP servers and ignores stray project
-  settings.
-- `--strict-mcp-config` drops every MCP server.
-- `--bare` drops CC's own system prompt.
-- `-p "<prompt>"` waits 3 s on stdin. Use `--input-format stream-json`.
+Used: `--setting-sources user`. It keeps the user's settings and MCP servers
+and ignores any `.claude/settings.local.json` lying around under `$HOME`. With
+`--setting-sources ""` the MCP servers are gone too. The prompt cost depends on
+the user's MCP setup: on this server (one MCP server, deferred tools) it is
+15.7K vs 15.5K tokens; on a Mac with 67 MCP tools it was 31K vs 15.5K. Either
+way it is a cached read after the first turn.
+
+Tried and rejected (the first two are tempting because they shrink the prompt):
+
+- `--strict-mcp-config` would drop every MCP server, and MCP is the only
+  extension point.
+- `--bare` would drop CC's own system prompt and leave only Bash, Edit and
+  Read. That system prompt is the reason Loom uses CC at all.
+- `-p "<prompt>"` would wait 3 s on stdin and put user text on the command
+  line. The prompt goes over stdin with `--input-format stream-json` instead.
 
 ### 6.7 Codex history
 
