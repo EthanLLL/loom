@@ -324,6 +324,9 @@ export type TimelineItem =
       result: ToolResult | null
     }
   | { key: string; kind: "question"; question: string; options: string[] }
+  // A finished stretch of tool calls folded into one card; see `foldFinished`.
+  // `steps` are the tool cards and any thinking with words in it, in order.
+  | { key: string; kind: "tools"; steps: TimelineItem[]; tools: number; failed: number }
   // What a turn left in the output directory, offered for download. `more`
   // counts files past the server's cap.
   | { key: string; kind: "outputs"; files: OutputFile[]; more: number }
@@ -522,6 +525,68 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
   }
 
   return items
+}
+
+/**
+ * Fold every finished stretch of tool calls into one card.
+ *
+ * While a turn runs, each call is its own card, because watching them land is
+ * how you know it is not stuck. Once the turn is over they are history: ten
+ * cards of `cat` and `grep` push the answer off the screen, and the answer is
+ * what you came back for. So a stretch of consecutive tools and thinking —
+ * between the user's message, the replies, the turn's end — becomes one
+ * "used N tools" card that opens to the same cards as before. Stretches, not
+ * whole turns: a reply written between two batches of calls stays where it
+ * was written.
+ *
+ * Thinking with no words in it ("thought for a moment") says nothing once the
+ * turn is over and is dropped; thinking that has words goes inside the card.
+ *
+ * "Finished" is everything up to the last turn ending (its context line, an
+ * error, a stop notice) while the agent is busy, and everything when it is not.
+ */
+export function foldFinished(items: TimelineItem[], busy: boolean): TimelineItem[] {
+  let live = items.length
+  if (busy) {
+    live = 0
+    items.forEach((item, i) => {
+      if (item.kind === "turn" || item.kind === "error" || item.kind === "notice") live = i + 1
+    })
+  }
+
+  const out: TimelineItem[] = []
+  let run: TimelineItem[] = []
+
+  const flush = () => {
+    const tools = run.filter((s) => s.kind === "tool")
+    if (tools.length > 0) {
+      out.push({
+        key: `g${run[0].key}`,
+        kind: "tools",
+        steps: run,
+        tools: tools.length,
+        failed: tools.filter((s) => s.kind === "tool" && s.result?.ok === false).length,
+      })
+    } else {
+      // Thinking on its own, with no tools to sit under, stays as it was.
+      out.push(...run)
+    }
+    run = []
+  }
+
+  items.slice(0, live).forEach((item) => {
+    if (item.kind === "tool") {
+      run.push(item)
+    } else if (item.kind === "thinking") {
+      if (item.text.trim() !== "") run.push(item)
+    } else {
+      flush()
+      out.push(item)
+    }
+  })
+  flush()
+
+  return out.concat(items.slice(live))
 }
 
 function streamFor(t: Transcript, blockId: string): string {

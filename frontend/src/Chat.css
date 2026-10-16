@@ -341,6 +341,20 @@ pre.code {
   color: var(--red);
 }
 
+/* A failure inside a folded group shows on the head rather than the border:
+   one bad `grep` out of twelve is not the whole card failing. */
+.tool.group .tool-state.bad {
+  color: var(--red);
+}
+
+.group-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+}
+
 .tool-input,
 .tool-output {
   margin: 0;

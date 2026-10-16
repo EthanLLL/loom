@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
-import { buildTimeline, isBusy, type TimelineItem } from "./agent"
+import { buildTimeline, foldFinished, isBusy, type TimelineItem } from "./agent"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
 import {
@@ -30,8 +30,8 @@ export function Chat({
 }: Props) {
   const { transcript, joinError, submit, interrupt, dropQueued, rename } =
     useAgent(session.id)
-  const items = buildTimeline(transcript)
   const busy = isBusy(transcript)
+  const items = foldFinished(buildTimeline(transcript), busy)
 
   const attachments = useAttachments(session.id)
   // Dropping is accepted anywhere in the conversation, not just on the
@@ -288,6 +288,9 @@ function Item({
 
     case "tool":
       return <ToolCard item={item} />
+
+    case "tools":
+      return <ToolGroup item={item} sessionId={sessionId} onAnswer={onAnswer} />
 
     case "question":
       return (
@@ -567,6 +570,45 @@ function ToolCard({
         >
           {output}
         </pre>
+      )}
+    </div>
+  )
+}
+
+/** A finished stretch of tool calls, folded; see `foldFinished`. */
+function ToolGroup({
+  item,
+  sessionId,
+  onAnswer,
+}: {
+  item: Extract<TimelineItem, { kind: "tools" }>
+  sessionId: string
+  onAnswer: (text: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  // Which tools, in the order first used: "Bash, Read" says more than a count.
+  const names = [
+    ...new Set(item.steps.flatMap((s) => (s.kind === "tool" ? [s.name] : []))),
+  ]
+
+  return (
+    <div className={"tool group" + (open ? " open" : "")}>
+      <div className="tool-head" onClick={() => setOpen((v) => !v)}>
+        <span className="tool-name">
+          used {item.tools} tool{item.tools === 1 ? "" : "s"}
+        </span>
+        <span className="tool-summary">{names.join(", ")}</span>
+        <span className={"tool-state" + (item.failed > 0 ? " bad" : "")}>
+          {item.failed > 0 ? `${item.failed} ✕` : "✓"} {open ? "▾" : "▸"}
+        </span>
+      </div>
+
+      {open && (
+        <div className="group-steps">
+          {item.steps.map((step) => (
+            <Item key={step.key} item={step} sessionId={sessionId} onAnswer={onAnswer} />
+          ))}
+        </div>
       )}
     </div>
   )
