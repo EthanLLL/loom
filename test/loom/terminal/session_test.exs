@@ -52,7 +52,8 @@ defmodule Loom.Terminal.SessionTest do
     end
   end
 
-  defp size_check(id, {pid, _}), do: Terminal.send_input(id, pid, "echo SIZE=$(tput cols)x$(tput lines)\n")
+  defp size_check(id, {pid, _}),
+    do: Terminal.send_input(id, pid, "echo SIZE=$(tput cols)x$(tput lines)\n")
 
   test "every attached client sees the output, whoever typed", %{id: id} do
     {a, ta} = client(id, {80, 24})
