@@ -509,6 +509,56 @@ defmodule Loom.Agent.SessionTest do
     end
   end
 
+  describe "/reload" do
+    # Loom's own command: every backend lets its process go so changed config
+    # (settings, MCP servers, skills) is read on the next turn.
+
+    test "is answered by loom and never reaches the backend" do
+      id = new_session()
+
+      assert {:ok, :reloaded} = Agent.submit(id, " /reload ")
+      BackendStub.refute_turn()
+      assert_receive :stub_released, 500
+
+      {:ok, snapshot} = Agent.attach(id, 0)
+      kinds = Enum.map(snapshot.events, & &1.kind)
+      # The bubble is confirmed like any message's, then loom says what it did.
+      assert [:user, :reload_requested] = kinds
+      assert Agent.info(id).status == :idle
+    end
+
+    test "reaches every session, not just the one it was typed in" do
+      a = new_session()
+      _b = new_session()
+
+      Agent.submit(a, "/reload")
+      assert_receive :stub_released, 500
+      assert_receive :stub_released, 500
+    end
+
+    test "a session mid-turn lets go only when its turn ends" do
+      busy = new_session()
+      Agent.submit(busy, "long job")
+      BackendStub.await_turn()
+
+      other = new_session()
+      Agent.submit(other, "/reload")
+      # `other` is idle and goes now; `busy` must not have its process killed.
+      assert_receive :stub_released, 500
+      refute_receive :stub_released, 200
+      BackendStub.refute_steer()
+
+      finish_turn(busy)
+      assert_receive :stub_released, 500
+    end
+
+    test "only the whole message counts" do
+      id = new_session()
+      assert {:ok, :started} = Agent.submit(id, "please /reload when you can")
+      assert BackendStub.await_turn() == "please /reload when you can"
+    end
+  end
+
   describe "usage" do
     test "comes from the backend's own report, latest wins" do
       # Context is a size, not a running total: each turn replaces it rather
@@ -569,6 +619,7 @@ defmodule Loom.Agent.SessionTest do
       assert_receive {:agent_event, ^id, %{kind: :queue, payload: %{queued: 1}}}, 500
     end
   end
+
   describe "output files" do
     # What the agent left for the user is announced once per turn, from the
     # directory itself rather than from what the model said. See
@@ -608,6 +659,7 @@ defmodule Loom.Agent.SessionTest do
 
       {:ok, snapshot} = Agent.attach(id, 0)
       kinds = Enum.map(snapshot.events, & &1.kind)
+
       assert Enum.find_index(kinds, &(&1 == :output_files)) <
                Enum.find_index(kinds, &(&1 == :turn_done))
     end

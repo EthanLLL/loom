@@ -136,6 +136,10 @@ defmodule Loom.Agent.Backend.Codex do
       {:ok, turn_id} ->
         {:ok, %{handle | turn_id: turn_id, aborted?: false, tools: %{}}}
 
+      # The app-server restarted before `{:codex_reloaded, _}` reached us.
+      {:error, :not_attached} ->
+        run_turn(%{handle | stale?: true}, text)
+
       {:error, reason} ->
         {:error, describe_error(reason)}
     end
@@ -146,6 +150,7 @@ defmodule Loom.Agent.Backend.Codex do
   defp compact(handle) do
     case Server.compact(handle.thread_id) do
       {:ok, _} -> {:ok, %{handle | turn_id: nil, aborted?: false, tools: %{}}}
+      {:error, :not_attached} -> run_turn(%{handle | stale?: true}, "/compact")
       {:error, reason} -> {:error, describe_error(reason)}
     end
   end
@@ -231,6 +236,12 @@ defmodule Loom.Agent.Backend.Codex do
   def decode(%{thread_id: thread_id} = handle, {:codex_down, thread_id}) do
     {:ok, %{handle | turn_id: nil, stale?: true},
      [{:event, :turn_failed, %{reason: "the codex app-server restarted mid-turn"}}]}
+  end
+
+  # Restarted on purpose, with no turn running (`Server.reload/0`): nothing to
+  # report, just reattach before the next turn.
+  def decode(%{thread_id: thread_id} = handle, {:codex_reloaded, thread_id}) do
+    {:ok, %{handle | stale?: true}, []}
   end
 
   def decode(_handle, _message), do: :ignore

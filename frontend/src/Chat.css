@@ -514,6 +514,52 @@ pre.code {
   background: var(--bg-card);
 }
 
+/* Slash commands, offered while the first word starting with / is typed. */
+.composer-box {
+  position: relative;
+}
+
+.command-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--bg-card);
+  z-index: 2;
+}
+
+.command-menu li {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.6rem;
+  cursor: pointer;
+  font-family: var(--mono);
+}
+
+.command-menu li.on {
+  background: var(--bg-raised);
+}
+
+.command-menu .name {
+  color: var(--accent);
+}
+
+.command-menu .hint {
+  min-width: 0;
+  color: var(--fg-dim);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .composer-box:focus-within {
   border-color: var(--blue);
 }

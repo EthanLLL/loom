@@ -75,6 +75,24 @@ defmodule Loom.Agent do
   """
   def list_persisted, do: Loom.Agent.Store.list_metas()
 
+  @doc """
+  Make both backends pick up changed config — settings, MCP servers, skills —
+  without restarting loom. What `/reload` does, from any session.
+
+  Every session is told to let its backend process go (now if idle, after its
+  turn if not), which is what Claude Code needs: the next turn starts a fresh
+  `claude --resume`. Codex has one shared app-server, which restarts itself once
+  no codex turn is running. Fire and forget: nothing waits on either.
+  """
+  def reload_backends do
+    for {_, pid, _, _} <- DynamicSupervisor.which_children(Loom.Agent.SessionSupervisor),
+        is_pid(pid),
+        do: send(pid, :reload_backend)
+
+    Loom.Agent.Codex.Server.reload()
+    :ok
+  end
+
   defdelegate submit(id, text, opts \\ []), to: Session
   defdelegate interrupt(id), to: Session
   defdelegate drop_queued(id, index), to: Session

@@ -40,6 +40,10 @@ defmodule Loom.Agent.Session do
   conversation is unaffected — it lives in the backend's own store — the next
   turn just pays the cold start again. For Codex this is a no-op.
 
+  `/reload` (`Loom.Agent.reload_backends/0`) lets every session's backend go at
+  once instead of on the timer, so changed config is read on the next turn. A
+  session that is mid-turn sets `reload_after_turn` and lets go when it ends.
+
   To continue, the user types. That submission merges with whatever was parked,
   so there is no resume button, no "continue or discard" prompt, and no second
   code path — recovery *is* an ordinary submit.
@@ -330,6 +334,8 @@ defmodule Loom.Agent.Session do
       turns: 0,
       # Timer that releases the warm backend process once nothing is happening.
       release_timer: nil,
+      # `/reload` arrived mid-turn: let the backend go as soon as the turn ends.
+      reload_after_turn: false,
       # The output directory as of the last turn's end. See `Loom.Agent.Output`.
       outputs: %{}
     }
@@ -351,10 +357,10 @@ defmodule Loom.Agent.Session do
       {:ok, files} ->
         # An attachment on its own is a message. Dragging in a screenshot and
         # pressing send, with nothing typed, is a normal way to ask about it.
-        if String.trim(text) == "" and files == [] do
-          {:reply, {:error, :empty}, state}
-        else
-          accept(state, text, files, opts)
+        cond do
+          String.trim(text) == "" and files == [] -> {:reply, {:error, :empty}, state}
+          reload?(text) and files == [] -> reload(state, text, opts)
+          true -> accept(state, text, files, opts)
         end
     end
   end
@@ -428,8 +434,16 @@ defmodule Loom.Agent.Session do
   end
 
   def handle_info(:release_backend, state) do
-    {:ok, handle} = Backend.impl(state.backend).release(state.handle)
-    {:noreply, %{state | handle: handle, release_timer: nil}}
+    {:noreply, release_backend(state)}
+  end
+
+  def handle_info(:reload_backend, %{status: status} = state)
+      when status in [:starting, :running] do
+    {:noreply, %{state | reload_after_turn: true}}
+  end
+
+  def handle_info(:reload_backend, state) do
+    {:noreply, release_backend(state)}
   end
 
   def handle_info({:EXIT, _from, _reason}, state), do: {:noreply, state}
@@ -468,6 +482,30 @@ defmodule Loom.Agent.Session do
   defp settled_status(_state), do: :idle
 
   # ── The turn ────────────────────────────────────────────────────────────
+
+  # Loom's own command, never sent to a backend. Only the whole message counts,
+  # so a sentence that mentions /reload is still a sentence.
+  defp reload?(text), do: String.trim(text) == "/reload"
+
+  # Shown like any message (the client is waiting for its `:user` event to
+  # replace the optimistic bubble), then answered by loom itself. The backend
+  # never sees it, so the turn state and the queue are untouched.
+  defp reload(state, text, opts) do
+    Loom.Agent.reload_backends()
+
+    state =
+      state
+      |> emit(:user, %{
+        text: text,
+        files: [],
+        origin: Keyword.get(opts, :origin, "unknown"),
+        client_msg_id: Keyword.get(opts, :client_msg_id),
+        status: :sent
+      })
+      |> emit(:reload_requested, %{})
+
+    {:reply, {:ok, :reloaded}, state}
+  end
 
   # A submitted message, once its attachments have been vouched for.
   defp accept(state, text, files, opts) do
@@ -621,6 +659,16 @@ defmodule Loom.Agent.Session do
     Process.cancel_timer(state.release_timer)
     %{state | release_timer: nil}
   end
+
+  defp release_backend(%{handle: nil} = state), do: %{state | reload_after_turn: false}
+
+  defp release_backend(state) do
+    state = cancel_release(state)
+    {:ok, handle} = Backend.impl(state.backend).release(state.handle)
+    %{state | handle: handle, reload_after_turn: false}
+  end
+
+  defp schedule_release(%{reload_after_turn: true} = state), do: release_backend(state)
 
   defp schedule_release(state) do
     state = cancel_release(state)

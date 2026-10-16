@@ -172,6 +172,21 @@ A resumed thread falls back to `~/.codex/config.toml`. For an untrusted cwd like
 session, so `sandbox` and `approvalPolicy` must be sent on `thread/resume` too,
 not only on `thread/start`.
 
+### 6.11 Reloading Codex config
+
+The app-server reads `config.toml`, skills and MCP servers when it starts and
+when a thread is created. An existing thread does not see a change, and
+`config/mcpServer/reload` covers MCP servers only. So `Server.reload/0` restarts
+the whole process once no turn is in flight. A thread counts as in flight from
+the moment `turn/start` or `thread/compact/start` is sent until
+`turn/completed`.
+
+Calls that arrive while the old process exits wait for the new one. A turn on a
+thread the new server has not seen gets `:not_attached`, and the backend resumes
+the thread and retries. Measured: a reload requested mid-turn waited for the
+turn (`sleep 6` finished), and the restart took about 10 ms. The same thread
+then used an MCP server added meanwhile.
+
 ## 7. Not done: permission prompts
 
 Codex has proper approval requests. CC auto-denies under

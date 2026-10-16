@@ -48,6 +48,14 @@ defmodule Loom.Agent.Backend.CodexTest do
       assert Codex.decode(handle(), {:codex, "some-other-thread", message}) == :ignore
     end
 
+    test "a deliberate restart only marks the thread for reattaching" do
+      # Sent by `Server.reload/0`, which restarts only with no turn running:
+      # unlike `:codex_down`, there is no failed turn to report.
+      assert {:ok, handle, []} = Codex.decode(handle(), {:codex_reloaded, @thread})
+      assert handle.stale?
+      assert Codex.decode(handle(), {:codex_reloaded, "some-other-thread"}) == :ignore
+    end
+
     test "unrelated process messages fall through" do
       assert Codex.decode(handle(), :timeout) == :ignore
       assert Codex.decode(handle(), {:port, {:data, "x"}}) == :ignore

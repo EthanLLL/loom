@@ -68,6 +68,18 @@ node, and resending it would show the model the message twice. So the session
 comes back `:interrupted`, with its queue kept and a status event explaining
 why.
 
+### 2.4 `/reload`
+
+Loom's own command; it never reaches a backend. Typed in any session, it tells
+every session to let its backend process go: right away if idle, at the end of
+the turn if not. The next Claude Code turn is then a fresh `claude --resume`
+that reads the new settings, MCP servers and skills. Codex has one shared
+app-server, which restarts itself as soon as no Codex turn is running. Its
+threads are reattached silently on their next turn
+([backends.md §6.11](backends.md)). Only a message that is exactly `/reload`
+counts. The composer suggests `/compact` and `/reload` when the first character
+is `/`.
+
 ## 3. Client protocol
 
 ```

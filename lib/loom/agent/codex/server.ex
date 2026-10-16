@@ -39,6 +39,17 @@ defmodule Loom.Agent.Codex.Server do
   forever for a turn that nobody is running any more — and the locks are cleared
   before the next attach.
 
+  ## Reloading
+
+  The app-server reads `config.toml`, skills and MCP servers once, so a config
+  change needs a new process. `reload/0` asks for one and the restart happens
+  the moment no thread has a turn in flight (`running`, filled when a turn is
+  requested rather than when `turn/started` arrives, so a turn just sent cannot
+  be cut off). Calls arriving while the old process exits wait in `deferred` and
+  run against the new one. Owners are sent `{:codex_reloaded, thread_id}`, not
+  `:codex_down`: nothing was lost, and they reattach before their next turn.
+  `config/mcpServer/reload` exists but covers only MCP servers.
+
   ## Why it does not hold session state
 
   Only `threads` (thread id to the session pid that owns it) lives here, and only
@@ -112,8 +123,14 @@ defmodule Loom.Agent.Codex.Server do
   ordinary turn (`turn/started` … `turn/completed`) on the thread.
   """
   def compact(thread_id) do
-    GenServer.call(__MODULE__, {:request, "thread/compact/start", %{"threadId" => thread_id}})
+    GenServer.call(__MODULE__, {:compact, thread_id}, @call_timeout)
   end
+
+  @doc """
+  Restart the app-server once no turn is running, so it rereads its config.
+  Fire and forget; see "Reloading" above.
+  """
+  def reload, do: GenServer.cast(__MODULE__, :reload)
 
   @doc "Abort a running turn."
   def interrupt(thread_id, turn_id) do
@@ -143,6 +160,12 @@ defmodule Loom.Agent.Codex.Server do
       buffer: "",
       codex_home: nil,
       backoff: 0,
+      # Threads with a turn in flight, and the reload bookkeeping that waits on
+      # them. See "Reloading" in the moduledoc.
+      running: MapSet.new(),
+      reload?: false,
+      reloading?: false,
+      deferred: [],
       exe: opts[:exe] || Application.get_env(:loom, Loom.Agent, [])[:codex_cli] || "codex"
     }
 
@@ -218,6 +241,11 @@ defmodule Loom.Agent.Codex.Server do
   @impl GenServer
   def handle_call(:available?, _from, state), do: {:reply, state.port != nil, state}
 
+  # The old app-server is on its way out for a reload; answer from the new one.
+  def handle_call(request, from, %{reloading?: true} = state) do
+    {:noreply, %{state | deferred: [{request, from} | state.deferred]}}
+  end
+
   # Nothing can be sent while the app-server is down or being respawned. Saying
   # so immediately beats writing to a dead port or letting the caller time out.
   def handle_call(_request, _from, %{port: nil} = state) do
@@ -244,6 +272,27 @@ defmodule Loom.Agent.Codex.Server do
      send_request(state, "thread/resume", params, {:claim_resume, from, owner, thread_id})}
   end
 
+  # Not claimed here: the app-server was restarted since this thread was
+  # attached. The backend reattaches and tries again.
+  def handle_call({:start_turn, thread_id, _text, _opts}, _from, state)
+      when not is_map_key(state.threads, thread_id) do
+    {:reply, {:error, :not_attached}, state}
+  end
+
+  def handle_call({:compact, thread_id}, _from, state)
+      when not is_map_key(state.threads, thread_id) do
+    {:reply, {:error, :not_attached}, state}
+  end
+
+  def handle_call({:compact, thread_id}, from, state) do
+    params = %{"threadId" => thread_id}
+
+    {:noreply,
+     state
+     |> send_request("thread/compact/start", params, {:turn, from, thread_id})
+     |> mark_running(thread_id)}
+  end
+
   def handle_call({:start_turn, thread_id, text, opts}, from, state) do
     params =
       %{
@@ -253,7 +302,10 @@ defmodule Loom.Agent.Codex.Server do
       |> maybe_put("model", opts[:model])
       |> maybe_put("effort", opts[:effort])
 
-    {:noreply, send_request(state, "turn/start", params, {:turn, from})}
+    {:noreply,
+     state
+     |> send_request("turn/start", params, {:turn, from, thread_id})
+     |> mark_running(thread_id)}
   end
 
   def handle_call({:steer, thread_id, turn_id, text}, from, state) do
@@ -280,10 +332,30 @@ defmodule Loom.Agent.Codex.Server do
     {:noreply, forget_thread(state, thread_id)}
   end
 
+  def handle_cast(:reload, state) do
+    {:noreply, maybe_reload(%{state | reload?: true})}
+  end
+
   @impl GenServer
   def handle_info({port, {:data, chunk}}, %{port: port} = state) do
     {lines, buffer} = Jsonl.split(state.buffer <> chunk)
-    {:noreply, Enum.reduce(lines, %{state | buffer: buffer}, &handle_line/2)}
+    state = Enum.reduce(lines, %{state | buffer: buffer}, &handle_line/2)
+    # A turn that just completed may have been the last thing a reload waited on.
+    {:noreply, maybe_reload(state)}
+  end
+
+  def handle_info({port, {:exit_status, _status}}, %{port: port, reloading?: true} = state) do
+    Logger.info("Codex.Server: app-server stopped for a reload; starting a new one")
+
+    for {_id, tag} <- state.pending, do: fail(tag, :server_down)
+
+    for {thread_id, owner} <- state.threads do
+      release_lock(state, thread_id)
+      send(owner, {:codex_reloaded, thread_id})
+    end
+
+    state = forget_all(state)
+    {:noreply, state |> Map.put(:reloading?, false) |> boot() |> replay_deferred()}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
@@ -300,9 +372,7 @@ defmodule Loom.Agent.Codex.Server do
       send(owner, {:codex_down, thread_id})
     end
 
-    for {_owner, ref} <- state.monitors, do: Process.demonitor(ref, [:flush])
-
-    state = %{state | pending: %{}, threads: %{}, monitors: %{}, buffer: ""}
+    state = forget_all(state)
     {:noreply, schedule_retry(state)}
   end
 
@@ -378,7 +448,7 @@ defmodule Loom.Agent.Codex.Server do
   # Used when the app-server dies: every pending caller gets the same answer
   # regardless of what it was waiting for.
   defp fail({:reply, from}, reason), do: GenServer.reply(from, {:error, reason})
-  defp fail({:turn, from}, reason), do: GenServer.reply(from, {:error, reason})
+  defp fail({:turn, from, _thread_id}, reason), do: GenServer.reply(from, {:error, reason})
   defp fail({:claim, from, _owner}, reason), do: GenServer.reply(from, {:error, reason})
 
   defp fail({:claim_resume, from, _owner, _id}, reason),
@@ -405,14 +475,15 @@ defmodule Loom.Agent.Codex.Server do
     state
   end
 
-  defp resolve({:turn, from}, {:ok, result}, state) do
+  defp resolve({:turn, from, _thread_id}, {:ok, result}, state) do
     GenServer.reply(from, {:ok, get_in(result, ["turn", "id"])})
     state
   end
 
-  defp resolve({:turn, from}, {:error, error}, state) do
+  # Refused, so no `turn/completed` will ever clear it.
+  defp resolve({:turn, from, thread_id}, {:error, error}, state) do
     GenServer.reply(from, {:error, message_of(error)})
-    state
+    %{state | running: MapSet.delete(state.running, thread_id)}
   end
 
   defp resolve({:claim, from, owner}, {:ok, result}, state) do
@@ -483,6 +554,7 @@ defmodule Loom.Agent.Codex.Server do
   end
 
   defp forget_thread(state, thread_id) do
+    state = %{state | running: MapSet.delete(state.running, thread_id)}
     {owner, threads} = Map.pop(state.threads, thread_id)
     release_lock(state, thread_id)
 
@@ -507,10 +579,66 @@ defmodule Loom.Agent.Codex.Server do
       :error -> :ok
     end
 
-    state
+    if message["method"] == "turn/completed",
+      do: %{state | running: MapSet.delete(state.running, thread_id)},
+      else: state
   end
 
   defp route(_message, state), do: state
+
+  # ── Reload ────────────────────────────────────────────────────────────────
+
+  defp mark_running(state, thread_id),
+    do: %{state | running: MapSet.put(state.running, thread_id)}
+
+  # The new app-server knows nothing of the old one's threads or requests.
+  defp forget_all(state) do
+    for {_owner, ref} <- state.monitors, do: Process.demonitor(ref, [:flush])
+
+    %{state | pending: %{}, threads: %{}, monitors: %{}, buffer: "", running: MapSet.new()}
+  end
+
+  # Nothing to restart: the next boot reads the config fresh anyway.
+  defp maybe_reload(%{reload?: true, port: nil} = state), do: %{state | reload?: false}
+
+  defp maybe_reload(%{reload?: true, reloading?: false} = state) do
+    if MapSet.size(state.running) == 0 and map_size(state.pending) == 0 do
+      stop_for_reload(state)
+    else
+      state
+    end
+  end
+
+  defp maybe_reload(state), do: state
+
+  # SIGTERM, then wait for `exit_status`: booting the new process before the old
+  # one has let go of its writer locks would only get the next resume refused.
+  defp stop_for_reload(state) do
+    case Port.info(state.port, :os_pid) do
+      {:os_pid, os_pid} ->
+        Logger.info("Codex.Server: no turn running; restarting the app-server to reload")
+        System.cmd("kill", ["-TERM", Integer.to_string(os_pid)])
+        %{state | reload?: false, reloading?: true}
+
+      nil ->
+        %{state | reload?: false}
+    end
+  end
+
+  defp replay_deferred(state) do
+    {deferred, state} = {Enum.reverse(state.deferred), %{state | deferred: []}}
+
+    Enum.reduce(deferred, state, fn {request, from}, acc ->
+      case handle_call(request, from, acc) do
+        {:reply, reply, acc} ->
+          GenServer.reply(from, reply)
+          acc
+
+        {:noreply, acc} ->
+          acc
+      end
+    end)
+  end
 
   # ── Writer locks ──────────────────────────────────────────────────────────
 

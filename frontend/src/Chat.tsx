@@ -650,6 +650,20 @@ const STATUS_LABELS: Record<string, string> = {
 
 // ── Composer ───────────────────────────────────────────────────────────────
 
+// What a message can be instead of a prompt. `/compact` goes to the backend
+// (Codex's adapter turns it into an RPC); `/reload` is loom's own.
+const COMMANDS = [
+  { name: "/compact", hint: "summarize the conversation to free up context" },
+  { name: "/reload", hint: "reload Claude Code and Codex config: settings, MCP, skills" },
+]
+
+// Only a message that *starts* with `/` is a command, and only while the first
+// word is still being typed: a `/` later on is just text.
+function commandMatches(text: string) {
+  if (!text.startsWith("/") || /\s/.test(text)) return []
+  return COMMANDS.filter((c) => c.name.startsWith(text))
+}
+
 function Composer({
   busy,
   interrupted,
@@ -669,6 +683,17 @@ function Composer({
   // True between compositionstart and compositionend. Needed in addition to
   // `isComposing` because the two disagree across browsers — see below.
   const composingRef = useRef(false)
+
+  // The command menu: open while the text could still become a command, until
+  // Escape dismisses it (typing anything brings it back).
+  const [pick, setPick] = useState(0)
+  const [dismissed, setDismissed] = useState<string | null>(null)
+  const matches = dismissed === text ? [] : commandMatches(text)
+  const selected = matches[Math.min(pick, matches.length - 1)]
+  const complete = (name: string) => {
+    setText(name)
+    ref.current?.focus()
+  }
 
   // One line with the buttons beside it until the text needs more; then the
   // text gets the full width and the buttons drop to a row underneath.
@@ -736,6 +761,26 @@ function Composer({
       )}
 
       <div className={"composer-box" + (multiline ? " multiline" : "")}>
+        {selected && (
+          <ul className="command-menu" role="listbox">
+            {matches.map((c) => (
+              <li
+                key={c.name}
+                role="option"
+                aria-selected={c === selected}
+                className={c === selected ? "on" : ""}
+                // mousedown, not click: the textarea must keep focus.
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  complete(c.name)
+                }}
+              >
+                <span className="name">{c.name}</span>
+                <span className="hint">{c.hint}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         <input
           ref={picker}
           className="composer-file"
@@ -767,7 +812,11 @@ function Composer({
                 ? "Stopped — type to continue"
                 : "Message the agent…"
           }
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            setPick(0)
+            setDismissed(null)
+          }}
           // A pasted screenshot is the commonest attachment there is, and it
           // never exists as a file on disk to pick.
           onPaste={(e) => {
@@ -783,6 +832,27 @@ function Composer({
             composingRef.current = false
           }}
           onKeyDown={(e) => {
+            if (selected && !composingRef.current && !e.nativeEvent.isComposing) {
+              const n = matches.length
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault()
+                setPick((pick + (e.key === "ArrowDown" ? 1 : n - 1)) % n)
+                return
+              }
+              if (e.key === "Escape") {
+                e.preventDefault()
+                setDismissed(text)
+                return
+              }
+              // Tab, or Enter on a half-typed name, completes it; Enter on a
+              // complete one falls through and sends.
+              if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey && text !== selected.name)) {
+                e.preventDefault()
+                complete(selected.name)
+                return
+              }
+            }
+
             if (e.key !== "Enter" || e.shiftKey) return
 
             // An IME uses Enter to commit the candidate, and that keystroke

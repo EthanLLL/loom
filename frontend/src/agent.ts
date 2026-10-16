@@ -448,6 +448,15 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
         break
       }
 
+      case "reload_requested":
+        // `/reload` is answered by loom, not the model; say what it set off.
+        items.push({
+          key,
+          kind: "notice",
+          text: "reload: Claude Code restarts on its next turn, Codex once no Codex turn is running",
+        })
+        break
+
       case "output_files":
         items.push({
           key,
