@@ -211,10 +211,10 @@
   display: flex;
 }
 
-/* Terminals stack top to bottom inside the one right-hand column.
-   6 of 10 to the chat's 4: a shell here is also used as a canvas (rendering a
-   markdown file, watching a build), not just for one-line commands. */
-.terminal-column {
+/* The right-hand column: the terminals, stacked top to bottom, or the canvas —
+   one at a time; a 16:9 screen has no room for both beside the chat.
+   6 of 10 to the chat's 4. */
+.side-column {
   flex: 0 0 60%;
   display: flex;
   flex-direction: column;
@@ -227,6 +227,60 @@
      their content — a loop that shows up as flicker. Panes share the height
      instead; past a handful they get small, which is the cue to close one. */
   overflow: hidden;
+}
+
+.canvas {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.canvas-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas .pane-title {
+  min-width: 0;
+}
+
+.canvas-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* White, not the app's background: pages, PDFs and plain text are written to
+   be read on white, and a transparent page would otherwise be dark-on-dark. */
+.canvas-body iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.canvas-note {
+  padding: 2rem 1.5rem;
+  color: var(--fg-dim);
+  text-align: center;
+}
+
+.canvas-note.failed {
+  color: var(--red);
+}
+
+/* Not the red the last button in a pane head gets: downloading is not closing. */
+.pane-btn.download:hover {
+  background: var(--blue);
+}
+
+.pane-btn.busy {
+  opacity: 0.5;
+  cursor: progress;
 }
 
 .terminal-pane {
@@ -436,16 +490,20 @@
   left: 0;
   width: 78vw;
   max-width: 22rem;
-  box-shadow: 4px 0 24px rgb(0 0 0 / 50%);
   transform: translateX(-100%);
-  transition: transform 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
   box-sizing: border-box;
 }
 
+/* Only while out: tucked away, the shadow still falls on the screen's left
+   edge, which shows over a white canvas page. */
 .drawer.open .sidebar {
   transform: none;
+  box-shadow: 4px 0 24px rgb(0 0 0 / 50%);
 }
 
 .pane-title {
@@ -463,7 +521,7 @@
     position: relative;
   }
 
-  .terminal-column {
+  .side-column {
     position: absolute;
     inset: 0;
     z-index: 10;

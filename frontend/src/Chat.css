@@ -109,6 +109,25 @@
   line-height: 1;
 }
 
+/* The canvas, in blue beside the terminal's green: the two take turns in the
+   same column, so they want to look like a pair and not the same button. */
+.chip.button.canvas-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 12%, var(--bg-card));
+}
+
+.chip.button.canvas-toggle:hover {
+  background: color-mix(in srgb, var(--blue) 22%, var(--bg-card));
+}
+
+.chip.button.canvas-toggle.on {
+  background: var(--blue);
+  color: var(--bg);
+}
+
 /* The backend booting. Seconds for Claude Code on a session's first turn (or
    the first after it idled) — without a state for it the UI looks hung. */
 .chip.status.starting {

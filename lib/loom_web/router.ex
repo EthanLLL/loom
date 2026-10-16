@@ -35,6 +35,8 @@ defmodule LoomWeb.Router do
     post "/agents/:id/files", AgentFileController, :create
     get "/agents/:id/files/:name", AgentFileController, :show
     get "/agents/:id/output/*path", AgentOutputController, :show
+    get "/agents/:id/zip/*path", AgentOutputController, :zip
+    post "/agents/:id/canvas", CanvasController, :token
 
     get "/layout", LayoutController, :show
     put "/layout", LayoutController, :update
@@ -44,6 +46,13 @@ defmodule LoomWeb.Router do
   # see `LoomWeb.SpaController`. Unauthenticated on purpose: the app shell is
   # a login form until the password is entered, and every route that touches a
   # session is behind `RequireAuth` or the socket's token check.
+  # No bearer token and no `accepts`: an iframe asks for whatever the page
+  # references. The signed path is the credential; see `CanvasController`.
+  scope "/canvas", LoomWeb do
+    get "/:id/:token", CanvasController, :show
+    get "/:id/:token/*path", CanvasController, :show
+  end
+
   scope "/", LoomWeb do
     pipe_through :browser
 

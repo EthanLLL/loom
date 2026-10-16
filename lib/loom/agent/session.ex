@@ -646,8 +646,8 @@ defmodule Loom.Agent.Session do
     now = Output.snapshot(state.id)
 
     case Output.changes(state.outputs, now) do
-      {[], _} -> %{state | outputs: now}
-      {files, more} -> emit(%{state | outputs: now}, :output_files, %{files: files, more: more})
+      %{files: []} -> %{state | outputs: now}
+      payload -> emit(%{state | outputs: now}, :output_files, payload)
     end
   end
 

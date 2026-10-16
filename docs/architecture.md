@@ -151,9 +151,43 @@ diffs that directory against a snapshot and emits `:output_files` before
 `turn_done`. The frontend shows a download card whether or not the model
 linked the file.
 
+The card shows one entry per top-level name in `output/`. A file directly in
+`output/` is one card. A directory is also one card, however many files
+changed in it; a comic chapter of forty pages is one card, not forty. A
+directory with an `index.html` is a page; any other directory downloads as a
+zip (`GET /api/agents/:id/zip/*path`), stored uncompressed and capped at 1 GB.
+
 Downloads need the bearer token. The frontend therefore fetches the file as a
 blob rather than using `<a href>`. `Output.resolve/2` refuses paths outside
 `output/` and any symlink along the way.
+
+### 4.3 Canvas
+
+The canvas is a browser pane for `output/`. It shares the right-hand column
+with the terminals and shows one of the two at a time. Clicking a previewable
+output (a page, an image, a video, a PDF, text or code) shows it there, and the
+canvas has its own download button. Anything else downloads on click. What
+each session's canvas shows is kept per session, so switching to the terminals,
+to another session, or reloading the page finds it as it was. Only one thing
+opens the canvas without a click: a turn ending with a new or changed
+`index.html`. That page is `open` in the `:output_files` event, and only a live
+event acts on it, never history replayed on join. The agent is told the
+convention in its system prompt: `output/<name>/index.html` with assets beside
+it, referenced by relative paths.
+
+The page is model output, so it is treated as hostile:
+
+- It runs in `<iframe sandbox="allow-scripts …">` without `allow-same-origin`,
+  so it has an opaque origin and cannot reach loom's token or API. The server
+  sends the same sandbox as a CSP header on every response, so a canvas URL
+  opened in a tab of its own is just as confined.
+- An iframe cannot send the bearer header, so the files are served under a
+  signed, session-scoped prefix, `/canvas/<id>/<token>/`, valid for a day. The
+  token is in the path, so the page's own relative URLs inherit it.
+  `Referrer-Policy: no-referrer` keeps the token from being sent to the CDNs a
+  page loads from.
+- Logs, data and source files are sent as `text/plain`, so they display
+  instead of downloading.
 
 ## 5. A session's backend is for life
 
@@ -198,7 +232,8 @@ tied to an agent session.
 ## 8. Frontend
 
 ```
-App.tsx           layout: sidebar | chat | terminals (drawer + overlay on phones)
+App.tsx           layout: sidebar | chat | terminals or canvas (drawer + overlay on phones)
+Canvas.tsx        the canvas pane; canvasItems.ts decides what opens there
 Sidebar.tsx       session list, new-session menu
 Chat.tsx          timeline, tool cards, queue, composer
 agent.ts          pure reducers: applySnapshot / applyEvent / applyDelta / buildTimeline / foldFinished
@@ -239,3 +274,6 @@ it's CSS".
   question arrives as plain text.
 - Turns that survive a Loom restart (a Codex daemon mode).
 - Cleanup of uploads that were removed from the tray.
+- Range requests on the canvas, so a long video can seek, and a proper video
+  player. Markdown in the canvas shows as plain text, the way a browser shows
+  it.

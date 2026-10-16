@@ -54,6 +54,9 @@ Everything except `POST /api/login` needs `Authorization: Bearer <token>`
 | `POST` | `/api/agents/:id/files` | Upload an attachment |
 | `GET` | `/api/agents/:id/files/:name` | Read an attachment back (thumbnails) |
 | `GET` | `/api/agents/:id/output/*path` | Download a file the agent produced |
+| `GET` | `/api/agents/:id/zip/*path` | Download an output directory as a zip |
+| `POST` | `/api/agents/:id/canvas` | The signed prefix the canvas iframe loads from |
+| `GET` | `/canvas/:id/:token/*path` | Outputs served to the sandboxed canvas (no bearer token) |
 | `GET` `POST` | `/api/sessions` | List / create terminals |
 | `DELETE` | `/api/sessions/:id` | Stop a terminal |
 | `GET` `PUT` | `/api/layout` | Terminal pane layout |

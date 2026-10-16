@@ -61,6 +61,16 @@ defmodule Loom.Agent.Output do
     user for download automatically when your turn ends; files written anywhere \
     else are not. Use descriptive file names. When you mention such a file in \
     your reply, link it as [name](output/<path relative to that directory>).
+
+    Next to the chat is a canvas: a browser pane. When something is better \
+    seen than downloaded — a chart or dashboard, a gallery of images, a video, \
+    a small web page — build it as a self-contained page: \
+    #{dir}/<name>/index.html with its assets beside it, referenced by relative \
+    paths. The newest such index.html opens in the canvas by itself when your \
+    turn ends; each subdirectory is shown as a single card (one with an \
+    index.html opens as a page, any other is offered as a zip). The page runs \
+    sandboxed with no access to Loom itself; it may load libraries from public \
+    CDNs. Don't build a page when a plain file is what the user asked for.
     """
   end
 
@@ -92,31 +102,104 @@ defmodule Loom.Agent.Output do
 
   @doc """
   What is new or different in `now` compared with `before`, described for the
-  transcript, plus whether the list was cut short.
+  transcript as `%{files: entries, more: n, open: path | nil}`.
+
+  One entry per top-level name in the directory, not per file: a file directly
+  in `output/` is itself, and a directory is one entry however many files it
+  holds — a comic chapter of forty pages is one card, not forty. A directory
+  counts as changed when anything in it did. One with an `index.html` is a page,
+  and opens in the canvas; one without is offered as a zip.
+
+  `open` is the page the canvas should show without being asked: the most
+  recently written `index.html` among the changes, at the top level or one
+  directory down. Only pages open on their own; everything else waits for a
+  click.
 
   A deleted file is not reported: the card announces downloads, and there is
   nothing to download.
   """
   def changes(before, now) do
-    changed =
-      now
-      |> Enum.reject(fn {rel, stamp} -> Map.get(before, rel) == stamp end)
-      |> Enum.sort_by(fn {rel, _} -> rel end)
+    changed = Enum.reject(now, fn {rel, stamp} -> Map.get(before, rel) == stamp end)
 
-    files =
+    entries =
       changed
-      |> Enum.take(@max_listed)
-      |> Enum.map(fn {rel, {size, _mtime}} ->
-        %{
-          name: Path.basename(rel),
-          path: rel,
-          size: size,
-          content_type: MIME.from_path(rel),
-          updated: Map.has_key?(before, rel)
-        }
-      end)
+      |> Enum.group_by(fn {rel, _} -> top(rel) end)
+      |> Enum.sort_by(fn {top, _} -> top end)
+      |> Enum.map(fn {top, _} -> entry(top, before, now) end)
 
-    {files, length(changed) - length(files)}
+    listed = Enum.take(entries, @max_listed)
+
+    %{files: listed, more: length(entries) - length(listed), open: page_to_open(changed, now)}
+  end
+
+  defp top(rel), do: rel |> Path.split() |> hd()
+
+  defp entry(top, before, now) do
+    case Map.fetch(now, top) do
+      {:ok, {size, _mtime}} ->
+        %{
+          kind: "file",
+          name: top,
+          path: top,
+          size: size,
+          content_type: MIME.from_path(top),
+          updated: Map.has_key?(before, top)
+        }
+
+      :error ->
+        inside = for {rel, stamp} <- now, under?(rel, top), do: {rel, stamp}
+        index = Path.join(top, "index.html")
+
+        %{
+          kind: "dir",
+          name: top,
+          path: top,
+          size: inside |> Enum.map(fn {_, {size, _}} -> size end) |> Enum.sum(),
+          files: length(inside),
+          index: if(Map.has_key?(now, index), do: index),
+          content_type: "inode/directory",
+          updated: Enum.any?(Map.keys(before), &under?(&1, top))
+        }
+    end
+  end
+
+  defp under?(rel, top), do: String.starts_with?(rel, top <> "/")
+
+  # The newest `index.html` among the pages that changed. A page's images being
+  # rewritten while its index stayed the same still changes what it shows.
+  defp page_to_open(changed, now) do
+    changed
+    |> Enum.map(fn {rel, _} -> page_of(rel) end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.filter(&Map.has_key?(now, &1))
+    |> Enum.max_by(fn index -> elem(Map.fetch!(now, index), 1) end, fn -> nil end)
+  end
+
+  defp page_of("index.html"), do: "index.html"
+
+  defp page_of(rel) do
+    case Path.split(rel) do
+      [_only] -> nil
+      [top | _] -> Path.join(top, "index.html")
+    end
+  end
+
+  @doc """
+  The absolute path of one of this session's output *directories*, for a zip.
+  Same rules as `resolve/2`, for a directory instead of a file.
+  """
+  def resolve_dir(session_id, rel) do
+    dir = session_id |> Store.output_dir() |> Path.expand()
+    path = Path.expand(to_string(rel), dir)
+
+    cond do
+      not String.starts_with?(path, dir <> "/") -> :error
+      hidden?(Path.relative_to(path, dir)) -> :error
+      not File.dir?(path) -> :error
+      not inside?(path, dir) -> :error
+      true -> {:ok, path}
+    end
   end
 
   @doc """
@@ -140,6 +223,22 @@ defmodule Loom.Agent.Output do
       not inside?(path, dir) -> :error
       true -> {:ok, path}
     end
+  end
+
+  @doc """
+  Every file a zip of `rel` may contain, relative to the output directory: the
+  same files `resolve/2` would serve one at a time, and nothing else.
+  """
+  def files_under(session_id, rel) do
+    prefix = String.trim_trailing(rel, "/") <> "/"
+
+    session_id
+    |> snapshot()
+    |> Enum.filter(fn {path, _} ->
+      String.starts_with?(path, prefix) and match?({:ok, _}, resolve(session_id, path))
+    end)
+    |> Enum.map(fn {path, {size, _}} -> {path, size} end)
+    |> Enum.sort()
   end
 
   defp hidden?(rel) do

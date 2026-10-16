@@ -219,8 +219,17 @@ export type AgentFile = {
   content_type: string
 }
 
-/** A file the agent left in the session's output directory. */
+/**
+ * One entry of a turn's outputs: a file directly in `output/`, or a whole
+ * directory (`kind: "dir"`) however many files changed in it. A directory with
+ * an `index.html` is a page for the canvas. Events from before directories were
+ * grouped have no `kind` and are files.
+ */
 export type OutputFile = AgentFile & {
+  kind?: "file" | "dir"
+  // Directories only: how many files, and the page to open if there is one.
+  files?: number
+  index?: string | null
   // Already announced by an earlier turn and rewritten since.
   updated: boolean
 }
@@ -277,20 +286,57 @@ export function seedBlobUrl(url: string, objectUrl: string) {
  * browser treats it as a download under the file's own name.
  */
 export async function downloadAgentOutput(id: string, path: string): Promise<void> {
-  const res = await fetch(outputUrl(id, path), { headers: authHeaders() })
+  await download(outputUrl(id, path), path.split("/").pop() ?? path)
+}
+
+/** One output directory as a zip, built by the server. */
+export async function downloadAgentZip(id: string, path: string): Promise<void> {
+  const url = `/api/agents/${id}/zip/${path.split("/").map(encodeURIComponent).join("/")}`
+  await download(url, `${path.split("/").pop() ?? path}.zip`)
+}
+
+async function download(url: string, filename: string): Promise<void> {
+  const res = await fetch(url, { headers: authHeaders() })
   if (res.status === 401) throw unauthorized()
   if (res.status === 404) throw new Error("the file is no longer there")
+  if (res.status === 413) throw new Error("too big to zip (over 1 GB)")
   if (!res.ok) throw new Error(`download failed: ${res.status}`)
 
   const href = URL.createObjectURL(await res.blob())
   const a = document.createElement("a")
   a.href = href
-  a.download = path.split("/").pop() ?? path
+  a.download = filename
   document.body.appendChild(a)
   a.click()
   a.remove()
   // Revoked late: Safari reads the blob after `click()` returns.
   setTimeout(() => URL.revokeObjectURL(href), 60_000)
+}
+
+// The canvas's signed prefix per session, re-fetched well before the server's
+// one-day expiry.
+const canvasBases = new Map<string, { at: number; base: Promise<string> }>()
+const CANVAS_TTL = 12 * 60 * 60 * 1000
+
+/**
+ * Where this session's outputs are served to the canvas iframe: a signed
+ * `/canvas/<id>/<token>/` prefix, because an iframe cannot send the bearer
+ * header. See `LoomWeb.CanvasController`.
+ */
+export function canvasBase(id: string): Promise<string> {
+  const cached = canvasBases.get(id)
+  if (cached && Date.now() - cached.at < CANVAS_TTL) return cached.base
+
+  const base = fetch(`/api/agents/${id}/canvas`, { method: "POST", headers: authHeaders() }).then(
+    async (res) => {
+      if (res.status === 401) throw unauthorized()
+      if (!res.ok) throw new Error(`canvas failed: ${res.status}`)
+      return (await res.json()).base as string
+    },
+  )
+  base.catch(() => canvasBases.delete(id))
+  canvasBases.set(id, { at: Date.now(), base })
+  return base
 }
 
 /**

@@ -53,15 +53,71 @@ defmodule Loom.Agent.OutputTest do
       before = %{"same" => {1, 10}, "changed" => {1, 10}, "gone" => {1, 10}}
       now = %{"same" => {1, 10}, "changed" => {2, 11}, "new.csv" => {5, 12}}
 
-      assert {[changed, new], 0} = Output.changes(before, now)
-      assert %{path: "changed", updated: true, size: 2} = changed
+      assert %{files: [changed, new], more: 0, open: nil} = Output.changes(before, now)
+      assert %{kind: "file", path: "changed", updated: true, size: 2} = changed
       assert %{path: "new.csv", name: "new.csv", updated: false, content_type: "text/csv"} = new
     end
 
-    test "a flood of files is cut short and says by how much" do
+    test "a directory is one entry, however many files changed in it" do
+      now =
+        Map.new(1..40, &{"manga-ch12/images/#{&1}.jpg", {100, 5}})
+        |> Map.put("manga-ch12/index.html", {50, 6})
+        |> Map.put("data/raw.csv", {7, 5})
+
+      assert %{files: [data, manga], more: 0} = Output.changes(%{}, now)
+      assert %{kind: "dir", path: "data", files: 1, index: nil} = data
+
+      assert %{kind: "dir", path: "manga-ch12", files: 41, size: 4050, updated: false} = manga
+      assert manga.index == "manga-ch12/index.html"
+    end
+
+    test "a directory is updated when it existed before; a page in it opens again" do
+      before = %{"site/index.html" => {1, 1}, "site/a.png" => {1, 1}}
+      now = %{"site/index.html" => {1, 1}, "site/a.png" => {2, 2}}
+
+      assert %{files: [%{kind: "dir", updated: true}], open: "site/index.html"} =
+               Output.changes(before, now)
+    end
+
+    test "the newest index.html opens; nothing else ever does" do
+      now = %{
+        "old/index.html" => {1, 10},
+        "new/index.html" => {1, 20},
+        "index.html" => {1, 15},
+        "deep/a/index.html" => {1, 30},
+        "photo.png" => {1, 40}
+      }
+
+      assert %{open: "new/index.html"} = Output.changes(%{}, now)
+      assert %{open: nil} = Output.changes(%{}, %{"photo.png" => {1, 1}, "x/a.html" => {1, 1}})
+      assert %{open: "index.html"} = Output.changes(%{}, %{"index.html" => {1, 1}})
+    end
+
+    test "a flood of entries is cut short and says by how much" do
       now = Map.new(1..60, &{"f#{&1}", {1, 1}})
-      assert {files, 10} = Output.changes(%{}, now)
+      assert %{files: files, more: 10} = Output.changes(%{}, now)
       assert length(files) == 50
+    end
+  end
+
+  describe "resolve_dir/2 and files_under/2" do
+    test "a directory inside is accepted and lists what a zip may hold", %{id: id, dir: dir} do
+      put(dir, "site/index.html")
+      put(dir, "site/img/a.png", "png")
+      put(dir, "site/.secret")
+      File.ln_s!("/etc/hostname", Path.join(dir, "site/link.txt"))
+
+      assert {:ok, _} = Output.resolve_dir(id, "site")
+      assert Output.files_under(id, "site") == [{"site/img/a.png", 3}, {"site/index.html", 1}]
+    end
+
+    test "climbing out, hidden and missing directories are refused", %{id: id, dir: dir} do
+      File.mkdir_p!(Path.join(dir, ".git"))
+      File.ln_s!("/etc", Path.join(dir, "etc"))
+
+      for rel <- ["..", ".", ".git", "etc", "missing", "/tmp"] do
+        assert Output.resolve_dir(id, rel) == :error, rel
+      end
     end
   end
 
@@ -99,9 +155,10 @@ defmodule Loom.Agent.OutputTest do
     end
   end
 
-  test "the instructions name the directory and the link form", %{id: id, dir: dir} do
+  test "the instructions name the directory, the link form and the canvas", %{id: id, dir: dir} do
     text = Output.instructions(id)
     assert text =~ dir
     assert text =~ "(output/"
+    assert text =~ "#{dir}/<name>/index.html"
   end
 end

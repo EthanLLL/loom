@@ -39,7 +39,15 @@ type Agent = {
  * reply is then merged rather than replacing state, because on a rejoin it is
  * a gap and not the whole transcript.
  */
-export function useAgent(sessionId: string | null): Agent {
+export function useAgent(
+  sessionId: string | null,
+  // Called for each event as it happens — never for history replayed on join,
+  // so a reaction to it (opening the canvas) fires once, on the device that
+  // was watching, and not again on every reload.
+  onLiveEvent?: (event: AgentEvent) => void,
+): Agent {
+  const onLiveRef = useRef(onLiveEvent)
+  onLiveRef.current = onLiveEvent
   const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
   const [joinError, setJoinError] = useState<string | null>(null)
   const channelRef = useRef<Channel | null>(null)
@@ -72,8 +80,10 @@ export function useAgent(sessionId: string | null): Agent {
 
     channel.on("event", (event: AgentEvent) => {
       if (!current()) return
+      const fresh = event.seq > lastSeqRef.current
       lastSeqRef.current = Math.max(lastSeqRef.current, event.seq)
       setTranscript((t) => applyEvent(t, event))
+      if (fresh) onLiveRef.current?.(event)
     })
 
     channel.on("delta", (delta: AgentDelta) => {

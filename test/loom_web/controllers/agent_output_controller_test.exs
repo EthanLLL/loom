@@ -66,4 +66,31 @@ defmodule LoomWeb.AgentOutputControllerTest do
     assert get(conn, "/api/agents/..%2F..%2Fetc/output/passwd").status == 404
     assert get(conn, "/api/agents/a_nope/output/deck/x.pptx").status == 404
   end
+
+  describe "a directory as a zip" do
+    test "holds the directory's files under its own name", %{authed: conn, id: id} do
+      dir = Path.join(Store.output_dir(id), "manga")
+      File.mkdir_p!(Path.join(dir, "images"))
+      File.write!(Path.join(dir, "index.html"), "<p>hi</p>")
+      File.write!(Path.join(dir, "images/第1页.jpg"), "jpg")
+      File.write!(Path.join(dir, ".hidden"), "no")
+
+      conn = get(conn, "/api/agents/#{id}/zip/manga")
+      assert conn.status == 200
+      [disposition] = get_resp_header(conn, "content-disposition")
+      assert disposition =~ "manga.zip"
+
+      {:ok, entries} = :zip.unzip(conn.resp_body, [:memory])
+      names = entries |> Enum.map(fn {name, _} -> List.to_string(name) end) |> Enum.sort()
+      assert names == ["manga/images/第1页.jpg", "manga/index.html"]
+    end
+
+    test "only directories inside, and only with the token", %{conn: conn, authed: authed, id: id} do
+      assert get(conn, "/api/agents/#{id}/zip/deck").status == 401
+
+      for path <- ["..", "..%2F..", "deck/%E5%AD%A3%E5%BA%A6%20report.pptx", "missing"] do
+        assert get(authed, "/api/agents/#{id}/zip/#{path}").status == 404, path
+      end
+    end
+  end
 end

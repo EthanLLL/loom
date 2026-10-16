@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react"
+import { Canvas } from "./Canvas"
+import type { CanvasItem } from "./canvasItems"
 import { Chat } from "./Chat"
 import { Login } from "./Login"
 import { Sidebar } from "./Sidebar"
@@ -21,6 +23,18 @@ import { dropSocket } from "./socket"
 import "./App.css"
 
 const SIDEBAR_KEY = "loom_sidebar_open"
+const CANVAS_KEY = "loom_canvas"
+
+// The right-hand side shows one thing at a time: the terminals or the canvas.
+type Side = "terminal" | "canvas" | null
+
+function loadCanvases(): Record<string, CanvasItem> {
+  try {
+    return JSON.parse(localStorage.getItem(CANVAS_KEY) ?? "{}")
+  } catch {
+    return {}
+  }
+}
 const TOUCH = matchMedia("(hover: none)")
 
 function App() {
@@ -48,7 +62,23 @@ function App() {
   )
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [side, setSide] = useState<Side>(null)
+  const terminalOpen = side === "terminal"
+  const setTerminalOpen = (open: boolean) => setSide(open ? "terminal" : null)
+
+  // What each session's canvas shows. Per session and kept across switching
+  // away (to the terminals, another session, a reload): coming back finds it
+  // as it was. Replaced only when something new is opened in it.
+  const [canvases, setCanvases] = useState(loadCanvases)
+  useEffect(() => {
+    localStorage.setItem(CANVAS_KEY, JSON.stringify(canvases))
+  }, [canvases])
+
+  const openCanvas = (sessionId: string, item: CanvasItem) => {
+    setCanvases((all) => ({ ...all, [sessionId]: item }))
+    setSide("canvas")
+  }
+  const toggleCanvas = () => setSide((s) => (s === "canvas" ? null : "canvas"))
   // PTY session ids, top to bottom in the right-hand column.
   const [ptyIds, setPtyIds] = useState<string[]>([])
   const openingTerminal = useRef(false)
@@ -58,7 +88,7 @@ function App() {
   // own uses for a drag, and they are opened and closed by tapping.
   const chatRef = useRef<HTMLDivElement>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
-  useSwipe(chatRef, "right", narrow && loaded && !drawerOpen && !terminalOpen, () =>
+  useSwipe(chatRef, "right", narrow && loaded && !drawerOpen && side === null, () =>
     setDrawerOpen(true),
   )
   useSwipe(drawerRef, "left", narrow && drawerOpen, () => setDrawerOpen(false))
@@ -215,6 +245,9 @@ function App() {
               terminalOpen={terminalOpen}
               terminalCount={ptyIds.length}
               onToggleTerminal={toggleTerminal}
+              canvasOpen={side === "canvas"}
+              onToggleCanvas={toggleCanvas}
+              onOpenCanvas={(item) => openCanvas(active.id, item)}
             />
           ) : (
             <div className="placeholder">
@@ -237,12 +270,23 @@ function App() {
           )}
         </div>
 
+        {/* Kept mounted, so a page keeps its state (a video its position)
+            while the terminals are shown instead. */}
+        <div className="side-column" style={{ display: side === "canvas" ? "flex" : "none" }}>
+          <Canvas
+            sessionId={active?.id ?? null}
+            item={active ? (canvases[active.id] ?? null) : null}
+            narrow={narrow}
+            onBack={() => setSide(null)}
+          />
+        </div>
+
         {/* Kept mounted once opened: unmounting would drop the channel and
             xterm's scrollback, and the shell itself keeps running server-side
             either way. */}
         {ptyIds.length > 0 && (
           <div
-            className="terminal-column"
+            className="side-column terminal-column"
             style={{ display: terminalOpen ? "flex" : "none" }}
           >
             {ptyIds.map((id, index) => (

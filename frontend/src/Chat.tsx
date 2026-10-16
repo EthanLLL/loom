@@ -1,5 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { buildTimeline, foldFinished, isBusy, type TimelineItem } from "./agent"
+import { itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
 import {
@@ -12,6 +21,7 @@ import {
   attachmentUrl,
   blobUrl,
   downloadAgentOutput,
+  downloadAgentZip,
   outputUrl,
   type AgentFile,
   type AgentInfo,
@@ -26,7 +36,13 @@ type Props = {
   terminalOpen: boolean
   terminalCount: number
   onToggleTerminal: () => void
+  canvasOpen: boolean
+  onToggleCanvas: () => void
+  onOpenCanvas: (item: CanvasItem) => void
 }
+
+// How a card or link deep in the transcript opens something in the canvas.
+const OpenCanvas = createContext<(item: CanvasItem) => void>(() => {})
 
 export function Chat({
   session,
@@ -35,9 +51,22 @@ export function Chat({
   terminalOpen,
   terminalCount,
   onToggleTerminal,
+  canvasOpen,
+  onToggleCanvas,
+  onOpenCanvas,
 }: Props) {
-  const { transcript, joinError, submit, interrupt, dropQueued, rename } =
-    useAgent(session.id)
+  const { transcript, joinError, submit, interrupt, dropQueued, rename } = useAgent(
+    session.id,
+    (event) => {
+      // A turn that just built a page opens it — only then, and only for the
+      // page. Anything else waits for a click.
+      const open = event.kind === "output_files" ? event.payload.open : null
+      if (typeof open === "string") {
+        const item = itemForPath(open)
+        if (item) onOpenCanvas(item)
+      }
+    },
+  )
   const busy = isBusy(transcript)
   const items = foldFinished(buildTimeline(transcript), busy)
 
@@ -110,24 +139,40 @@ export function Chat({
             <TerminalIcon />
             {terminalCount > 0 && <span className="count">{terminalCount}</span>}
           </button>
+          <button
+            className={"chip button canvas-toggle" + (canvasOpen ? " on" : "")}
+            onClick={onToggleCanvas}
+            title={(canvasOpen ? "Hide" : "Show") + " the canvas"}
+          >
+            <CanvasIcon />
+          </button>
         </div>
       </header>
 
       {joinError && <div className="chat-banner">{joinError}</div>}
 
       {/* `output/…` links in a reply become downloads from this session. */}
-      <OutputLink.Provider
-        value={(path, label) => (
-          <DownloadLink sessionId={session.id} path={path} label={label} />
-        )}
-      >
-        <Timeline
-          items={items}
-          sessionId={session.id}
-          truncatedBefore={transcript.truncatedBefore}
-          onAnswer={submit}
-        />
-      </OutputLink.Provider>
+      <OpenCanvas.Provider value={onOpenCanvas}>
+        <OutputLink.Provider
+          value={(path, label) => {
+            const item = itemForPath(path)
+            return item ? (
+              <button type="button" className="md-download" title={`Show ${path}`} onClick={() => onOpenCanvas(item)}>
+                {label}
+              </button>
+            ) : (
+              <DownloadLink sessionId={session.id} path={path} label={label} />
+            )
+          }}
+        >
+          <Timeline
+            items={items}
+            sessionId={session.id}
+            truncatedBefore={transcript.truncatedBefore}
+            onAnswer={submit}
+          />
+        </OutputLink.Provider>
+      </OpenCanvas.Provider>
 
       {transcript.queue.length > 0 && (
         <QueuePanel
@@ -442,6 +487,7 @@ function QueuePanel({
  */
 function FileCard({
   name,
+  label,
   image,
   busy = false,
   error,
@@ -450,6 +496,8 @@ function FileCard({
   onRemove,
 }: {
   name: string
+  // Shown in place of the extension: a directory has none.
+  label?: string
   // Where the thumbnail comes from: a local object URL, or a promise of one
   // for a file behind the API token. `null` for anything not an image.
   image: string | Promise<string> | null
@@ -482,7 +530,7 @@ function FileCard({
         <img src={src} alt={name} onError={() => setBroken(true)} />
       ) : (
         <>
-          <span className="file-ext">{extension(name)}</span>
+          <span className="file-ext">{label ?? extension(name)}</span>
           <span className="file-name">{name}</span>
         </>
       )}
@@ -578,27 +626,42 @@ function OutputFiles({
   )
 }
 
+/**
+ * One output. A click shows it in the canvas when the browser can (a page, an
+ * image, a video, a PDF, text), and downloads it otherwise; a directory with no
+ * page downloads as a zip. The canvas has its own download button.
+ */
 function OutputCard({ sessionId, file }: { sessionId: string; file: OutputFile }) {
+  const openCanvas = useContext(OpenCanvas)
   const [state, setState] = useState<"idle" | "busy" | { error: string }>("idle")
+  const dir = file.kind === "dir"
   const name = file.path.split("/").pop() ?? file.path
+  const item = itemForOutput(file)
 
-  const start = () => {
+  const download = () => {
     if (state === "busy") return
     setState("busy")
-    downloadAgentOutput(sessionId, file.path).then(
+    ;(dir ? downloadAgentZip(sessionId, file.path) : downloadAgentOutput(sessionId, file.path)).then(
       () => setState("idle"),
       (e: Error) => setState({ error: e.message }),
     )
   }
 
+  const size = formatBytes(file.size)
+  const what = dir ? `${file.files} file${file.files === 1 ? "" : "s"} · ${size}` : size
+
   return (
     <FileCard
       name={name}
-      image={isImage(file.content_type) ? blobUrl(outputUrl(sessionId, file.path)) : null}
+      label={dir ? (file.index ? "PAGE" : "DIR") : undefined}
+      image={!dir && isImage(file.content_type) ? blobUrl(outputUrl(sessionId, file.path)) : null}
       busy={state === "busy"}
       error={typeof state === "object" ? state.error : null}
-      title={`Download ${file.path} · ${formatBytes(file.size)}${file.updated ? " · updated" : ""}`}
-      onClick={start}
+      title={
+        `${item ? "Show" : dir ? "Download as a zip:" : "Download"} ${file.path} · ${what}` +
+        (file.updated ? " · updated" : "")
+      }
+      onClick={item ? () => openCanvas(item) : download}
     />
   )
 }
@@ -1045,6 +1108,15 @@ function SendIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+function CanvasIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
     </svg>
   )
 }

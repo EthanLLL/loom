@@ -653,9 +653,10 @@ defmodule Loom.Agent.SessionTest do
       write_output(id, "charts/q3.png", "png")
       finish_turn(id)
 
-      assert [%{files: files, more: 0}] = output_events(id)
-      assert Enum.map(files, & &1.path) == ["charts/q3.png", "report.xlsx"]
-      assert %{name: "q3.png", size: 3, content_type: "image/png", updated: false} = hd(files)
+      assert [%{files: files, more: 0, open: nil}] = output_events(id)
+      assert Enum.map(files, & &1.path) == ["charts", "report.xlsx"]
+      assert %{kind: "dir", files: 1, size: 3, updated: false} = hd(files)
+      assert %{kind: "file", content_type: _, size: 4} = List.last(files)
 
       {:ok, snapshot} = Agent.attach(id, 0)
       kinds = Enum.map(snapshot.events, & &1.kind)
