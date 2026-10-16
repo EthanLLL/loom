@@ -13,8 +13,7 @@ browser ─https→ Cloudflare edge ─tunnel (outbound)→ cloudflared ─http�
 The tunnel dials out, so the security group needs no inbound rules. Set
 `LOOM_BIND` only if the tunnel runs on another machine, and then restrict
 ingress to that host. Whoever reaches the port gets an unsandboxed agent behind
-a single password. Cloudflare Access in front of the tunnel is free and worth
-turning on.
+a single password. 
 
 ## 2. `.env`
 
