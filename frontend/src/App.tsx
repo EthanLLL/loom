@@ -106,6 +106,31 @@ function App() {
   // leaves them running: the shells are server-side and a hidden pane just has
   // zero size, which the Terminal component already handles.
 
+  // Line the column up with the shells the server is actually running: a shell
+  // may have been opened on another device, or have exited while the column
+  // was hidden. Shells already on screen keep their places; new ones go after
+  // them, oldest first. Returns how many there are now.
+  const syncTerminals = async (current: string[]) => {
+    const live = await listSessions().catch(() => null)
+    if (live === null) return current.length
+
+    const alive = new Set(live.map((s) => s.id))
+    const kept = current.filter((id) => alive.has(id))
+    const added = [...live]
+      .sort((a, b) => a.created_at - b.created_at)
+      .map((s) => s.id)
+      .filter((id) => !kept.includes(id))
+    setPtyIds([...kept, ...added])
+    return kept.length + added.length
+  }
+
+  // Up front, so the header's count is right before the column is ever opened.
+  // The panes mount hidden and stay idle: a terminal only joins its channel
+  // once it has a size.
+  useEffect(() => {
+    if (authed) void syncTerminals([])
+  }, [authed])
+
   const toggleTerminal = async () => {
     if (terminalOpen) {
       setTerminalOpen(false)
@@ -118,24 +143,9 @@ function App() {
     openingTerminal.current = true
 
     try {
-      // Ask the server every time rather than trusting what this page last
-      // saw: a shell may have been opened on another device, or have exited
-      // while the column was hidden. Shells already on screen keep their
-      // places; new ones go after them, oldest first. Only when nothing is
-      // running is a new one started.
-      const live = await listSessions().catch(() => null)
-      if (live === null) {
-        if (ptyIds.length === 0) return
-      } else if (live.length === 0) {
+      // Only when nothing is running is a new one started.
+      if ((await syncTerminals(ptyIds)) === 0) {
         setPtyIds([(await createSession("terminal")).id])
-      } else {
-        const alive = new Set(live.map((s) => s.id))
-        const kept = ptyIds.filter((id) => alive.has(id))
-        const added = [...live]
-          .sort((a, b) => a.created_at - b.created_at)
-          .map((s) => s.id)
-          .filter((id) => !kept.includes(id))
-        setPtyIds([...kept, ...added])
       }
     } finally {
       openingTerminal.current = false
@@ -254,18 +264,7 @@ function App() {
                   </span>
                   <span className="pane-actions">
                     {/* On every pane rather than once, so they do not move
-                        around as terminals are closed. Hiding leaves the
-                        shells running; the header's toggle brings them back.
-                        A phone has its back arrow for that instead. */}
-                    {!narrow && (
-                      <button
-                        className="pane-btn"
-                        onClick={() => setTerminalOpen(false)}
-                        title="Hide terminals (they keep running)"
-                      >
-                        −
-                      </button>
-                    )}
+                        around as terminals are closed. */}
                     <button
                       className="pane-btn"
                       onClick={addTerminal}

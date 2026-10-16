@@ -84,6 +84,31 @@
   color: var(--bg);
 }
 
+/* Terminal green, the shells' own cursor colour, so it reads as "the shell"
+   at a glance; filled while the column is showing. */
+.chip.button.terminal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+}
+
+.chip.button.terminal-toggle:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-card));
+}
+
+.chip.button.terminal-toggle.on {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.chip.button.terminal-toggle .count {
+  font-weight: 600;
+  line-height: 1;
+}
+
 /* The backend booting. Seconds for Claude Code on a session's first turn (or
    the first after it idled) — without a state for it the UI looks hung. */
 .chip.status.starting {

@@ -91,13 +91,16 @@ export function Chat({
             </span>
           )}
           <button
-            className={"chip button" + (terminalOpen ? " on" : "")}
+            className={"chip button terminal-toggle" + (terminalOpen ? " on" : "")}
             onClick={onToggleTerminal}
-            title="Toggle terminals (they open in your home directory)"
+            title={
+              (terminalOpen ? "Hide" : "Show") +
+              ` terminals — ${terminalCount || "none"} running` +
+              " (they open in your home directory)"
+            }
           >
-            <span className="wide-only">terminal</span>
-            <span className="narrow-only">&gt;_</span>
-            {terminalCount > 1 ? ` ${terminalCount}` : ""}
+            <TerminalIcon />
+            {terminalCount > 0 && <span className="count">{terminalCount}</span>}
           </button>
         </div>
       </header>
@@ -757,6 +760,21 @@ function SendIcon() {
     <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" aria-hidden>
       <path
         d="M12 19V5M6 11l6-6 6 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function TerminalIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1.15em" height="1.15em" aria-hidden>
+      <path
+        d="M5 8l4 4-4 4M12 17h7"
         fill="none"
         stroke="currentColor"
         strokeWidth="2.2"
