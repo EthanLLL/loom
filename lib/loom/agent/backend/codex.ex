@@ -68,8 +68,12 @@ defmodule Loom.Agent.Backend.Codex do
       developer_instructions: Backend.meta_get(meta, :instructions)
     ]
 
-    case Server.start_thread(opts) do
-      {:ok, thread_id} -> {:ok, new(thread_id, opts[:developer_instructions])}
+    open_thread(opts[:cwd], opts[:developer_instructions])
+  end
+
+  defp open_thread(cwd, instructions) do
+    case Server.start_thread(cwd: cwd, developer_instructions: instructions) do
+      {:ok, thread_id} -> {:ok, new(thread_id, instructions, cwd)}
       {:error, reason} -> {:error, describe_error(reason)}
     end
   end
@@ -84,26 +88,47 @@ defmodule Loom.Agent.Backend.Codex do
 
   defp resume_thread(id, meta) do
     instructions = Backend.meta_get(meta, :instructions)
+    cwd = Backend.meta_get(meta, :codex_cwd) || default_cwd()
 
     case Server.resume_thread(id, resume_opts(instructions)) do
       {:ok, ^id} ->
         # A turn id recorded before a restart refers to a turn that is no longer
         # running — the server would reject an interrupt for it anyway.
-        {:ok, %{new(id, instructions) | turn_id: Backend.meta_get(meta, :codex_turn_id)}}
+        {:ok, %{new(id, instructions, cwd) | turn_id: Backend.meta_get(meta, :codex_turn_id)}}
 
       {:error, reason} ->
-        {:error, describe_error(reason)}
+        if unborn?(reason),
+          do: reopen(id, cwd, instructions),
+          else: {:error, describe_error(reason)}
     end
+  end
+
+  # A thread is only written to disk by its first turn. One that was opened and
+  # never used — a session created, then loom restarted or reloaded before
+  # anything was sent — cannot be resumed: "no rollout found for thread id".
+  # Nothing is lost by opening a new one, and without that the session could
+  # never run a turn again.
+  defp unborn?(reason) when is_binary(reason), do: reason =~ "no rollout found"
+  defp unborn?(_reason), do: false
+
+  defp reopen(id, cwd, instructions) do
+    Logger.warning(
+      "Codex: thread #{id} never ran a turn and cannot be resumed; opening a new one"
+    )
+
+    open_thread(cwd, instructions)
   end
 
   # Given again on every resume, including the silent one after an app-server
   # respawn, so the thread is never running without them.
   defp resume_opts(instructions), do: [developer_instructions: instructions]
 
-  defp new(thread_id, instructions) do
+  defp new(thread_id, instructions, cwd) do
     %{
       thread_id: thread_id,
       instructions: instructions,
+      # Kept for `reopen/3`, which needs it long after the header was read.
+      cwd: cwd,
       turn_id: nil,
       aborted?: false,
       stale?: false,
@@ -122,8 +147,17 @@ defmodule Loom.Agent.Backend.Codex do
   # the user beyond the one turn that died.
   def run_turn(%{stale?: true} = handle, text) do
     case Server.resume_thread(handle.thread_id, resume_opts(handle.instructions)) do
-      {:ok, _} -> run_turn(%{handle | stale?: false}, text)
-      {:error, reason} -> {:error, describe_error(reason)}
+      {:ok, _} ->
+        run_turn(%{handle | stale?: false}, text)
+
+      {:error, reason} ->
+        with true <- unborn?(reason),
+             {:ok, fresh} <- reopen(handle.thread_id, cwd(handle), handle.instructions) do
+          run_turn(fresh, text)
+        else
+          false -> {:error, describe_error(reason)}
+          error -> error
+        end
     end
   end
 
@@ -218,6 +252,9 @@ defmodule Loom.Agent.Backend.Codex do
   defp default_cwd do
     Application.get_env(:loom, Loom.Agent, [])[:workspace] || System.user_home!()
   end
+
+  # Handles from before `cwd` was kept.
+  defp cwd(handle), do: Map.get(handle, :cwd) || default_cwd()
 
   defp describe_error(:server_down), do: "the codex app-server stopped"
   defp describe_error(reason) when is_binary(reason), do: reason

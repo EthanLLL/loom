@@ -22,7 +22,8 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
     base = %{
       session_id: @session_id,
       cwd: "/tmp",
-      first_turn?: false,
+      started?: true,
+      booting: nil,
       port: :fake_port,
       os_pid: nil,
       message_id: "msg_one",
@@ -45,6 +46,28 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
   defp feed(handle, chunk) when is_binary(chunk) do
     {:ok, handle, out} = ClaudeCode.decode(handle, {:fake_port, {:data, chunk}})
     {handle, out}
+  end
+
+  # Feed real port messages to decode/2 until `done?` holds, failing on any
+  # turn failure along the way.
+  defp pump(handle, done?, deadline \\ System.monotonic_time(:millisecond) + 5_000) do
+    if done?.(handle) do
+      handle
+    else
+      receive do
+        message ->
+          case ClaudeCode.decode(handle, message) do
+            {:ok, handle, out} ->
+              refute Enum.any?(out, &match?({:event, :turn_failed, _}, &1)), inspect(out)
+              pump(handle, done?, deadline)
+
+            :ignore ->
+              pump(handle, done?, deadline)
+          end
+      after
+        max(deadline - System.monotonic_time(:millisecond), 0) -> flunk("timed out")
+      end
+    end
   end
 
   defp events(out), do: for({:event, kind, payload} <- out, do: {kind, payload})
@@ -612,7 +635,6 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
 
       assert handle.session_id == @session_id
       assert handle.cwd == "/tmp"
-      refute handle.first_turn?
     end
 
     test "loom's instructions are kept for every spawn, fresh or resumed" do
@@ -626,9 +648,98 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
     end
 
     test "a resumed handle does not re-use --session-id" do
-      {:ok, handle} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id})
-      refute handle.first_turn?
+      {:ok, handle} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id, cc_started: true})
+      assert handle.started?
       assert handle.session_id == @session_id
+    end
+
+    test "a session restored before its first turn names its conversation, not resumes it" do
+      # Restarted after it was created but before anything was sent: Claude
+      # Code has no such conversation, and `--resume` would fail every turn.
+      {:ok, handle} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id, cc_started: false})
+      refute handle.started?
+    end
+
+    @tag :tmp_dir
+    test "an older header without cc_started asks Claude Code's store", %{tmp_dir: dir} do
+      previous = System.get_env("CLAUDE_CONFIG_DIR")
+      System.put_env("CLAUDE_CONFIG_DIR", dir)
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("CLAUDE_CONFIG_DIR", previous),
+          else: System.delete_env("CLAUDE_CONFIG_DIR")
+      end)
+
+      {:ok, missing} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id})
+      refute missing.started?
+
+      File.mkdir_p!(Path.join([dir, "projects", "-home-x"]))
+      File.write!(Path.join([dir, "projects", "-home-x", @session_id <> ".jsonl"]), "")
+      {:ok, found} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id})
+      assert found.started?
+    end
+
+    @tag :tmp_dir
+    test "a --resume that finds nothing starts the conversation afresh, keeping the turn",
+         %{tmp_dir: dir} do
+      # A stand-in CLI that behaves like the real one here: `--resume` of an
+      # unknown id exits 1; `--session-id` says init and echoes what it reads.
+      cli = Path.join(dir, "claude")
+
+      File.write!(cli, """
+      #!/bin/sh
+      for arg in "$@"; do [ "$arg" = "--resume" ] && exit 1; done
+      echo '{"type":"system","subtype":"init","session_id":"#{@session_id}"}'
+      read line
+      echo "$line" > "#{dir}/got"
+      sleep 5
+      """)
+
+      File.chmod!(cli, 0o755)
+      previous_env = System.get_env("CLAUDE_CONFIG_DIR")
+      System.put_env("CLAUDE_CONFIG_DIR", Path.join(dir, "empty"))
+      previous = Application.get_env(:loom, Loom.Agent, [])
+      Application.put_env(:loom, Loom.Agent, Keyword.put(previous, :claude_cli, cli))
+
+      on_exit(fn ->
+        Application.put_env(:loom, Loom.Agent, previous)
+
+        if previous_env,
+          do: System.put_env("CLAUDE_CONFIG_DIR", previous_env),
+          else: System.delete_env("CLAUDE_CONFIG_DIR")
+      end)
+
+      # As in `Loom.Agent.Session`: the CLI may exit before the message is
+      # written, and the pipe breaking must not take the owner down.
+      Process.flag(:trap_exit, true)
+
+      # The record claims a conversation the store does not have.
+      {:ok, handle} = ClaudeCode.resume("a_1", %{cc_session_id: @session_id, cc_started: true})
+      {:ok, handle} = ClaudeCode.run_turn(handle, "hello there")
+
+      # `system/init` from a process that stayed up, which only the retry can be.
+      handle = pump(handle, fn h -> h.booting == nil end)
+      # The script says init before it reads, so the message may still be on
+      # its way in.
+      got = Path.join(dir, "got")
+      Enum.find(1..100, fn _ -> File.exists?(got) or (Process.sleep(20) && false) end)
+      assert File.read!(got) =~ "hello there"
+      assert ClaudeCode.persist(handle).cc_started
+      ClaudeCode.stop(handle)
+    end
+
+    test "system/init is what marks the conversation as started" do
+      handle = %{handle() | started?: false}
+      refute ClaudeCode.persist(handle).cc_started
+
+      {handle, _out} =
+        feed(handle, [
+          %{"type" => "system", "subtype" => "init", "session_id" => handle.session_id}
+        ])
+
+      assert handle.started?
+      assert ClaudeCode.persist(handle).cc_started
     end
 
     test "a fresh session gets a valid v4 uuid" do
@@ -640,7 +751,7 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
 
       {:ok, other} = ClaudeCode.start("a_2", %{})
       refute other.session_id == handle.session_id
-      assert handle.first_turn?
+      refute handle.started?
     end
   end
 

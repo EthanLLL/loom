@@ -134,8 +134,9 @@ defmodule Loom.Agent.Backend.ClaudeCode do
     case Backend.meta_get(meta, :cc_session_id) do
       id when is_binary(id) ->
         # `--resume <uuid>` locates a conversation across working directories
-        # (measured), so there is nothing else to restore.
-        {:ok, %{new(id, meta) | first_turn?: false}}
+        # (measured), so there is nothing else to restore — provided there is a
+        # conversation. A session restored before its first turn has only an id.
+        {:ok, %{new(id, meta) | started?: started?(meta, id)}}
 
       _ ->
         {:error, "no cc_session_id recorded for this session"}
@@ -149,7 +150,16 @@ defmodule Loom.Agent.Backend.ClaudeCode do
       # Appended to Claude Code's own system prompt on every spawn — it is a
       # flag, not something the conversation remembers across `--resume`.
       instructions: Backend.meta_get(meta, :instructions),
-      first_turn?: true,
+      # Whether Claude Code has this conversation on disk, so the next spawn
+      # resumes it rather than naming it. Set by `system/init`, not by the spawn:
+      # a session that is released or restarted before its first turn got going
+      # has nothing to resume, and `--resume` then exits with "No conversation
+      # found" on every turn after.
+      started?: false,
+      # Set while a spawn has not yet said `system/init`: how it was started and
+      # what has been written to it since, newest first. Enough to start over
+      # once if `--resume` turns out to have nothing to resume. See decode/2.
+      booting: nil,
       port: nil,
       os_pid: nil,
       # Identity of the API call currently streaming. One turn makes several, and
@@ -174,7 +184,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   @impl Backend
   def run_turn(handle, text) when is_binary(text) do
     with {:ok, handle} <- ensure_process(handle) do
-      write(handle, message_line(text))
+      handle = write(handle, message_line(text))
       # Block ids need no per-turn reset: they are qualified by the API call's
       # message id, which is unique across turns. See `block_id/2`.
       {:ok, %{handle | tools: %{}, interrupted?: false}}
@@ -191,8 +201,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   def steer(handle, text) when is_binary(text) do
     # Same pipe as run_turn/2: Claude Code decides where it lands, and mid-turn
     # it lands at the next tool-result boundary.
-    write(handle, message_line(text))
-    {:ok, handle}
+    {:ok, write(handle, message_line(text))}
   end
 
   defp ensure_process(%{port: port} = handle) when is_port(port) do
@@ -229,17 +238,45 @@ defmodule Loom.Agent.Backend.ClaudeCode do
            tools: %{},
            message_id: nil,
            pending_blocks: [],
-           first_turn?: false
+           booting: %{resumed?: handle.started?, lines: []}
        }}
     end
   end
 
-  defp write(handle, line), do: Port.command(handle.port, line)
+  defp write(handle, line) do
+    # A CLI that exits at once (a bad `--resume`, a missing login) can close the
+    # port before the first write. The `exit_status` already on its way says
+    # what happened, so a write into it is not worth crashing the session for.
+    try do
+      Port.command(handle.port, line)
+    rescue
+      ArgumentError -> :closed
+    end
+
+    case handle.booting do
+      nil -> handle
+      booting -> %{handle | booting: %{booting | lines: [line | booting.lines]}}
+    end
+  end
 
   # The very first turn names the conversation; every later one reattaches to
   # it. Passing both is rejected by the CLI.
-  defp session_args(%{first_turn?: true, session_id: id}), do: ["--session-id", id]
+  defp session_args(%{started?: false, session_id: id}), do: ["--session-id", id]
   defp session_args(%{session_id: id}), do: ["--resume", id]
+
+  # Headers written before `cc_started` existed say nothing, so ask Claude
+  # Code's own store whether the conversation is there.
+  defp started?(meta, id) do
+    case Backend.meta_get(meta, :cc_started) do
+      started when is_boolean(started) -> started
+      _ -> stored?(id)
+    end
+  end
+
+  defp stored?(id),
+    do: Path.wildcard(Path.join([claude_dir(), "projects", "*", id <> ".jsonl"])) != []
+
+  defp claude_dir, do: System.get_env("CLAUDE_CONFIG_DIR") || Path.expand("~/.claude")
 
   defp instruction_args(%{instructions: text}) when is_binary(text) and text != "",
     do: ["--append-system-prompt", text]
@@ -276,7 +313,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
 
   @impl Backend
   def persist(handle) do
-    %{cc_session_id: handle.session_id, cc_cwd: handle.cwd}
+    %{cc_session_id: handle.session_id, cc_cwd: handle.cwd, cc_started: handle.started?}
   end
 
   @impl Backend
@@ -317,13 +354,37 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   # It fires between turns too (a crash while idle). The session then records a
   # failure for a turn that was not running, which is noisy but honest; the
   # next `run_turn/2` respawns via `ensure_process/1` either way.
-  def decode(%{port: port} = handle, {port, {:exit_status, status}}) do
-    {:ok, %{handle | port: nil, os_pid: nil},
-     [
-       {:event, :turn_failed,
-        %{reason: "claude exited with status #{status} before finishing the turn"}}
-     ]}
+  #
+  # One exit is not a failure: `--resume` of a conversation Claude Code does not
+  # have ("No conversation found"), before `system/init`. The record said it had
+  # started and the store disagrees — a header from before `cc_started`, or a
+  # store cleaned by hand. The conversation is then named afresh and the turn's
+  # messages written again, so the user sees nothing but a slower start. Only
+  # once per spawn: the retry is a `--session-id` spawn, which never lands here.
+  def decode(
+        %{port: port, booting: %{resumed?: true} = booting} = handle,
+        {port, {:exit_status, status}}
+      ) do
+    if stored?(handle.session_id) do
+      exited(handle, status)
+    else
+      Logger.warning(
+        "ClaudeCode: no conversation #{handle.session_id} to resume; starting it afresh"
+      )
+
+      restart = %{handle | port: nil, os_pid: nil, buffer: "", started?: false}
+
+      case spawn_process(restart) do
+        {:ok, fresh} ->
+          {:ok, booting.lines |> Enum.reverse() |> Enum.reduce(fresh, &write(&2, &1)), []}
+
+        {:error, _reason} ->
+          exited(handle, status)
+      end
+    end
   end
+
+  def decode(%{port: port} = handle, {port, {:exit_status, status}}), do: exited(handle, status)
 
   # The process we killed, confirming it died. Erlang delivers this even after
   # `Port.close/1`, so it has to be swallowed here — falling through to
@@ -333,6 +394,14 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   end
 
   def decode(_handle, _message), do: :ignore
+
+  defp exited(handle, status) do
+    {:ok, %{handle | port: nil, os_pid: nil, booting: nil},
+     [
+       {:event, :turn_failed,
+        %{reason: "claude exited with status #{status} before finishing the turn"}}
+     ]}
+  end
 
   defp reduce_line(line, {handle, out}) do
     case Jason.decode(line) do
@@ -353,7 +422,13 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   defp translate(handle, %{"type" => "system", "subtype" => "init"} = message) do
     # Authoritative session id. We minted it, but taking it from here means a
     # future CLI that reassigns ids cannot silently orphan the conversation.
-    handle = %{handle | session_id: message["session_id"] || handle.session_id}
+    handle = %{
+      handle
+      | session_id: message["session_id"] || handle.session_id,
+        started?: true,
+        booting: nil
+    }
+
     {handle, [{:event, :status, %{status: :running, backend_ref: handle.session_id}}]}
   end
 

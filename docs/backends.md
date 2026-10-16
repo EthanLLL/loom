@@ -187,6 +187,26 @@ the thread and retries. Measured: a reload requested mid-turn waited for the
 turn (`sleep 6` finished), and the restart took about 10 ms. The same thread
 then used an MCP server added meanwhile.
 
+### 6.12 A conversation that never ran cannot be resumed
+
+Both backends only write a conversation to disk on its first turn. A session
+created and then restarted (a deploy, `/reload`) before anything was sent has
+an id and nothing behind it:
+
+- **CC:** `--resume <uuid>` prints `No conversation found` and exits 1, on every
+  turn after. The handle's `started?` is set by `system/init`, not by the
+  spawn, and persisted as `cc_started`; `--session-id` is used until it is
+  true. A header without `cc_started` is checked against
+  `~/.claude/projects/*/<uuid>.jsonl`. If a `--resume` still exits before
+  `system/init` and the store has no such file, the adapter respawns with
+  `--session-id` and rewrites the turn's messages, once.
+- **Codex:** `thread/resume` fails with `no rollout found for thread id`. The
+  adapter opens a new thread instead, at restore and when reattaching after
+  an app-server restart; there is nothing in the old one to lose.
+
+A write to a CLI that has already exited is ignored rather than raised: the
+`exit_status` that follows reports it.
+
 ## 7. Not done: permission prompts
 
 Codex has proper approval requests. CC auto-denies under
