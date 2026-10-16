@@ -1,6 +1,8 @@
 defmodule LoomWeb.TerminalChannel do
   @moduledoc """
-  One channel == one terminal session. The topic is `terminal:<id>`.
+  One channel == one client of one terminal session. The topic is
+  `terminal:<id>`; several browsers may join the same one at once, see
+  `Loom.Terminal.Session`.
 
   Client → server:
     - binary frames  : raw keystrokes → PTY stdin
@@ -19,17 +21,21 @@ defmodule LoomWeb.TerminalChannel do
     # existing one. Rejecting unknown ids stops a stale tab from resurrecting a
     # session that was already closed.
     if Terminal.exists?(id) do
-      # Apply the client's real terminal size immediately, before the shell
-      # produces any output the client cares about. The session was created at
-      # a default size; without this, a TUI (e.g. Claude Code) would lay out
-      # its first screen at the wrong column count and wrap/table rendering
-      # would be broken until the process is restarted.
-      with %{"cols" => cols, "rows" => rows} <- params,
-           true <- is_integer(cols) and is_integer(rows) do
-        Terminal.resize(id, cols, rows)
-      end
+      # Attach with the client's real terminal size, so the PTY fits it before
+      # the shell produces any output the client cares about. The session was
+      # created at a default size; without this, a TUI (e.g. Claude Code) would
+      # lay out its first screen at the wrong column count and wrap/table
+      # rendering would be broken until the process is restarted.
+      size =
+        case params do
+          %{"cols" => cols, "rows" => rows} when is_integer(cols) and is_integer(rows) ->
+            {cols, rows}
 
-      :ok = Terminal.subscribe(id, self())
+          _ ->
+            nil
+        end
+
+      :ok = Terminal.subscribe(id, self(), size)
       {:ok, assign(socket, :session_id, id)}
     else
       {:error, %{reason: "unknown_session"}}
@@ -39,12 +45,12 @@ defmodule LoomWeb.TerminalChannel do
   # Keystrokes arrive as raw binary frames.
   @impl true
   def handle_in("input", {:binary, data}, socket) do
-    Terminal.send_input(socket.assigns.session_id, data)
+    Terminal.send_input(socket.assigns.session_id, self(), data)
     {:noreply, socket}
   end
 
   def handle_in("resize", %{"cols" => cols, "rows" => rows}, socket) do
-    Terminal.resize(socket.assigns.session_id, cols, rows)
+    Terminal.resize(socket.assigns.session_id, self(), cols, rows)
     {:noreply, socket}
   end
 

@@ -4,9 +4,34 @@ defmodule Loom.Terminal.Session do
   the PTY keeps running even if the browser disconnects, so a client can leave
   and later reattach to the same live shell.
 
-  A single subscriber process (the channel) receives `{:pty_output, binary}`.
-  Recent output is kept in a bounded ring buffer and replayed to a subscriber
-  on attach, so a reconnecting client sees the current screen instead of blank.
+  Every attached client (one channel per browser tab) receives
+  `{:pty_output, binary}`. Recent output is kept in a bounded ring buffer and
+  replayed to a client on attach, so a reconnecting client sees the current
+  screen instead of blank.
+
+  ## Several clients, one shell
+
+  Input needs nothing special: every keystroke frame is a cast into this
+  process, so two people typing at once interleave frame by frame — like two
+  hands on one keyboard — and no frame is ever split.
+
+  What does need care is that a PTY has one of everything a terminal has, and
+  each client is a whole terminal:
+
+    * **One size.** A phone at 40 columns and a laptop at 200 cannot both be
+      right. The size follows the *driver*, the client that most recently
+      typed — tmux's `window-size latest`. Whoever is using the shell sees it
+      laid out correctly; a client that is only watching may see it wrap.
+    * **One reply per query.** A TUI asks the terminal things (cursor position,
+      device attributes, colours) and every xterm.js attached answers. A second
+      answer arrives as stray input — `^[[12;1R` printed at the prompt. So a
+      frame made only of such replies is dropped unless it comes from the
+      driver, and does not make its sender the driver.
+
+  Replay is sent from inside the attach call, so nothing the shell prints can
+  land between the buffer and the live stream — which is why clients are kept
+  here rather than on a PubSub topic, where subscribing and fetching the buffer
+  are two steps with output in between.
   """
   use GenServer, restart: :transient
 
@@ -22,16 +47,22 @@ defmodule Loom.Terminal.Session do
   end
 
   @doc """
-  Register `pid` as the subscriber. Immediately replays the retained output
-  buffer to `pid` (as a `{:pty_output, binary}`) so it can rebuild the screen.
+  Attach `pid` as a client, `size` being its `{cols, rows}` if known.
+
+  Immediately replays the retained output buffer to `pid` (as a
+  `{:pty_output, binary}`) so it can rebuild the screen. The newcomer becomes
+  the driver: whoever just opened a terminal is the one about to use it.
   """
-  def subscribe(id, pid), do: GenServer.call(via(id), {:subscribe, pid})
+  def subscribe(id, pid, size \\ nil), do: GenServer.call(via(id), {:subscribe, pid, size})
 
-  @doc "Send raw keystrokes to the shell's stdin."
-  def send_input(id, data), do: GenServer.cast(via(id), {:input, data})
+  @doc "Send raw keystrokes from client `pid` to the shell's stdin."
+  def send_input(id, pid, data), do: GenServer.cast(via(id), {:input, pid, data})
 
-  @doc "Resize the PTY (triggers SIGWINCH)."
-  def resize(id, cols, rows), do: GenServer.cast(via(id), {:resize, cols, rows})
+  @doc """
+  Record client `pid`'s size. Resizes the PTY (SIGWINCH) only if `pid` is the
+  driver, or nobody is.
+  """
+  def resize(id, pid, cols, rows), do: GenServer.cast(via(id), {:resize, pid, cols, rows})
 
   @doc "Return metadata about the session."
   def info(id), do: GenServer.call(via(id), :info)
@@ -92,8 +123,9 @@ defmodule Loom.Terminal.Session do
       created_at: System.system_time(:millisecond),
       cols: cols,
       rows: rows,
-      subscriber: nil,
-      monitor: nil,
+      # pid => %{ref: monitor, size: {cols, rows} | nil}
+      clients: %{},
+      driver: nil,
       buffer: "",
       buffer_size: 0
     }
@@ -102,16 +134,18 @@ defmodule Loom.Terminal.Session do
   end
 
   @impl true
-  def handle_call({:subscribe, pid}, _from, state) do
-    if state.subscriber && state.subscriber != pid && state.monitor do
-      Process.demonitor(state.monitor, [:flush])
-    end
+  def handle_call({:subscribe, pid, size}, _from, state) do
+    client =
+      case state.clients do
+        %{^pid => client} -> %{client | size: size || client.size}
+        _ -> %{ref: Process.monitor(pid), size: size}
+      end
 
-    ref = Process.monitor(pid)
     # Replay retained output so the client rebuilds the current screen.
     if state.buffer_size > 0, do: send(pid, {:pty_output, state.buffer})
 
-    {:reply, :ok, %{state | subscriber: pid, monitor: ref}}
+    state = put_in(state.clients[pid], client)
+    {:reply, :ok, drive(state, pid)}
   end
 
   def handle_call(:info, _from, state) do
@@ -119,14 +153,30 @@ defmodule Loom.Terminal.Session do
   end
 
   @impl true
-  def handle_cast({:input, data}, state) do
-    ExPTY.write(state.pty, data)
-    {:noreply, state}
+  def handle_cast({:input, pid, data}, state) do
+    cond do
+      pid == state.driver ->
+        ExPTY.write(state.pty, data)
+        {:noreply, state}
+
+      reply_only?(data) ->
+        {:noreply, state}
+
+      true ->
+        ExPTY.write(state.pty, data)
+        {:noreply, drive(state, pid)}
+    end
   end
 
-  def handle_cast({:resize, cols, rows}, state) do
-    ExPTY.resize(state.pty, cols, rows)
-    {:noreply, %{state | cols: cols, rows: rows}}
+  def handle_cast({:resize, pid, cols, rows}, state) do
+    case state.clients do
+      %{^pid => _} ->
+        state = put_in(state.clients[pid].size, {cols, rows})
+        if state.driver in [nil, pid], do: {:noreply, drive(state, pid)}, else: {:noreply, state}
+
+      _ ->
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -136,7 +186,7 @@ defmodule Loom.Terminal.Session do
     if output == "" do
       {:noreply, state}
     else
-      if state.subscriber, do: send(state.subscriber, {:pty_output, output})
+      for {pid, _} <- state.clients, do: send(pid, {:pty_output, output})
       {:noreply, append_buffer(state, output)}
     end
   end
@@ -146,9 +196,19 @@ defmodule Loom.Terminal.Session do
     {:stop, :normal, state}
   end
 
-  # Subscriber (channel) went away — keep the PTY alive for reconnect.
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, %{subscriber: pid} = state) do
-    {:noreply, %{state | subscriber: nil, monitor: nil}}
+  # A client went away — keep the PTY alive for reconnect. If it was driving,
+  # hand the wheel to someone still here, so the size fits a screen that is
+  # actually looking at it.
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state)
+      when is_map_key(state.clients, pid) do
+    {_, clients} = Map.pop(state.clients, pid)
+    state = %{state | clients: clients}
+
+    cond do
+      state.driver != pid -> {:noreply, state}
+      clients == %{} -> {:noreply, %{state | driver: nil}}
+      true -> {:noreply, drive(state, clients |> Map.keys() |> hd())}
+    end
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
@@ -184,6 +244,29 @@ defmodule Loom.Terminal.Session do
   end
 
   # ── Helpers ───────────────────────────────────────────────────────────────
+
+  # Make `pid` the driver and fit the PTY to it.
+  defp drive(state, pid) do
+    case state.clients[pid] do
+      %{size: {cols, rows}} when {cols, rows} != {state.cols, state.rows} ->
+        ExPTY.resize(state.pty, cols, rows)
+        %{state | driver: pid, cols: cols, rows: rows}
+
+      _ ->
+        %{state | driver: pid}
+    end
+  end
+
+  # What xterm.js sends on its own, answering the program rather than the
+  # user: cursor position and status reports (CSI … R / n), device attributes
+  # (CSI ? … c, CSI > … c), mode reports (CSI … $ y), window reports (CSI … t),
+  # keyboard protocol (CSI ? … u), focus in/out (CSI I / O), OSC replies such as
+  # colours, and DCS replies such as XTGETTCAP. Only frames made *entirely* of
+  # these count, so a keystroke is never dropped — the one overlap, Ctrl+F3
+  # also being CSI 1;5 R, is lost only from a client that is not driving.
+  @reply ~r/\A(?:\e\[\??[\d;]*[Rn]|\e\[[\d;]*t|\e\[[?>=][\d;]*c|\e\[\?[\d;]*u|\e\[\??[\d;]*\$y|\e\[[IO]|\e\][^\a\e]*(?:\a|\e\\)|\eP[^\e]*\e\\)+\z/
+
+  defp reply_only?(data), do: Regex.match?(@reply, data)
 
   defp append_buffer(state, output) do
     buffer = state.buffer <> output

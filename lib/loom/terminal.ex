@@ -39,9 +39,9 @@ defmodule Loom.Terminal do
     |> Enum.sort_by(& &1.created_at)
   end
 
-  defdelegate subscribe(id, pid), to: Session
-  defdelegate send_input(id, data), to: Session
-  defdelegate resize(id, cols, rows), to: Session
+  defdelegate subscribe(id, pid, size \\ nil), to: Session
+  defdelegate send_input(id, pid, data), to: Session
+  defdelegate resize(id, pid, cols, rows), to: Session
   defdelegate info(id), to: Session
 
   defp safe_info(id) do
