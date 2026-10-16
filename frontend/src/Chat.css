@@ -1062,3 +1062,40 @@ h3.md-h {
     padding-bottom: 8px;
   }
 }
+
+/* `/cron`: one compact card per scheduled job. */
+.cron-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cron-job {
+  padding: 6px 10px;
+  border-left: 2px solid var(--fg-dim);
+  font-size: 0.923rem;
+}
+
+.cron-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cron-name {
+  font-weight: 600;
+}
+
+.cron-dim {
+  color: var(--fg-dim);
+  font-size: 0.846rem;
+}
+
+.cron-id {
+  font-family: var(--mono);
+}
+
+.cron-error {
+  color: var(--red);
+  font-size: 0.846rem;
+}

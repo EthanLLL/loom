@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { buildTimeline, foldFinished, isBusy, type TimelineItem } from "./agent"
+import { buildTimeline, foldFinished, isBusy, type CronJob, type TimelineItem } from "./agent"
 import { itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
@@ -320,6 +320,7 @@ function Item({
           {item.files.length > 0 && <SentFiles sessionId={sessionId} files={item.files} />}
           {item.queued && <span className="tag">queued</span>}
           {item.origin === "phone" && <span className="tag">phone</span>}
+          {item.origin === "cron" && <span className="tag">⏰ cron</span>}
         </div>
       )
 
@@ -374,7 +375,46 @@ function Item({
 
     case "notice":
       return <div className="notice">{item.text}</div>
+
+    case "cron":
+      return <CronJobs jobs={item.jobs} />
   }
+}
+
+// Shown in local time; the expression itself is UTC, and says so.
+const when = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "never"
+
+function CronJobs({ jobs }: { jobs: CronJob[] }) {
+  if (jobs.length === 0) return <div className="notice">no scheduled jobs</div>
+
+  return (
+    <div className="cron-jobs">
+      {jobs.map((job) => (
+        <div key={job.id} className="cron-job" title={job.prompt}>
+          <div className="cron-head">
+            <span className="cron-name">{job.name}</span>
+            <code>{job.cron}</code>
+            <span className="cron-dim">UTC</span>
+          </div>
+          <div className="cron-dim">
+            → {job.target_title ?? job.target} · next {when(job.next_at)}
+            {job.last_run_at && <> · last {when(job.last_run_at)}</>}
+          </div>
+          {job.last_error && <div className="cron-error">{job.last_error}</div>}
+          <div className="cron-dim cron-id">{job.id}</div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 /**
@@ -827,10 +867,11 @@ const STATUS_LABELS: Record<string, string> = {
 // ── Composer ───────────────────────────────────────────────────────────────
 
 // What a message can be instead of a prompt. `/compact` goes to the backend
-// (Codex's adapter turns it into an RPC); `/reload` is loom's own.
+// (Codex's adapter turns it into an RPC); `/reload` and `/cron` are loom's own.
 const COMMANDS = [
   { name: "/compact", hint: "summarize the conversation to free up context" },
   { name: "/reload", hint: "reload Claude Code and Codex config: settings, MCP, skills" },
+  { name: "/cron", hint: "list every scheduled job" },
 ]
 
 // Only a message that *starts* with `/` is a command, and only while the first

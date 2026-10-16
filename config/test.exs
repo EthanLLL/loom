@@ -26,3 +26,7 @@ config :phoenix,
 # No real `codex app-server`: the suite drives the JSON-RPC protocol directly,
 # and spawning one would make every run slow and dependent on a working login.
 config :loom, :codex_server, false
+
+# Never the real `~/.loom/cron.json`: a test run must not fire, or rewrite, the
+# user's jobs.
+config :loom, Loom.Cron, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/cron.json")

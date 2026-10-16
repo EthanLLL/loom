@@ -360,6 +360,7 @@ defmodule Loom.Agent.Session do
         cond do
           String.trim(text) == "" and files == [] -> {:reply, {:error, :empty}, state}
           reload?(text) and files == [] -> reload(state, text, opts)
+          command?(text, "/cron") and files == [] -> list_cron(state, text, opts)
           true -> accept(state, text, files, opts)
         end
     end
@@ -485,26 +486,41 @@ defmodule Loom.Agent.Session do
 
   # Loom's own command, never sent to a backend. Only the whole message counts,
   # so a sentence that mentions /reload is still a sentence.
-  defp reload?(text), do: String.trim(text) == "/reload"
+  defp reload?(text), do: command?(text, "/reload")
+
+  defp command?(text, command), do: String.trim(text) == command
 
   # Shown like any message (the client is waiting for its `:user` event to
   # replace the optimistic bubble), then answered by loom itself. The backend
   # never sees it, so the turn state and the queue are untouched.
   defp reload(state, text, opts) do
     Loom.Agent.reload_backends()
-
-    state =
-      state
-      |> emit(:user, %{
-        text: text,
-        files: [],
-        origin: Keyword.get(opts, :origin, "unknown"),
-        client_msg_id: Keyword.get(opts, :client_msg_id),
-        status: :sent
-      })
-      |> emit(:reload_requested, %{})
-
+    state = state |> echo(text, opts) |> emit(:reload_requested, %{})
     {:reply, {:ok, :reloaded}, state}
+  end
+
+  # `/cron` lists every scheduled job, in whichever session it is typed. Jobs
+  # are made by an agent over `bin/loom rpc`; see `Loom.Cron`.
+  defp list_cron(state, text, opts) do
+    jobs =
+      try do
+        Loom.Cron.list()
+      catch
+        :exit, _ -> []
+      end
+
+    state = state |> echo(text, opts) |> emit(:cron_jobs, %{jobs: jobs})
+    {:reply, {:ok, :listed}, state}
+  end
+
+  defp echo(state, text, opts) do
+    emit(state, :user, %{
+      text: text,
+      files: [],
+      origin: Keyword.get(opts, :origin, "unknown"),
+      client_msg_id: Keyword.get(opts, :client_msg_id),
+      status: :sent
+    })
   end
 
   # A submitted message, once its attachments have been vouched for.

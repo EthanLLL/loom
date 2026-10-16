@@ -42,6 +42,9 @@ defmodule Loom.Application do
       # Must come after the registry and the session supervisor it populates.
       # Disabled under test so suites start from a clean slate.
       {Loom.Agent.Bootstrap, enabled: Application.get_env(:loom, :restore_agents, true)},
+      # Scheduled prompts. After the bootstrap, so a job due at boot finds its
+      # session already restored.
+      Loom.Cron,
       # Restarts the node once every session is idle, on request. See its doc.
       Loom.Restarter,
       # Start to serve requests, typically the last entry

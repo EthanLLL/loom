@@ -299,6 +299,20 @@ export function isBusy(t: Transcript): boolean {
 
 export type ToolResult = { ok: boolean; output: string }
 
+// A scheduled prompt, as `Loom.Cron.list/0` reports it. Times are ISO 8601,
+// UTC; `cron` is matched in UTC too.
+export type CronJob = {
+  id: string
+  name: string
+  cron: string
+  target: string
+  target_title: string | null
+  prompt: string
+  next_at: string | null
+  last_run_at: string | null
+  last_error: string | null
+}
+
 export type TimelineItem =
   | {
       key: string
@@ -331,6 +345,8 @@ export type TimelineItem =
   // counts files past the server's cap.
   | { key: string; kind: "outputs"; files: OutputFile[]; more: number }
   | { key: string; kind: "notice"; text: string }
+  // The answer to `/cron`: every scheduled job, as of when it was typed.
+  | { key: string; kind: "cron"; jobs: CronJob[] }
   | { key: string; kind: "error"; text: string }
   | {
       key: string
@@ -455,6 +471,10 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
           kind: "notice",
           text: "reload: Claude Code restarts on its next turn, Codex once no Codex turn is running",
         })
+        break
+
+      case "cron_jobs":
+        items.push({ key, kind: "cron", jobs: (p.jobs as CronJob[] | undefined) ?? [] })
         break
 
       case "output_files":

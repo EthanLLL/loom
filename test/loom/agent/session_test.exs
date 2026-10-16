@@ -559,6 +559,20 @@ defmodule Loom.Agent.SessionTest do
     end
   end
 
+  describe "/cron" do
+    test "lists the scheduled jobs and never reaches the backend" do
+      id = new_session()
+
+      assert {:ok, :listed} = Agent.submit(id, "/cron")
+      BackendStub.refute_turn()
+
+      {:ok, snapshot} = Agent.attach(id, 0)
+      assert [:user, :cron_jobs] = Enum.map(snapshot.events, & &1.kind)
+      assert %{jobs: jobs} = List.last(snapshot.events).payload
+      assert is_list(jobs)
+    end
+  end
+
   describe "usage" do
     test "comes from the backend's own report, latest wins" do
       # Context is a size, not a running total: each turn replaces it rather

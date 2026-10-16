@@ -77,8 +77,35 @@ that reads the new settings, MCP servers and skills. Codex has one shared
 app-server, which restarts itself as soon as no Codex turn is running. Its
 threads are reattached silently on their next turn
 ([backends.md §6.11](backends.md)). Only a message that is exactly `/reload`
-counts. The composer suggests `/compact` and `/reload` when the first character
-is `/`.
+counts. The composer suggests `/compact`, `/reload` and `/cron` when the first
+character is `/`.
+
+### 2.5 Scheduled prompts
+
+`Loom.Cron` submits a fixed prompt to an existing session at every match of a
+five-field cron expression, always in UTC. The turn is an ordinary one, so its
+reply, outputs and canvas land in that session like any other; a backend's own
+scheduler would run outside Loom and update nothing. The message is marked
+`origin: "cron"` and a busy session steers or queues it as usual.
+
+- **Truth is `~/.loom/cron.json`.** One process under the supervisor reads it
+  at boot and rewrites it on every change; `next_at` is never stored. Minutes
+  missed while Loom was down are skipped, not caught up.
+- **No HTTP API.** Jobs are made on the node itself, by an agent or by hand,
+  with `bin/loom rpc`. The prompt goes in a `~S"""` heredoc, so quotes,
+  newlines and `#{}` arrive verbatim:
+
+  ```sh
+  bin/loom rpc 'IO.inspect(Loom.Cron.add(%{name: "CI", cron: "30 0 * * 1-5",
+    target: "a_…", prompt: ~S"""
+  …
+  """}))'
+  bin/loom rpc 'IO.inspect(Loom.Cron.list())'
+  bin/loom rpc 'IO.inspect(Loom.Cron.delete("c_…"))'
+  ```
+
+- **`/cron`**, typed in any session, lists every job. Like `/reload`, it never
+  reaches a backend.
 
 ## 3. Client protocol
 
@@ -108,6 +135,7 @@ tool card's `block_id`, the same pattern as text.
 ~/.loom/sessions/<id>/events.jsonl   normalized transcript, append-only, :sync
 ~/.loom/sessions/<id>/files/…        user attachments
 ~/.loom/sessions/<id>/output/…       files the agent made for the user
+~/.loom/cron.json                    scheduled prompts (§2.5)
 ```
 
 The base is `~/.loom` (or `LOOM_HOME`), not `priv/`, because a deploy replaces
@@ -206,6 +234,7 @@ Loom.Supervisor
 ├─ Task.Supervisor
 ├─ Loom.Agent.Codex.Server        the one shared codex app-server
 ├─ Loom.Agent.Bootstrap           reattaches persisted sessions at boot
+├─ Loom.Cron                      scheduled prompts
 ├─ Loom.Restarter                 restart-when-idle, for deploys
 └─ LoomWeb.Endpoint
 ```
