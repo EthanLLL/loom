@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react"
-import type { AgentBackend, AgentInfo } from "./api"
+import type { AgentBackend, AgentInfo, Device } from "./api"
+import { DevicesDialog } from "./Devices"
 import { lastActive } from "./useLobby"
 
 type Props = {
   sessions: AgentInfo[]
+  devices: Device[]
+  onUpsertDevice: (device: Device) => void
   activeId: string | null
   onSelect: (id: string) => void
   onCreate: (backend: AgentBackend) => void
@@ -13,6 +16,8 @@ type Props = {
 
 export function Sidebar({
   sessions,
+  devices,
+  onUpsertDevice,
   activeId,
   onSelect,
   onCreate,
@@ -26,6 +31,8 @@ export function Sidebar({
     const timer = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(timer)
   }, [])
+  const [devicesOpen, setDevicesOpen] = useState(false)
+  const online = devices.filter((d) => d.online).length
 
   return (
     <aside className="sidebar">
@@ -81,6 +88,22 @@ export function Sidebar({
           </div>
         ))}
       </div>
+
+      {/* The user's own machines, reachable by agents through loom-node. */}
+      <button className="devices-btn" onClick={() => setDevicesOpen(true)} title="Devices">
+        <span className={"dot" + (online > 0 ? " online" : "")} />
+        <span>Devices</span>
+        <span className="devices-count">
+          {online}/{devices.length}
+        </span>
+      </button>
+      {devicesOpen && (
+        <DevicesDialog
+          devices={devices}
+          onUpsert={onUpsertDevice}
+          onClose={() => setDevicesOpen(false)}
+        />
+      )}
     </aside>
   )
 }

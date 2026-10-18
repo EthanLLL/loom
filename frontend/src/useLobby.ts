@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { getSocket } from "./socket"
-import type { AgentInfo } from "./api"
+import type { AgentInfo, Device } from "./api"
 
 type Lobby = {
   sessions: AgentInfo[]
+  // The user's machines, in the order they were added. Online state is pushed
+  // as they connect and drop.
+  devices: Device[]
+  upsertDevice: (device: Device) => void
   loaded: boolean
   // For the caller's own create/delete, so the sidebar does not wait for the
   // push. The push still arrives and is merged by `seq`.
@@ -25,6 +29,22 @@ type Lobby = {
 export function useLobby(enabled: boolean): Lobby {
   const [byId, setById] = useState<Map<string, AgentInfo>>(new Map())
   const [loaded, setLoaded] = useState(false)
+  const [devices, setDevices] = useState<Map<string, Device>>(new Map())
+
+  // No `seq` to compare: a device's summary is only ever sent from the one
+  // process that owns the registry, in order.
+  const upsertDevice = useCallback((device: Device) => {
+    setDevices((current) => new Map(current).set(device.id, device))
+  }, [])
+
+  const dropDevice = useCallback((id: string) => {
+    setDevices((current) => {
+      if (!current.has(id)) return current
+      const next = new Map(current)
+      next.delete(id)
+      return next
+    })
+  }, [])
 
   const upsert = useCallback((session: AgentInfo) => {
     setById((current) => {
@@ -57,16 +77,19 @@ export function useLobby(enabled: boolean): Lobby {
     const channel = getSocket().channel("agents")
     channel.on("session", upsert)
     channel.on("removed", ({ id }: { id: string }) => drop(id))
+    channel.on("node", upsertDevice)
+    channel.on("node_removed", ({ id }: { id: string }) => dropDevice(id))
 
     channel
       .join()
-      .receive("ok", ({ sessions }: { sessions: AgentInfo[] }) => {
+      .receive("ok", ({ sessions, nodes }: { sessions: AgentInfo[]; nodes: Device[] }) => {
         joined = true
         if (leaveWhenJoined) {
           channel.leave()
           return
         }
         setById(new Map(sessions.map((s) => [s.id, s])))
+        setDevices(new Map((nodes ?? []).map((d) => [d.id, d])))
         setLoaded(true)
       })
       // Nothing to show either way; an empty list beats "connecting…" forever.
@@ -76,14 +99,18 @@ export function useLobby(enabled: boolean): Lobby {
       if (joined) channel.leave()
       else leaveWhenJoined = true
     }
-  }, [enabled, upsert, drop])
+  }, [enabled, upsert, drop, upsertDevice, dropDevice])
 
   // Most recently active first, so the conversation you are in stays on top.
   const sessions = useMemo(
     () => [...byId.values()].sort((a, b) => lastActive(b) - lastActive(a)),
     [byId],
   )
-  return { sessions, loaded, upsert, drop }
+  const deviceList = useMemo(
+    () => [...devices.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    [devices],
+  )
+  return { sessions, devices: deviceList, upsertDevice, loaded, upsert, drop }
 }
 
 export const lastActive = (s: AgentInfo) => s.last_active_at ?? s.created_at

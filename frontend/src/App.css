@@ -195,6 +195,220 @@
   }
 }
 
+/* A device that is connected. Steady, not pulsing: pulsing means working. */
+.dot.online {
+  background: var(--accent);
+}
+
+/* ── Devices ─────────────────────────────────────────────────────────────
+   The user's own machines (loom-node). A line at the foot of the sidebar,
+   and a dialog to manage them. */
+
+.devices-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.devices-btn:hover {
+  background: var(--bg-card);
+  color: var(--fg);
+}
+
+.devices-count {
+  margin-left: auto;
+  font-size: 0.846rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 55%);
+}
+
+.modal {
+  width: min(36rem, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  color: var(--fg);
+  font-family: var(--mono);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 50%);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-weight: bold;
+}
+
+.device-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.device-empty {
+  padding: 12px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
+.device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.device:hover {
+  background: var(--bg-card);
+}
+
+.device-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-name-input,
+.device-add input {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.device-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+  font-size: 0.846rem;
+}
+
+.device-action {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 0.846rem;
+  cursor: pointer;
+}
+
+.device-action:hover {
+  border-color: var(--blue);
+  color: var(--fg);
+}
+
+.device:hover .device-del {
+  visibility: visible;
+}
+
+.install-box {
+  margin: 2px 8px 10px 25px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.install-hint {
+  color: var(--fg-dim);
+  font-size: 0.846rem;
+  margin-bottom: 6px;
+}
+
+.install-command {
+  display: block;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--accent);
+  font-size: 0.846rem;
+  word-break: break-all;
+  user-select: all;
+}
+
+.install-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.install-actions .text-btn,
+.device-add .text-btn {
+  padding: 5px 12px;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.install-actions .text-btn:hover,
+.device-add .text-btn:hover:not(:disabled) {
+  background: var(--blue);
+  color: var(--bg);
+}
+
+.device-add .text-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.device-error {
+  margin: 0 12px 8px;
+  color: var(--red);
+  font-size: 0.923rem;
+}
+
+.device-add {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.device-add input {
+  flex: 1 1 auto;
+}
+
 /* ── Main ────────────────────────────────────────────────────────────── */
 
 /* sidebar | chat | terminals — always three columns, at every width. The
@@ -625,6 +839,15 @@
 @media (hover: none) {
   .session-del {
     visibility: visible;
+  }
+}
+
+/* Typing into the add box on a phone must not zoom the page (iOS zooms any
+   input under 16px). */
+@media (max-width: 640px) {
+  .device-add input,
+  .device-name-input {
+    font-size: 16px;
   }
 }
 

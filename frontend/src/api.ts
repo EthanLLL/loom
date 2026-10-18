@@ -396,3 +396,53 @@ export async function putLayout(layout: Layout): Promise<Layout> {
   if (!res.ok) throw new Error(`putLayout failed: ${res.status}`)
   return res.json()
 }
+
+/** One of the user's machines, as `Loom.Nodes` describes it. */
+export type Device = {
+  id: string
+  name: string
+  online: boolean
+  os: string | null
+  arch: string | null
+  hostname: string | null
+  version: string | null
+  created_at: string
+  last_seen_at: string | null
+}
+
+// The server words its refusals ("there is already a device called mac"), so
+// they are shown as they are.
+async function deviceCall<T>(url: string, init: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+  })
+  if (res.status === 401) throw unauthorized()
+  if (res.status === 204) return undefined as T
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error ?? `request failed: ${res.status}`)
+  return body
+}
+
+/** Register a device: it comes back with its one-time install code. */
+export function createDevice(name: string): Promise<{ node: Device; code: string }> {
+  return deviceCall("/api/devices", { method: "POST", body: JSON.stringify({ name }) })
+}
+
+export function renameDevice(id: string, name: string): Promise<{ node: Device }> {
+  return deviceCall(`/api/devices/${id}`, { method: "PATCH", body: JSON.stringify({ name }) })
+}
+
+export function deleteDevice(id: string): Promise<void> {
+  return deviceCall(`/api/devices/${id}`, { method: "DELETE" })
+}
+
+/** A new install code for a device; using it replaces the device's token. */
+export function deviceInstallCode(id: string): Promise<{ code: string }> {
+  return deviceCall(`/api/devices/${id}/install`, { method: "POST" })
+}
+
+/** What to paste into a terminal on the device. */
+export function installCommand(code: string): string {
+  return `curl -fsSL ${window.location.origin}/node/install/${code} | sh`
+}

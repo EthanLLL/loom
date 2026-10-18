@@ -45,6 +45,8 @@ defmodule Loom.Application do
       # Scheduled prompts. After the bootstrap, so a job due at boot finds its
       # session already restored.
       Loom.Cron,
+      # The user's own machines that agents can run commands on.
+      Loom.Nodes,
       # Restarts the node once every session is idle, on request. See its doc.
       Loom.Restarter,
       # Start to serve requests, typically the last entry

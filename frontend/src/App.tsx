@@ -40,7 +40,7 @@ const TOUCH = matchMedia("(hover: none)")
 function App() {
   const [authed, setAuthed] = useState(!!getToken())
   // Pushed by the server as sessions change; see `useLobby`.
-  const { sessions, loaded, upsert, drop } = useLobby(authed)
+  const { sessions, devices, upsertDevice, loaded, upsert, drop } = useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(null)
   const narrow = useNarrow()
 
@@ -205,6 +205,8 @@ function App() {
   const sidebar = (
     <Sidebar
       sessions={sessions}
+      devices={devices}
+      onUpsertDevice={upsertDevice}
       activeId={activeId}
       onSelect={select}
       onCreate={create}

@@ -13,7 +13,9 @@ defmodule LoomWeb do
 
   # `assets`, `fonts` and `index.html` are the Vite build, copied in by
   # `mix assets.deploy`. Nothing else in `priv/static` is reachable.
-  def static_paths, do: ~w(assets fonts icons favicon.ico favicon.svg icons.svg manifest.webmanifest robots.txt index.html)
+  def static_paths,
+    do:
+      ~w(assets fonts icons favicon.ico favicon.svg icons.svg manifest.webmanifest robots.txt index.html)
 
   def router do
     quote do

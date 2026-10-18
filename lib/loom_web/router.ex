@@ -40,6 +40,35 @@ defmodule LoomWeb.Router do
 
     get "/layout", LayoutController, :show
     put "/layout", LayoutController, :update
+
+    get "/devices", DevicesController, :index
+    post "/devices", DevicesController, :create
+    patch "/devices/:id", DevicesController, :update
+    delete "/devices/:id", DevicesController, :delete
+    post "/devices/:id/install", DevicesController, :install
+  end
+
+  # The `loom-node` CLI on this host, relaying to a device. Not the browser's
+  # token: a key only this user can read, and never anything that came through
+  # Cloudflare. See `LoomWeb.Plugs.NodeCliAuth`.
+  pipeline :node_cli do
+    plug LoomWeb.Plugs.NodeCliAuth
+  end
+
+  scope "/api/node", LoomWeb do
+    pipe_through :node_cli
+
+    get "/list", NodeController, :list
+    post "/exec", NodeController, :exec
+    get "/read", NodeController, :read
+    post "/write", NodeController, :write
+  end
+
+  # A device joining: the install script (its one-time code is the credential)
+  # and the binary it downloads. See `LoomWeb.NodeInstallController`.
+  scope "/node", LoomWeb do
+    get "/install/:code", NodeInstallController, :script
+    get "/download/:target", NodeInstallController, :download
   end
 
   # The UI itself. Last so it can never shadow an API route, and only `/` —

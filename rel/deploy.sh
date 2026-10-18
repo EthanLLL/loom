@@ -18,6 +18,25 @@ unset PHX_SERVER
 
 mix deps.get --only prod
 mix assets.deploy
+
+# loom-node: the binaries devices download (into priv/, so the release carries
+# them), the CLI agents call here, and the skill that tells them how. A host
+# without Go still deploys; it just cannot hand out devices.
+if command -v go >/dev/null 2>&1; then
+  make -C node -j4
+  case "$(uname -m)" in aarch64|arm64) arch=arm64 ;; *) arch=amd64 ;; esac
+  mkdir -p "$HOME/.local/bin"
+  # Renamed into place, so a CLI call already running keeps its binary.
+  cp "priv/node/loom-node-linux-$arch" "$HOME/.local/bin/.loom-node.new"
+  mv "$HOME/.local/bin/.loom-node.new" "$HOME/.local/bin/loom-node"
+  for skills in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+    mkdir -p "$skills/loom-nodes"
+    cp node/SKILL.md "$skills/loom-nodes/SKILL.md"
+  done
+else
+  echo "deploy: no Go toolchain; skipping loom-node (devices cannot be installed from this host)" >&2
+fi
+
 mix release --path _build/prod/rel/loom.next --overwrite
 
 if [ "${1:-}" = "--build" ]; then

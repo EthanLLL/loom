@@ -17,6 +17,15 @@ defmodule LoomWeb.Endpoint do
     websocket: [check_origin: false],
     longpoll: false
 
+  # `loom-node daemon` on the user's own machines. Its own socket, so a device
+  # token can never open a session or a terminal; see `LoomWeb.NodeSocket`.
+  # Shorter than the default timeout so a device that vanished without closing
+  # (a laptop lid, a dropped Wi-Fi) is let go within a minute; the daemon
+  # heartbeats every 15s.
+  socket "/node", LoomWeb.NodeSocket,
+    websocket: [check_origin: false, timeout: 45_000],
+    longpoll: false
+
   # The frontend, straight from the release. There is no web server in front,
   # so if this is not here nothing serves the UI at all and the browser gets
   # only `/api`. Vite fingerprints every asset filename, which is what makes

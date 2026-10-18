@@ -3,9 +3,12 @@ defmodule LoomWeb.LobbyChannel do
   The session list, pushed instead of polled. The topic is `agents`.
 
   Server → client:
-    - join reply : `%{sessions: [summary]}`, the whole list
+    - join reply : `%{sessions: [summary], nodes: [device]}`, both whole lists
     - "session"  : one summary, whenever that session's header changes
     - "removed"  : `%{id: _}`, when a session is stopped or deleted
+    - "node"     : one device (`Loom.Nodes`), when it is added, renamed, or
+                   comes online or goes offline
+    - "node_removed" : `%{id: _}`, when a device is removed
 
   A summary is what `GET /api/agents` returns for one session, plus `seq`. The
   client keeps whichever copy of a session has the higher `seq`: the channel is
@@ -24,7 +27,7 @@ defmodule LoomWeb.LobbyChannel do
     # Already subscribed to "agents" by `Phoenix.Channel.Server` — the session
     # broadcasts on exactly this topic, so no extra subscribe (it would deliver
     # everything twice; see `LoomWeb.AgentChannel`).
-    {:ok, %{sessions: Agent.list_sessions()}, socket}
+    {:ok, %{sessions: Agent.list_sessions(), nodes: Loom.Nodes.list()}, socket}
   end
 
   @impl true
@@ -35,6 +38,16 @@ defmodule LoomWeb.LobbyChannel do
 
   def handle_info({:agent_removed, id}, socket) do
     push(socket, "removed", %{id: id})
+    {:noreply, socket}
+  end
+
+  def handle_info({:node_summary, node}, socket) do
+    push(socket, "node", node)
+    {:noreply, socket}
+  end
+
+  def handle_info({:node_removed, id}, socket) do
+    push(socket, "node_removed", %{id: id})
     {:noreply, socket}
   end
 end

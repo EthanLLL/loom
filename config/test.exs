@@ -30,3 +30,7 @@ config :loom, :codex_server, false
 # Never the real `~/.loom/cron.json`: a test run must not fire, or rewrite, the
 # user's jobs.
 config :loom, Loom.Cron, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/cron.json")
+
+# Nor the real device registry and CLI key.
+config :loom, Loom.Nodes, dir: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}")
+config :loom, LoomWeb.NodeController, await_ms: 200

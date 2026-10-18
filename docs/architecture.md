@@ -220,6 +220,65 @@ The page is model output, so it is treated as hostile:
 - Logs, data and source files are sent as `text/plain`, so they display
   instead of downloading.
 
+### 4.4 Devices (loom-node)
+
+Agents can reach the user's own machines, such as a Mac or a WSL box. Each
+device runs `loom-node daemon`, which is the Go program in `node/`. One binary
+serves both ends of the link:
+
+```
+agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
+                 │  HTTP on loom's own port, NDJSON stream
+                 ▼
+          NodeController ── Loom.Nodes (who is registered / online)
+                 │  Erlang messages
+                 ▼
+          NodeChannel  ◄── wss /node/websocket, through cloudflared ──  loom-node daemon (device)
+```
+
+- **Registering a device.** The Devices dialog at the foot of the sidebar
+  registers a name and returns a one-time install code, valid for an hour. The
+  user runs `curl …/node/install/<code> | sh` on the device. Fetching that
+  script redeems the code: it mints the device's token, which loom keeps only
+  as a SHA-256 hash, and kills the previous token. The script then downloads
+  the binary for the device's OS and arch from `/node/download/…`, writes
+  `~/.config/loom-node/config.json`, and installs a per-user service (launchd
+  or a systemd user unit). Reinstalling is how a token is replaced, and
+  removing the device revokes its token.
+- **How the CLI gets in.** The CLI's routes, `/api/node/*`, share a port with
+  everything Cloudflare forwards. They require the key from
+  `~/.loom/node-cli.json`, a mode-600 file that loom writes at boot, so only
+  this user can read it. They also refuse any request carrying `cf-ray`,
+  whatever key it presents.
+- **Online state.** A device is online while its channel is alive. Joins and
+  drops are pushed on the lobby channel. Neither side polls.
+- **Requests.** Each request (`exec`, `read`, `write`) gets an id. The
+  controller sends it to the channel, the channel pushes it to the device, and
+  the device's events (`out`/`exit`, `chunk`/`done`, `written`, `error`) come
+  back along the same path.
+  - The controller pings the CLI every second. When a ping fails to write, the
+    CLI has gone away, and the device is told to `cancel`.
+  - An offline device gets 10s to reconnect before the request is refused.
+- **Losing the device mid-request.**
+  - The controller monitors the channel, so a dropped device ends the stream
+    with `lost`, and the CLI exits 255 with a hint to check `loom-node list`.
+  - The device kills everything it was running when its connection drops,
+    because nobody is left to read the output. This includes heartbeats going
+    unanswered for 15s.
+  - The server lets a silent socket go after 45s.
+- **Running a command.** It runs as `$SHELL -lc` in its own process group:
+  - stdin is closed;
+  - the timeout defaults to 120s and is capped at 1800s, with exit 124 on
+    expiry;
+  - output is capped at 10 MB.
+
+  Writes land in a temporary file beside the target, which is renamed into
+  place. Every request is logged on the device in
+  `~/.local/state/loom-node/log`.
+- **Skill.** `rel/deploy.sh` builds every target with `make -C node`,
+  installs the CLI at `~/.local/bin/loom-node`, and copies `node/SKILL.md`
+  into the skill directories of both backends.
+
 ## 5. A session's backend is for life
 
 `POST /api/agents` without a `backend` returns 422; there is no default. The
@@ -238,6 +297,7 @@ Loom.Supervisor
 ├─ Loom.Agent.Codex.Server        the one shared codex app-server
 ├─ Loom.Agent.Bootstrap           reattaches persisted sessions at boot
 ├─ Loom.Cron                      scheduled prompts
+├─ Loom.Nodes                     the user's devices (loom-node)
 ├─ Loom.Restarter                 restart-when-idle, for deploys
 └─ LoomWeb.Endpoint
 ```
