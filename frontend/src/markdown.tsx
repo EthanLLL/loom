@@ -210,10 +210,12 @@ function Inline({ token }: { token: Token }): ReactNode {
 
     // Not rendered as an image: the source is arbitrary and loading it would
     // call out to whatever host the model named. The alt text and the URL say
-    // what it was.
+    // what it was. One of the session's own outputs opens like an output link.
     case "image": {
       const t = token as Tokens.Image
-      return <span className="md-image">🖼 {t.text || t.href}</span>
+      const label = <span className="md-image">🖼 {t.text || t.href}</span>
+      const output = outputPath(t.href)
+      return output !== null && renderOutput ? renderOutput(output, label) : label
     }
 
     case "html":

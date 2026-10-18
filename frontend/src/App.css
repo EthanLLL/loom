@@ -268,6 +268,69 @@
   background: #fff;
 }
 
+/* Images and media: fitted, centred by margin rather than by the flexbox so
+   that an image at its actual size still scrolls to its top-left corner. */
+.canvas-media {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.canvas-media > * {
+  margin: auto;
+}
+
+.canvas-media img.fit,
+.canvas-media video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.canvas-media img {
+  display: block;
+  cursor: zoom-in;
+  /* A checkerboard behind it, so a transparent PNG or a black-line SVG shows. */
+  background: repeating-conic-gradient(#e8e8e8 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+}
+
+.canvas-media img.actual {
+  cursor: zoom-out;
+}
+
+.canvas-media audio {
+  width: min(32rem, 90%);
+}
+
+/* Markdown, tables and text, in the app's own colours and type. */
+.canvas-doc {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.canvas-doc > .md {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.canvas-text {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.canvas-table th {
+  position: sticky;
+  top: -1rem;
+  background: var(--bg-card);
+}
+
 .canvas-note {
   padding: 2rem 1.5rem;
   color: var(--fg-dim);
@@ -563,4 +626,9 @@
   .session-del {
     visibility: visible;
   }
+}
+
+/* Let the canvas itself scroll a wide table, so its header can stick. */
+.canvas-doc .md-table-wrap {
+  overflow: visible;
 }

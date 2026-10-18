@@ -11,26 +11,38 @@ export type CanvasItem = {
   download: { kind: "file" | "dir"; path: string }
 }
 
-// What the browser shows inside an iframe instead of downloading. The server
-// sends the text group as text/plain, so a log or a .py displays too; see
-// `LoomWeb.CanvasController`. Anything else downloads on click.
-const PREVIEW = new Set(
-  [
-    "html htm",
-    "png jpg jpeg gif webp svg avif bmp ico",
-    "mp4 webm mov m4v ogv mp3 wav ogg oga m4a flac aac opus",
-    "pdf",
-    "json md markdown txt log csv tsv jsonl ndjson yaml yml toml ini conf xml",
+// What the canvas can show rather than download, by how it shows it: loom's
+// own viewers for images, media, markdown, tables and text, and a sandboxed
+// iframe for pages and PDFs, which the browser renders itself. Anything else
+// downloads on click.
+export type Viewer = "image" | "video" | "audio" | "markdown" | "table" | "text" | "frame"
+
+const VIEWERS: Record<Viewer, string> = {
+  image: "png jpg jpeg gif webp svg avif bmp ico",
+  video: "mp4 webm mov m4v ogv",
+  audio: "mp3 wav ogg oga m4a flac aac opus",
+  markdown: "md markdown",
+  table: "csv tsv",
+  text:
+    "json txt log jsonl ndjson yaml yml toml ini conf xml " +
     "py rb go rs java kt c h cc cpp hpp cs swift ex exs erl sh bash zsh fish ts tsx jsx js css sql lua r diff patch",
-  ]
-    .join(" ")
-    .split(" "),
+  frame: "html htm pdf",
+}
+
+const BY_EXT = new Map(
+  (Object.entries(VIEWERS) as [Viewer, string][]).flatMap(([viewer, exts]) =>
+    exts.split(" ").map((ext) => [ext, viewer] as const),
+  ),
 )
 
-export function previewable(path: string): boolean {
+export function viewerFor(path: string): Viewer | null {
   const name = path.split("/").pop() ?? path
   const dot = name.lastIndexOf(".")
-  return dot > 0 && PREVIEW.has(name.slice(dot + 1).toLowerCase())
+  return dot > 0 ? (BY_EXT.get(name.slice(dot + 1).toLowerCase()) ?? null) : null
+}
+
+export function previewable(path: string): boolean {
+  return viewerFor(path) !== null
 }
 
 /** A file under `output/` to show, or `null` if it can only be downloaded. */

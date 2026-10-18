@@ -51,3 +51,5 @@ npm-debug.log
 /priv/static/index.html
 /priv/static/favicon.svg
 /priv/static/icons.svg
+/priv/static/icons/
+/priv/static/manifest.webmanifest

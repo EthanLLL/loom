@@ -22,7 +22,11 @@ defmodule LoomWeb.CanvasController do
   (`img/01.jpg`, `data.json`) inherit it. `Referrer-Policy: no-referrer` keeps it
   from being sent along to the CDNs a page loads from.
 
-  Range requests are not served yet, so a long video plays but cannot seek.
+  ## Range requests
+
+  A single `Range: bytes=…` is answered with a 206 of just that slice. Safari
+  will not play a video at all without it, and every browser needs it to seek.
+  A multi-range request gets the whole file, which the spec allows.
   """
   use LoomWeb, :controller
 
@@ -57,10 +61,69 @@ defmodule LoomWeb.CanvasController do
       conn
       |> sandboxed()
       |> put_resp_content_type(type_of(path), nil)
-      |> send_file(200, path)
+      |> serve(path)
     else
       _ ->
         conn |> sandboxed() |> put_resp_content_type("text/plain") |> send_resp(404, "not found")
+    end
+  end
+
+  defp serve(conn, path) do
+    size = File.stat!(path).size
+    conn = put_resp_header(conn, "accept-ranges", "bytes")
+
+    case range(conn, size) do
+      {first, last} ->
+        conn
+        |> put_resp_header("content-range", "bytes #{first}-#{last}/#{size}")
+        |> send_file(206, path, first, last - first + 1)
+
+      :unsatisfiable ->
+        conn |> put_resp_header("content-range", "bytes */#{size}") |> send_resp(416, "")
+
+      nil ->
+        send_file(conn, 200, path)
+    end
+  end
+
+  # `{first, last}` inclusive, `:unsatisfiable` for a start past the end, or
+  # `nil` to ignore the header and send everything.
+  defp range(conn, size) do
+    with ["bytes=" <> spec] <- get_req_header(conn, "range"),
+         [one] <- String.split(spec, ","),
+         true <- size > 0 do
+      case String.split(String.trim(one), "-", parts: 2) do
+        ["", suffix] ->
+          with {n, ""} when n > 0 <- Integer.parse(suffix),
+               do: {max(size - n, 0), size - 1},
+               else: (_ -> nil)
+
+        [first, last] ->
+          with {f, ""} <- Integer.parse(first),
+               {:ok, l} <- last_byte(last, size) do
+            cond do
+              f >= size -> :unsatisfiable
+              f <= l -> {f, min(l, size - 1)}
+              true -> nil
+            end
+          else
+            _ -> nil
+          end
+
+        _ ->
+          nil
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  defp last_byte("", size), do: {:ok, size - 1}
+
+  defp last_byte(last, _size) do
+    case Integer.parse(last) do
+      {l, ""} -> {:ok, l}
+      _ -> :error
     end
   end
 

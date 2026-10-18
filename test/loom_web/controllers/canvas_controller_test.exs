@@ -41,6 +41,7 @@ defmodule LoomWeb.CanvasControllerTest do
     File.write!(Path.join(out, "gallery/img/1.png"), "png")
     File.write!(Path.join(out, "run.log"), "line")
     File.write!(Path.join(out, "data.json"), "{}")
+    File.write!(Path.join(out, "clip.mp4"), "0123456789")
 
     authed = put_req_header(conn, "authorization", "Bearer " <> Loom.Auth.mint_token())
     base = json_response(post(authed, "/api/agents/#{id}/canvas"), 200)["base"]
@@ -95,6 +96,31 @@ defmodule LoomWeb.CanvasControllerTest do
   test "will not leave the output directory", %{conn: conn, base: base} do
     for path <- ["..%2Fmeta.json", "gallery/..%2F..%2Fmeta.json", "%2Fetc%2Fpasswd"] do
       assert get(conn, base <> path).status == 404, path
+    end
+  end
+
+  test "answers a byte range with just that slice", %{conn: conn, base: base} do
+    ranged = fn spec -> conn |> put_req_header("range", spec) |> get(base <> "clip.mp4") end
+
+    whole = get(conn, base <> "clip.mp4")
+    assert whole.status == 200
+    assert get_resp_header(whole, "accept-ranges") == ["bytes"]
+
+    for {spec, body, content_range} <- [
+          {"bytes=2-5", "2345", "bytes 2-5/10"},
+          {"bytes=7-", "789", "bytes 7-9/10"},
+          {"bytes=-3", "789", "bytes 7-9/10"},
+          {"bytes=8-100", "89", "bytes 8-9/10"}
+        ] do
+      resp = ranged.(spec)
+      assert {resp.status, resp.resp_body} == {206, body}, spec
+      assert get_resp_header(resp, "content-range") == [content_range], spec
+    end
+
+    assert ranged.("bytes=10-").status == 416
+    # Malformed or multi-range: the whole file, as if there were no header.
+    for spec <- ["bytes=5-2", "bytes=x-", "bytes=0-1,4-5", "items=0-1"] do
+      assert ranged.(spec).status == 200, spec
     end
   end
 end
