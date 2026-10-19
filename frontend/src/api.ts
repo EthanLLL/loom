@@ -237,6 +237,22 @@ export type OutputFile = AgentFile & {
   updated: boolean
 }
 
+/** One file in a session's `files/` or `output/`, as the file browser lists it. */
+export type TreeFile = {
+  path: string
+  size: number
+  // Seconds since the epoch.
+  mtime: number
+}
+
+/** Everything the session holds: what the user attached, and what the agent made. */
+export async function sessionTree(id: string): Promise<{ files: TreeFile[]; output: TreeFile[] }> {
+  const res = await fetch(`/api/agents/${id}/tree`, { headers: authHeaders() })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`could not list the files: ${res.status}`)
+  return res.json()
+}
+
 export function outputUrl(id: string, path: string): string {
   return `/api/agents/${id}/output/${path.split("/").map(encodeURIComponent).join("/")}`
 }

@@ -1,4 +1,4 @@
-import { ChevronLeft, Download, Maximize, Minimize, RotateCw } from "lucide-react"
+import { ChevronLeft, Download, FolderTree, Maximize, Minimize, RotateCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import {
   canvasBase,
@@ -8,6 +8,7 @@ import {
   type CanvasBases,
 } from "./api"
 import { viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
+import { FileBrowser } from "./FileBrowser"
 import { Markdown } from "./markdown"
 
 /**
@@ -25,10 +26,15 @@ import { Markdown } from "./markdown"
  * `sandbox` without `allow-same-origin` puts the page on an opaque origin, so
  * nothing it runs can reach loom's token or API — and the server sends the
  * same sandbox as a CSP header in case the URL is ever opened on its own.
+ *
+ * The folder button swaps the view for the session's file browser, which is
+ * also what an empty canvas shows. Opening something from it shows that.
  */
 export function Canvas({
   sessionId,
   item,
+  filesRev,
+  onOpen,
   narrow,
   onBack,
   maximized,
@@ -36,6 +42,9 @@ export function Canvas({
 }: {
   sessionId: string | null
   item: CanvasItem | null
+  // Moves when the session's files may have changed; see `FileBrowser`.
+  filesRev: number
+  onOpen: (item: CanvasItem) => void
   narrow: boolean
   onBack: () => void
   maximized: boolean
@@ -45,6 +54,15 @@ export function Canvas({
   const [error, setError] = useState<string | null>(null)
   const [reloads, setReloads] = useState(0)
   const [downloading, setDownloading] = useState(false)
+  // The file browser instead of the item. Always, with nothing to show.
+  const [browsing, setBrowsing] = useState(false)
+  const showBrowser = browsing || !item
+
+  // Something newly opened is what you want to see, wherever it came from.
+  const itemKey = item ? `${item.source ?? "output"}:${item.path}` : null
+  useEffect(() => {
+    setBrowsing(false)
+  }, [itemKey, sessionId])
 
   useEffect(() => {
     if (!sessionId) return
@@ -87,12 +105,23 @@ export function Canvas({
               <ChevronLeft />
             </button>
           )}
-          <span className="canvas-title" title={item?.path}>
-            {item ? item.title : "canvas"}
+          <span className="canvas-title" title={showBrowser ? undefined : item?.path}>
+            {showBrowser ? "files" : item.title}
           </span>
         </span>
-        {item && (
-          <span className="pane-actions">
+        <span className="pane-actions">
+          {sessionId && (
+            <button
+              className={"pane-btn" + (showBrowser ? " on" : "")}
+              onClick={() => setBrowsing((b) => !b)}
+              disabled={!item}
+              title={showBrowser ? `Back to ${item?.title ?? "the canvas"}` : "All files in this session"}
+            >
+              <FolderTree />
+            </button>
+          )}
+          {item && !showBrowser && (
+            <>
             {!narrow && (
               <button
                 className="pane-btn"
@@ -116,19 +145,24 @@ export function Canvas({
             >
               <Download />
             </button>
-          </span>
-        )}
+            </>
+          )}
+        </span>
       </div>
       <div className="canvas-body">
         {error && <div className="canvas-note failed">{error}</div>}
-        {src && item ? (
+        {showBrowser ? (
+          sessionId ? (
+            <FileBrowser sessionId={sessionId} rev={filesRev} onOpen={onOpen} />
+          ) : (
+            <div className="canvas-note">No session selected.</div>
+          )
+        ) : src && item ? (
           // Remounted on reload, and when the file changes.
           <View key={`${src}#${reloads}`} src={src} item={item} />
         ) : (
           !error && (
-            <div className="canvas-note">
-              {item ? "loading…" : "Nothing open. Click a file or page in the chat to show it here."}
-            </div>
+            <div className="canvas-note">loading…</div>
           )
         )}
       </div>

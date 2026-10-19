@@ -13,12 +13,24 @@ defmodule LoomWeb.AgentOutputController do
   use LoomWeb, :controller
 
   alias Loom.Agent
+  alias Loom.Agent.Files
   alias Loom.Agent.Output
   alias Loom.Agent.Store
 
   # Built in a temp file, so memory stays flat; past this it is refused rather
   # than leaving the user waiting on a zip the size of a disk.
   @zip_limit 1024 * 1024 * 1024
+
+  # GET /api/agents/:id/tree — everything the session holds: what the user
+  # attached (`files/`) and what the agent made (`output/`), for the canvas's
+  # file browser. Listed, not read; each file is then fetched by its own route.
+  def tree(conn, %{"id" => id}) do
+    if Agent.exists?(id) do
+      json(conn, %{files: Files.list(id), output: Output.list(id)})
+    else
+      conn |> put_status(:not_found) |> json(%{error: "unknown session"})
+    end
+  end
 
   # GET /api/agents/:id/zip/*path — one output directory as a zip, stored
   # rather than compressed: what agents produce in bulk (images, video) is

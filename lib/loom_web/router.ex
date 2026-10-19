@@ -36,6 +36,7 @@ defmodule LoomWeb.Router do
     get "/agents/:id/files/:name", AgentFileController, :show
     get "/agents/:id/output/*path", AgentOutputController, :show
     get "/agents/:id/zip/*path", AgentOutputController, :zip
+    get "/agents/:id/tree", AgentOutputController, :tree
     post "/agents/:id/canvas", CanvasController, :token
 
     get "/layout", LayoutController, :show

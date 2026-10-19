@@ -23,6 +23,7 @@ import {
 } from "react"
 import { buildTimeline, foldFinished, isBusy, type CronJob, type TimelineItem } from "./agent"
 import { itemForAttachment, itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
+import { formatBytes } from "./format"
 import { isComposing } from "./ime"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
@@ -55,6 +56,8 @@ type Props = {
   canvasOpen: boolean
   onToggleCanvas: () => void
   onOpenCanvas: (item: CanvasItem) => void
+  // A turn left outputs, or a message brought attachments.
+  onFilesChanged: () => void
 }
 
 // How a card or link deep in the transcript opens something in the canvas.
@@ -70,10 +73,12 @@ export function Chat({
   canvasOpen,
   onToggleCanvas,
   onOpenCanvas,
+  onFilesChanged,
 }: Props) {
   const { transcript, joinError, submit, interrupt, dropQueued, rename } = useAgent(
     session.id,
     (event) => {
+      if (event.kind === "output_files" || event.kind === "user") onFilesChanged()
       // A turn that just built a page opens it — only then, and only for the
       // page. Anything else waits for a click.
       const open = event.kind === "output_files" ? event.payload.open : null
@@ -1337,12 +1342,6 @@ function formatInput(input: Record<string, unknown>): string {
     return entries[0][1] as string
   }
   return JSON.stringify(input, null, 2)
-}
-
-function formatBytes(n: number): string {
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
-  if (n >= 1024) return `${Math.round(n / 1024)} KB`
-  return `${n} B`
 }
 
 function formatTokens(n: number): string {

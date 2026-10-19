@@ -585,6 +585,113 @@
   color: var(--red);
 }
 
+/* The canvas's file browser: the session's outputs and uploads as two trees. */
+.file-browser {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 0.25rem 0 2rem;
+  font-size: 0.875rem;
+}
+
+.tree-section {
+  padding: 0.9rem 0.75rem 0.3rem;
+  color: var(--fg-dim);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tree-empty {
+  padding: 0.3rem 1.5rem 0.5rem;
+  color: var(--fg-dim);
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2rem;
+  padding-right: 0.4rem;
+  cursor: pointer;
+}
+
+.tree-row:hover {
+  background: var(--bg-raised);
+}
+
+.tree-fold {
+  flex: none;
+  width: 1em;
+  display: inline-flex;
+  color: var(--fg-dim);
+}
+
+.tree-icon {
+  color: var(--fg-dim);
+}
+
+.tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-meta {
+  flex: none;
+  color: var(--fg-dim);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* Shown on hover, where there is hover; always on a touch screen. */
+/* Room for both buttons on every row, so the sizes and dates line up. */
+.tree-actions {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  width: calc(3.2rem + 2px);
+  visibility: hidden;
+}
+
+.tree-row:hover .tree-actions {
+  visibility: visible;
+}
+
+@media (hover: none) {
+  .tree-actions {
+    visibility: visible;
+  }
+}
+
+/* Not red on hover: in a row, the last button is a download, not a close. */
+.tree-actions .pane-btn:last-child:hover {
+  background: var(--blue);
+}
+
+.pane-btn.on {
+  color: var(--blue);
+}
+
+/* The file browser's toggle is the pane head's last button while it is
+   showing, and it goes back rather than closing: blue, not red. With nothing
+   else to go back to it is disabled, and does nothing on hover. */
+.pane-actions .pane-btn.on:hover {
+  background: var(--blue);
+}
+
+.pane-actions .pane-btn:disabled {
+  cursor: default;
+}
+
+.pane-actions .pane-btn:disabled:hover {
+  background: none;
+  color: var(--blue);
+}
+
 /* Not the red the last button in a pane head gets: downloading is not closing. */
 .pane-btn.download:hover {
   background: var(--blue);

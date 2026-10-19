@@ -93,4 +93,34 @@ defmodule LoomWeb.AgentOutputControllerTest do
       end
     end
   end
+
+  describe "the file browser's tree" do
+    test "lists attachments and outputs, skipping hidden files", %{authed: conn, id: id} do
+      files = Store.files_dir(id)
+      File.mkdir_p!(files)
+      File.write!(Path.join(files, "shot.png"), "png")
+      File.write!(Path.join(files, ".DS_Store"), "x")
+      File.write!(Path.join(Store.output_dir(id), "~$lock.xlsx"), "x")
+
+      body = conn |> get("/api/agents/#{id}/tree") |> json_response(200)
+
+      assert [%{"path" => "shot.png", "size" => 3, "mtime" => mtime}] = body["files"]
+      assert is_integer(mtime)
+      assert [%{"path" => "deck/季度 report.pptx", "size" => 6}] = body["output"]
+    end
+
+    test "is empty for a session with nothing yet, and needs the token", %{
+      conn: conn,
+      authed: authed,
+      id: id
+    } do
+      File.rm_rf!(Store.output_dir(id))
+
+      assert %{"files" => [], "output" => []} =
+               authed |> get("/api/agents/#{id}/tree") |> json_response(200)
+
+      assert get(conn, "/api/agents/#{id}/tree").status == 401
+      assert get(authed, "/api/agents/a_nope/tree").status == 404
+    end
+  end
 end

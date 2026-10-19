@@ -101,6 +101,17 @@ defmodule Loom.Agent.Output do
   end
 
   @doc """
+  The whole directory for the file browser: one entry per file, by path, with
+  its size and mtime (posix seconds). The same files `resolve/2` would serve.
+  """
+  def list(session_id) do
+    session_id
+    |> snapshot()
+    |> Enum.map(fn {rel, {size, mtime}} -> %{path: rel, size: size, mtime: mtime} end)
+    |> Enum.sort_by(& &1.path)
+  end
+
+  @doc """
   What is new or different in `now` compared with `before`, described for the
   transcript as `%{files: entries, more: n, open: path | nil}`.
 

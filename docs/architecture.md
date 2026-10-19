@@ -206,6 +206,14 @@ event acts on it, never history replayed on join. The agent is told the
 convention in its system prompt: `output/<name>/index.html` with assets beside
 it, referenced by relative paths.
 
+The cards in the chat only announce what each turn changed. The folder button
+in the canvas's head swaps in a file browser for the whole session, which is
+also what an empty canvas shows: `output/` and the uploads in `files/` as two
+trees, newest first, from `GET /api/agents/:id/tree`. It lists when shown and
+again whenever a live `:output_files` or `user` event arrives, rather than
+polling. A file opens in the canvas when there is a viewer for it and
+downloads otherwise; a directory offers its page and a zip of itself.
+
 The page is model output, so it is treated as hostile:
 
 - It runs in `<iframe sandbox="allow-scripts …">` without `allow-same-origin`,

@@ -101,6 +101,9 @@ function App() {
     setSide("canvas")
   }
   const toggleCanvas = () => setSide((s) => (s === "canvas" ? null : "canvas"))
+  // Bumped when the active session's files may have changed, so the canvas's
+  // file browser lists them again.
+  const [filesRev, setFilesRev] = useState(0)
   // PTY session ids, top to bottom in the right-hand column.
   const [ptyIds, setPtyIds] = useState<string[]>([])
   const openingTerminal = useRef(false)
@@ -272,6 +275,7 @@ function App() {
               canvasOpen={side === "canvas"}
               onToggleCanvas={toggleCanvas}
               onOpenCanvas={(item) => openCanvas(active.id, item)}
+              onFilesChanged={() => setFilesRev((n) => n + 1)}
             />
           ) : (
             <div className="placeholder">
@@ -300,6 +304,8 @@ function App() {
           <Canvas
             sessionId={active?.id ?? null}
             item={active ? (canvases[active.id] ?? null) : null}
+            filesRev={filesRev}
+            onOpen={(item) => active && openCanvas(active.id, item)}
             narrow={narrow}
             onBack={() => setSide(null)}
             maximized={maximized}

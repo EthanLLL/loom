@@ -110,6 +110,30 @@ defmodule Loom.Agent.Files do
   end
 
   @doc """
+  Every attachment the session has, for the file browser: stored name, size
+  and mtime (posix seconds), by name.
+
+  The directory is flat — `store/2` never makes subdirectories — so this is one
+  `ls`. Hidden files and anything that is not a regular file are skipped, the
+  same files `verify/2` would refuse to hand back.
+  """
+  def list(session_id) do
+    dir = Store.files_dir(session_id)
+
+    case File.ls(dir) do
+      {:ok, names} ->
+        for name <- Enum.sort(names),
+            not String.starts_with?(name, "."),
+            {:ok, %File.Stat{type: :regular, size: size, mtime: mtime}} <-
+              [File.lstat(Path.join(dir, name), time: :posix)],
+            do: %{path: name, size: size, mtime: mtime}
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  @doc """
   A name for a session whose first message was an attachment with no words.
 
   Without it such a session shows up in the sidebar as an opaque id.
