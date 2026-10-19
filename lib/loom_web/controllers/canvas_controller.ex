@@ -68,7 +68,7 @@ defmodule LoomWeb.CanvasController do
     with {:ok, ^id} <- Phoenix.Token.verify(LoomWeb.Endpoint, @salt, token, max_age: @max_age),
          {:ok, path} <- locate(id, rel) do
       conn
-      |> sandboxed()
+      |> sandboxed(path)
       |> put_resp_content_type(type_of(path), nil)
       |> serve(path)
     else
@@ -83,7 +83,7 @@ defmodule LoomWeb.CanvasController do
     with {:ok, ^id} <- Phoenix.Token.verify(LoomWeb.Endpoint, @salt, token, max_age: @max_age),
          {:ok, [file]} <- Files.verify(id, [Path.join(Store.files_dir(id), name)]) do
       conn
-      |> sandboxed()
+      |> sandboxed(file.path)
       |> put_resp_content_type(type_of(file.path), nil)
       |> serve(file.path)
     else
@@ -159,12 +159,23 @@ defmodule LoomWeb.CanvasController do
     end
   end
 
-  defp sandboxed(conn) do
+  # A PDF goes without the sandbox: Chrome will not start its PDF viewer in a
+  # sandboxed document and shows a broken-page icon instead. That is safe
+  # because the viewer is the browser's own, on its own origin, and `nosniff`
+  # keeps a `.pdf` that is really HTML from being run as a page.
+  defp sandboxed(conn, path \\ nil) do
+    conn =
+      if path != nil and String.downcase(Path.extname(path)) == ".pdf" do
+        conn
+      else
+        put_resp_header(
+          conn,
+          "content-security-policy",
+          "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+        )
+      end
+
     conn
-    |> put_resp_header(
-      "content-security-policy",
-      "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
-    )
     # Module scripts and fetch() from an opaque origin are CORS requests.
     |> put_resp_header("access-control-allow-origin", "*")
     |> put_resp_header("x-content-type-options", "nosniff")

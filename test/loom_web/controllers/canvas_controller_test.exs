@@ -42,6 +42,7 @@ defmodule LoomWeb.CanvasControllerTest do
     File.write!(Path.join(out, "run.log"), "line")
     File.write!(Path.join(out, "data.json"), "{}")
     File.write!(Path.join(out, "clip.mp4"), "0123456789")
+    File.write!(Path.join(out, "deck.PDF"), "%PDF-1.7")
 
     authed = put_req_header(conn, "authorization", "Bearer " <> Loom.Auth.mint_token())
     File.mkdir_p!(Store.files_dir(id))
@@ -76,6 +77,19 @@ defmodule LoomWeb.CanvasControllerTest do
       refute csp =~ "allow-same-origin"
       assert get_resp_header(resp, "referrer-policy") == ["no-referrer"]
     end
+  end
+
+  test "a PDF goes unsandboxed, or Chrome will not show it, but only as a PDF", %{
+    conn: conn,
+    base: base
+  } do
+    resp = get(conn, base <> "deck.PDF")
+    assert resp.status == 200
+    assert get_resp_header(resp, "content-security-policy") == []
+    assert [type] = get_resp_header(resp, "content-type")
+    assert type =~ "application/pdf"
+    assert get_resp_header(resp, "x-content-type-options") == ["nosniff"]
+    assert get_resp_header(resp, "referrer-policy") == ["no-referrer"]
   end
 
   test "logs and data display as text instead of downloading", %{conn: conn, base: base} do

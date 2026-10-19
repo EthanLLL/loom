@@ -25,7 +25,8 @@ import { Markdown } from "./markdown"
  *
  * `sandbox` without `allow-same-origin` puts the page on an opaque origin, so
  * nothing it runs can reach loom's token or API — and the server sends the
- * same sandbox as a CSP header in case the URL is ever opened on its own.
+ * same sandbox as a CSP header in case the URL is ever opened on its own. A
+ * PDF is the exception, on both sides: Chrome refuses to show one sandboxed.
  *
  * The session's file tree sits on the left, beside what it opened, the way
  * NERDTree sits beside a buffer. The button at the head's left end folds it
@@ -211,11 +212,18 @@ function View({ src, item }: { src: string; item: CanvasItem }) {
     case "text":
       return <TextView src={src} viewer={viewer} path={item.path} />
     case "frame":
+      // Chrome will not start its PDF viewer in a sandboxed frame. A PDF needs
+      // none: the viewer is the browser's own, and the server's `nosniff`
+      // keeps a `.pdf` that is really HTML from running as a page.
       return (
         <iframe
           src={src}
           title={item.title}
-          sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+          sandbox={
+            /\.pdf$/i.test(item.path)
+              ? undefined
+              : "allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+          }
           allow="autoplay; fullscreen"
           referrerPolicy="no-referrer"
         />
