@@ -32,9 +32,16 @@ must open on a bad connection.
   .reveal { font-family: "Source Sans Pro", -apple-system, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
   .reveal h1, .reveal h2, .reveal h3 { font-family: inherit; text-transform: none; }
+  /* Export button: reveal's own ?print-pdf view, then the browser's print dialog. */
+  .export-pdf { position: fixed; left: 16px; bottom: 14px; z-index: 30; padding: 7px 12px;
+    font: 600 13px/1 -apple-system, "PingFang SC", sans-serif; color: #555; cursor: pointer;
+    background: rgba(255,255,255,.85); border: 1px solid rgba(0,0,0,.15); border-radius: 8px; opacity: .45; }
+  .export-pdf:hover { opacity: 1; }
+  html.print-pdf .export-pdf { display: none; }
 </style>
 </head>
 <body>
+<button class="export-pdf" type="button" title="导出 PDF">PDF</button>
 <div class="reveal"><div class="slides">
 
   <section>
@@ -70,9 +77,18 @@ Process.send_after(self(), :tick, 1_000)
     height: 720,
     hash: true,
     slideNumber: "c/t",
+    pdfSeparateFragments: false,
     katex: { local: "/vendor/katex" },
     plugins: [RevealHighlight, RevealMath.KaTeX, RevealZoom],
   })
+
+  // PDF: reload as reveal's print view, print once it has laid out, come back.
+  document.querySelector(".export-pdf").onclick = () =>
+    location.replace(location.pathname + "?print-pdf")
+  if (/print-pdf/.test(location.search)) {
+    Reveal.on("pdf-ready", () => setTimeout(() => window.print(), 300))
+    addEventListener("afterprint", () => location.replace(location.pathname))
+  }
 </script>
 </body>
 </html>
@@ -106,6 +122,12 @@ the user stays where they were.
 
 ## Exporting
 
-If the user wants a PDF: they can open the deck in a browser tab with
-`?print-pdf` appended to the URL and print to PDF. If they want a real .pptx,
-say that this deck is a web page and a .pptx is a separate job.
+Keep the template's **PDF** button (bottom left) in every deck. It reloads the
+deck as reveal's print view, opens the browser's print dialog, and comes back
+when the dialog closes — the user picks "Save as PDF", in their own browser, so
+nothing is rendered on the server. One page per slide, fragments shown
+(`pdfSeparateFragments: false`). Tell them: margins "None", "Background
+graphics" on. On a dark theme, restyle the button so it stays visible.
+
+If they want a real .pptx, say that this deck is a web page and a .pptx is a
+separate job.
