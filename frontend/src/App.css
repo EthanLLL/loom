@@ -448,6 +448,17 @@
   overflow: hidden;
 }
 
+/* Maximized: the column takes the window. The chat stays mounted, so its
+   channel is still joined when it comes back. */
+.app.maximized .main-chat {
+  display: none;
+}
+
+.app.maximized .side-column {
+  flex: 1 1 auto;
+  border-left: none;
+}
+
 .canvas {
   flex: 1 1 auto;
   display: flex;

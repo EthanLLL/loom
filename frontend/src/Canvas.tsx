@@ -30,11 +30,15 @@ export function Canvas({
   item,
   narrow,
   onBack,
+  maximized,
+  onToggleMaximized,
 }: {
   sessionId: string | null
   item: CanvasItem | null
   narrow: boolean
   onBack: () => void
+  maximized: boolean
+  onToggleMaximized: () => void
 }) {
   const [base, setBase] = useState<CanvasBases | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -102,6 +106,15 @@ export function Canvas({
             >
               ↓
             </button>
+            {!narrow && (
+              <button
+                className="pane-btn"
+                onClick={onToggleMaximized}
+                title={maximized ? "Back beside the chat (Esc)" : "Full window"}
+              >
+                <MaximizeIcon maximized={maximized} />
+              </button>
+            )}
           </span>
         )}
       </div>
@@ -295,4 +308,17 @@ function parseCsv(text: string): string[][] {
     rows.push(row)
   }
   return rows
+}
+
+/** Corners pointing out to fill the window, or in to give it back. */
+export function MaximizeIcon({ maximized }: { maximized: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {maximized ? (
+        <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+      ) : (
+        <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+      )}
+    </svg>
+  )
 }

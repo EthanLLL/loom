@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
 import type { CanvasItem } from "./canvasItems"
+import { MaximizeIcon } from "./Canvas"
 import { Chat } from "./Chat"
 import { Login } from "./Login"
 import { Sidebar } from "./Sidebar"
@@ -64,6 +65,27 @@ function App() {
 
   const [side, setSide] = useState<Side>(null)
   const terminalOpen = side === "terminal"
+
+  // The right-hand column across the whole window, chat and sidebar hidden —
+  // for presenting a page from the canvas, or a terminal with room. Not on a
+  // phone, where the column covers the chat already. Closing the column ends
+  // it, so it never comes back on its own.
+  const [full, setFull] = useState(false)
+  const maximized = full && side !== null && !narrow
+  useEffect(() => {
+    if (side === null) setFull(false)
+  }, [side])
+  // Esc leaves it, except from a shell, where Esc is the editor's.
+  useEffect(() => {
+    if (!maximized) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || (e.target as Element | null)?.closest?.(".terminal-pane")) return
+      setFull(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [maximized])
+  const toggleFull = () => setFull((f) => !f)
   const setTerminalOpen = (open: boolean) => setSide(open ? "terminal" : null)
 
   // What each session's canvas shows. Per session and kept across switching
@@ -216,7 +238,7 @@ function App() {
   )
 
   return (
-    <div className="app">
+    <div className={"app" + (maximized ? " maximized" : "")}>
       {narrow ? (
         // Always mounted so it can slide rather than pop. Over the chat, not
         // beside it: a phone has no width to give a second column.
@@ -229,7 +251,7 @@ function App() {
           {sidebar}
         </div>
       ) : (
-        sidebarOpen && sidebar
+        sidebarOpen && !maximized && sidebar
       )}
 
       <main className="main">
@@ -280,6 +302,8 @@ function App() {
             item={active ? (canvases[active.id] ?? null) : null}
             narrow={narrow}
             onBack={() => setSide(null)}
+            maximized={maximized}
+            onToggleMaximized={toggleFull}
           />
         </div>
 
@@ -311,6 +335,15 @@ function App() {
                   <span className="pane-actions">
                     {/* On every pane rather than once, so they do not move
                         around as terminals are closed. */}
+                    {!narrow && (
+                      <button
+                        className="pane-btn"
+                        onClick={toggleFull}
+                        title={maximized ? "Back beside the chat (Esc outside a shell)" : "Full window"}
+                      >
+                        <MaximizeIcon maximized={maximized} />
+                      </button>
+                    )}
                     <button
                       className="pane-btn"
                       onClick={addTerminal}
