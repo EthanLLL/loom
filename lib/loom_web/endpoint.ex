@@ -30,6 +30,17 @@ defmodule LoomWeb.Endpoint do
   # so if this is not here nothing serves the UI at all and the browser gets
   # only `/api`. Vite fingerprints every asset filename, which is what makes
   # the long cache on versioned requests safe.
+  # Libraries for pages the agent writes (reveal.js, KaTeX; see
+  # `frontend/tools/vendor.mjs`), so a deck opens whenever loom does, CDN or
+  # not. A canvas page runs on an opaque origin, which makes every request it
+  # sends here cross-origin, and fonts load only with CORS — hence the header.
+  # Unversioned paths, so not the long cache.
+  plug Plug.Static,
+    at: "/vendor",
+    from: {:loom, "priv/static/vendor"},
+    gzip: false,
+    headers: %{"access-control-allow-origin" => "*"}
+
   plug Plug.Static,
     at: "/",
     from: :loom,

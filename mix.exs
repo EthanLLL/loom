@@ -68,7 +68,7 @@ defmodule Loom.MixProject do
         "cmd --cd frontend pnpm build",
         # Replace rather than merge: Vite fingerprints filenames, so a merge
         # accumulates every asset of every past build in the release forever.
-        "cmd rm -rf priv/static/assets priv/static/fonts priv/static/index.html",
+        "cmd rm -rf priv/static/assets priv/static/fonts priv/static/index.html priv/static/vendor",
         "cmd cp -R frontend/dist/. priv/static/"
       ]
     ]

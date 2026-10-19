@@ -37,6 +37,14 @@ else
   echo "deploy: no Go toolchain; skipping loom-node (devices cannot be installed from this host)" >&2
 fi
 
+# Skills that are not tied to loom-node, for both backends.
+for skills in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+  for skill in skills/*/; do
+    mkdir -p "$skills/$(basename "$skill")"
+    cp "$skill"SKILL.md "$skills/$(basename "$skill")/SKILL.md"
+  done
+done
+
 mix release --path _build/prod/rel/loom.next --overwrite
 
 if [ "${1:-}" = "--build" ]; then
