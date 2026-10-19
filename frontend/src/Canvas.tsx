@@ -27,9 +27,14 @@ import { Markdown } from "./markdown"
  * nothing it runs can reach loom's token or API — and the server sends the
  * same sandbox as a CSP header in case the URL is ever opened on its own.
  *
- * The folder button swaps the view for the session's file browser, which is
- * also what an empty canvas shows. Opening something from it shows that.
+ * The session's file tree sits on the left, beside what it opened, the way
+ * NERDTree sits beside a buffer. The button at the head's left end folds it
+ * away; whether it is shown is remembered across sessions and reloads. On a
+ * phone there is no room for both, so the tree covers the view while it is
+ * open and folds itself once something is picked.
  */
+const TREE_KEY = "loom_canvas_tree"
+
 export function Canvas({
   sessionId,
   item,
@@ -54,15 +59,21 @@ export function Canvas({
   const [error, setError] = useState<string | null>(null)
   const [reloads, setReloads] = useState(0)
   const [downloading, setDownloading] = useState(false)
-  // The file browser instead of the item. Always, with nothing to show.
-  const [browsing, setBrowsing] = useState(false)
-  const showBrowser = browsing || !item
-
-  // Something newly opened is what you want to see, wherever it came from.
-  const itemKey = item ? `${item.source ?? "output"}:${item.path}` : null
+  const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0")
   useEffect(() => {
-    setBrowsing(false)
-  }, [itemKey, sessionId])
+    localStorage.setItem(TREE_KEY, treeOpen ? "1" : "0")
+  }, [treeOpen])
+  // On a phone the tree covers the view, so it starts folded when there is
+  // something to see, and folds again when something is picked.
+  const [phoneTree, setPhoneTree] = useState(false)
+  const showTree = narrow ? phoneTree || !item : treeOpen
+  const toggleTree = () => (narrow ? setPhoneTree(!showTree) : setTreeOpen((o) => !o))
+
+  const itemKey = item ? `${item.source ?? "output"}:${item.path}` : null
+  const pick = (picked: CanvasItem) => {
+    onOpen(picked)
+    setPhoneTree(false)
+  }
 
   useEffect(() => {
     if (!sessionId) return
@@ -105,22 +116,21 @@ export function Canvas({
               <ChevronLeft />
             </button>
           )}
-          <span className="canvas-title" title={showBrowser ? undefined : item?.path}>
-            {showBrowser ? "files" : item.title}
-          </span>
-        </span>
-        <span className="pane-actions">
           {sessionId && (
             <button
-              className={"pane-btn" + (showBrowser ? " on" : "")}
-              onClick={() => setBrowsing((b) => !b)}
-              disabled={!item}
-              title={showBrowser ? `Back to ${item?.title ?? "the canvas"}` : "All files in this session"}
+              className={"pane-btn tree-toggle" + (showTree ? " on" : "")}
+              onClick={toggleTree}
+              title={showTree ? "Hide the files" : "All files in this session"}
             >
               <FolderTree />
             </button>
           )}
-          {item && !showBrowser && (
+          <span className="canvas-title" title={item?.path}>
+            {item ? item.title : "canvas"}
+          </span>
+        </span>
+        <span className="pane-actions">
+          {item && (
             <>
             {!narrow && (
               <button
@@ -150,21 +160,28 @@ export function Canvas({
         </span>
       </div>
       <div className="canvas-body">
-        {error && <div className="canvas-note failed">{error}</div>}
-        {showBrowser ? (
-          sessionId ? (
-            <FileBrowser sessionId={sessionId} rev={filesRev} onOpen={onOpen} />
-          ) : (
-            <div className="canvas-note">No session selected.</div>
-          )
-        ) : src && item ? (
-          // Remounted on reload, and when the file changes.
-          <View key={`${src}#${reloads}`} src={src} item={item} />
-        ) : (
-          !error && (
-            <div className="canvas-note">loading…</div>
-          )
+        {/* Kept mounted while folded, so what was unfolded stays unfolded. */}
+        {sessionId && (
+          <div
+            className={"canvas-tree" + (narrow ? " overlay" : "")}
+            style={{ display: showTree ? undefined : "none" }}
+          >
+            <FileBrowser sessionId={sessionId} rev={filesRev} current={itemKey} onOpen={pick} />
+          </div>
         )}
+        <div className="canvas-view">
+          {error && <div className="canvas-note failed">{error}</div>}
+          {src && item ? (
+            // Remounted on reload, and when the file changes.
+            <View key={`${src}#${reloads}`} src={src} item={item} />
+          ) : (
+            !error && (
+              <div className="canvas-note">
+                {item ? "loading…" : sessionId ? "Pick a file to show it here." : "No session selected."}
+              </div>
+            )
+          )}
+        </div>
       </div>
     </div>
   )

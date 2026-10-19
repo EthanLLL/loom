@@ -41,8 +41,9 @@ back later on another device, and the turn has kept running.
   and image galleries.
 - Built-in viewers for images, audio and video, Markdown, CSV/tables and text;
   folders download as zip.
-- A file browser in the canvas lists everything in the session, what you
-  uploaded and what the agent made, so last week's files are easy to find.
+- A file tree beside the canvas, like NERDTree, lists everything in the
+  session, what you uploaded and what the agent made, so last week's files are
+  easy to find.
 - Pages run sandboxed on an opaque origin, so they cannot reach Loom's
   token or API.
 - Canvas and terminals can take the whole window, for presenting.

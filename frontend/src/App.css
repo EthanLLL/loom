@@ -495,10 +495,34 @@
   min-width: 0;
 }
 
+/* The file tree on the left, what it opened on the right. */
 .canvas-body {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+}
+
+.canvas-tree {
+  flex: 0 0 16rem;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  position: relative;
+}
+
+/* A phone has no room for both: the tree covers the view while it is open. */
+.canvas-tree.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-right: none;
+  background: var(--bg);
+}
+
+.canvas-view {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* White, not the app's background: pages, PDFs and plain text are written to
@@ -591,7 +615,7 @@
   inset: 0;
   overflow: auto;
   padding: 0.25rem 0 2rem;
-  font-size: 0.875rem;
+  font-size: 0.846rem;
 }
 
 .tree-section {
@@ -610,14 +634,23 @@
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  min-height: 2rem;
-  padding-right: 0.4rem;
+  gap: 0.35rem;
+  min-height: 1.85rem;
+  padding-right: 0.3rem;
   cursor: pointer;
 }
 
 .tree-row:hover {
   background: var(--bg-raised);
+}
+
+.tree-row.current {
+  background: var(--bg-card);
+  color: var(--blue);
+}
+
+.tree-row.current .tree-icon {
+  color: var(--blue);
 }
 
 .tree-fold {
@@ -639,21 +672,12 @@
   white-space: nowrap;
 }
 
-.tree-meta {
-  flex: none;
-  color: var(--fg-dim);
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-
 /* Shown on hover, where there is hover; always on a touch screen. */
-/* Room for both buttons on every row, so the sizes and dates line up. */
+/* Hidden rather than absent, so names do not shift under the pointer. */
 .tree-actions {
   flex: none;
   display: flex;
-  justify-content: flex-end;
   gap: 2px;
-  width: calc(3.2rem + 2px);
   visibility: hidden;
 }
 
@@ -676,20 +700,8 @@
   color: var(--blue);
 }
 
-/* The file browser's toggle is the pane head's last button while it is
-   showing, and it goes back rather than closing: blue, not red. With nothing
-   else to go back to it is disabled, and does nothing on hover. */
-.pane-actions .pane-btn.on:hover {
-  background: var(--blue);
-}
-
-.pane-actions .pane-btn:disabled {
-  cursor: default;
-}
-
-.pane-actions .pane-btn:disabled:hover {
-  background: none;
-  color: var(--blue);
+.pane-btn.tree-toggle {
+  flex: none;
 }
 
 /* Not the red the last button in a pane head gets: downloading is not closing. */

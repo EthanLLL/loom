@@ -206,10 +206,12 @@ event acts on it, never history replayed on join. The agent is told the
 convention in its system prompt: `output/<name>/index.html` with assets beside
 it, referenced by relative paths.
 
-The cards in the chat only announce what each turn changed. The folder button
-in the canvas's head swaps in a file browser for the whole session, which is
-also what an empty canvas shows: `output/` and the uploads in `files/` as two
-trees, newest first, from `GET /api/agents/:id/tree`. It lists when shown and
+The cards in the chat only announce what each turn changed. Beside the view,
+the way NERDTree sits beside a buffer, is a file tree for the whole session:
+`output/` and the uploads in `files/`, newest first, from
+`GET /api/agents/:id/tree`, with the shown file's row marked. The button at the
+left of the canvas's head folds it, and that is remembered. On a phone the tree
+covers the view and folds itself once a file is picked. It lists when shown and
 again whenever a live `:output_files` or `user` event arrives, rather than
 polling. A file opens in the canvas when there is a viewer for it and
 downloads otherwise; a directory offers its page and a zip of itself.

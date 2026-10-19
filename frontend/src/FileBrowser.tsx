@@ -42,7 +42,9 @@ type Node = {
  * and what the user attached (`files/`). The cards in the chat only announce
  * what each turn changed; this is where last week's report is found again.
  *
- * Newest first at every level, like the chat itself. Clicking a file opens it
+ * Newest first at every level, like the chat itself. The row of what the
+ * canvas is showing is marked; sizes and dates are in each row's tooltip, as
+ * the tree is a narrow column. Clicking a file opens it
  * in the canvas when there is a viewer for it and downloads it otherwise; a
  * directory folds open, and offers its page (if it has an `index.html`) and a
  * zip of itself.
@@ -53,10 +55,13 @@ type Node = {
 export function FileBrowser({
   sessionId,
   rev,
+  current,
   onOpen,
 }: {
   sessionId: string
   rev: number
+  // What the canvas shows, as `source:path`, so its row can be marked.
+  current: string | null
   onOpen: (item: CanvasItem) => void
 }) {
   const [tree, setTree] = useState<{ files: TreeFile[]; output: TreeFile[] } | null>(null)
@@ -118,22 +123,23 @@ export function FileBrowser({
       const unfoldedHere = isDir && unfolded.has(`${section}:${node.path}`)
       const page = isDir && node.children!.some((c) => c.name === "index.html" && !c.children)
       const Icon = isDir ? (unfoldedHere ? FolderOpen : Folder) : iconFor(node.name)
+      // The row of what is shown, or the folded directory hiding it.
+      const shown =
+        current === `${section}:${node.path}` ||
+        (isDir && !unfoldedHere && !!current?.startsWith(`${section}:${node.path}/`))
       const row = (
         <div
           key={`${section}:${node.path}`}
-          className="tree-row"
-          style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
+          className={"tree-row" + (shown ? " current" : "")}
+          style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
           onClick={() => open(section, node)}
-          title={node.path}
+          title={`${node.path}\n${formatBytes(node.size)} · ${formatTime(node.mtime)}`}
         >
           <span className="tree-fold">
             {isDir && (unfoldedHere ? <ChevronDown /> : <ChevronRight />)}
           </span>
           <Icon className="tree-icon" />
           <span className="tree-name">{node.name}</span>
-          <span className="tree-meta">
-            {formatBytes(node.size)} · {formatTime(node.mtime)}
-          </span>
           <span className="tree-actions">
             {page && (
               <button
