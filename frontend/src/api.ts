@@ -292,6 +292,11 @@ export async function downloadAgentOutput(id: string, path: string): Promise<voi
   await download(outputUrl(id, path), path.split("/").pop() ?? path)
 }
 
+/** One attachment, by its stored name, handed to the browser as a download. */
+export async function downloadAttachment(id: string, name: string): Promise<void> {
+  await download(attachmentUrl(id, name), name)
+}
+
 /** One output directory as a zip, built by the server. */
 export async function downloadAgentZip(id: string, path: string): Promise<void> {
   const url = `/api/agents/${id}/zip/${path.split("/").map(encodeURIComponent).join("/")}`
@@ -316,30 +321,33 @@ async function download(url: string, filename: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(href), 60_000)
 }
 
-// The canvas's signed prefix per session, re-fetched well before the server's
-// one-day expiry.
-const canvasBases = new Map<string, { at: number; base: Promise<string> }>()
+// The canvas's signed prefixes per session, re-fetched well before the
+// server's one-day expiry.
+export type CanvasBases = { output: string; files: string }
+const canvasBases = new Map<string, { at: number; bases: Promise<CanvasBases> }>()
 const CANVAS_TTL = 12 * 60 * 60 * 1000
 
 /**
- * Where this session's outputs are served to the canvas iframe: a signed
+ * Where this session's outputs are served to the canvas iframe — a signed
  * `/canvas/<id>/<token>/` prefix, because an iframe cannot send the bearer
- * header. See `LoomWeb.CanvasController`.
+ * header — and its attachments, under `/canvas-files/<id>/<token>/`. See
+ * `LoomWeb.CanvasController`.
  */
-export function canvasBase(id: string): Promise<string> {
+export function canvasBase(id: string): Promise<CanvasBases> {
   const cached = canvasBases.get(id)
-  if (cached && Date.now() - cached.at < CANVAS_TTL) return cached.base
+  if (cached && Date.now() - cached.at < CANVAS_TTL) return cached.bases
 
-  const base = fetch(`/api/agents/${id}/canvas`, { method: "POST", headers: authHeaders() }).then(
+  const bases = fetch(`/api/agents/${id}/canvas`, { method: "POST", headers: authHeaders() }).then(
     async (res) => {
       if (res.status === 401) throw unauthorized()
       if (!res.ok) throw new Error(`canvas failed: ${res.status}`)
-      return (await res.json()).base as string
+      const body = await res.json()
+      return { output: body.base as string, files: body.files as string }
     },
   )
-  base.catch(() => canvasBases.delete(id))
-  canvasBases.set(id, { at: Date.now(), base })
-  return base
+  bases.catch(() => canvasBases.delete(id))
+  canvasBases.set(id, { at: Date.now(), bases })
+  return bases
 }
 
 /**

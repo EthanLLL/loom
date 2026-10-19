@@ -1,14 +1,16 @@
-import type { OutputFile } from "./api"
+import type { AgentFile, OutputFile } from "./api"
 
 /**
- * What the canvas is showing for one session: a path under its `output/`,
- * shown in a sandboxed iframe, and what its download button fetches — the
- * file itself, or for a page the whole directory as a zip.
+ * What the canvas is showing for one session: a path under its `output/` — or,
+ * with `source: "files"`, the name of something the user attached — and what
+ * its download button fetches: the file itself, or for a page the whole
+ * directory as a zip.
  */
 export type CanvasItem = {
   path: string
   title: string
-  download: { kind: "file" | "dir"; path: string }
+  source?: "output" | "files"
+  download: { kind: "file" | "dir" | "attachment"; path: string }
 }
 
 // What the canvas can show rather than download, by how it shows it: loom's
@@ -70,4 +72,11 @@ export function itemForOutput(entry: OutputFile): CanvasItem | null {
       : null
   }
   return itemForPath(entry.path)
+}
+
+/** An attachment to show, by its stored name, or `null` if it can only be downloaded. */
+export function itemForAttachment(file: AgentFile): CanvasItem | null {
+  const name = file.path.split("/").pop() ?? file.path
+  if (!previewable(name)) return null
+  return { path: name, title: file.name, source: "files", download: { kind: "attachment", path: name } }
 }

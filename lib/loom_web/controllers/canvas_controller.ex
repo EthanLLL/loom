@@ -22,6 +22,12 @@ defmodule LoomWeb.CanvasController do
   (`img/01.jpg`, `data.json`) inherit it. `Referrer-Policy: no-referrer` keeps it
   from being sent along to the CDNs a page loads from.
 
+  ## Attachments
+
+  What the user attached is served the same way under `/canvas-files/<id>/<token>/`,
+  so a screenshot in a bubble opens in the canvas too. Same token, same
+  sandbox: an uploaded HTML file is no more trusted than one the agent wrote.
+
   ## Range requests
 
   A single `Range: bytes=…` is answered with a 206 of just that slice. Safari
@@ -31,7 +37,9 @@ defmodule LoomWeb.CanvasController do
   use LoomWeb, :controller
 
   alias Loom.Agent
+  alias Loom.Agent.Files
   alias Loom.Agent.Output
+  alias Loom.Agent.Store
 
   @salt "canvas"
   @max_age 24 * 60 * 60
@@ -46,7 +54,8 @@ defmodule LoomWeb.CanvasController do
   # POST /api/agents/:id/canvas — the prefix this session's canvas is served under.
   def token(conn, %{"id" => id}) do
     if Agent.exists?(id) do
-      json(conn, %{base: "/canvas/#{id}/#{Phoenix.Token.sign(LoomWeb.Endpoint, @salt, id)}/"})
+      token = Phoenix.Token.sign(LoomWeb.Endpoint, @salt, id)
+      json(conn, %{base: "/canvas/#{id}/#{token}/", files: "/canvas-files/#{id}/#{token}/"})
     else
       conn |> put_status(:not_found) |> json(%{error: "unknown session"})
     end
@@ -62,6 +71,21 @@ defmodule LoomWeb.CanvasController do
       |> sandboxed()
       |> put_resp_content_type(type_of(path), nil)
       |> serve(path)
+    else
+      _ ->
+        conn |> sandboxed() |> put_resp_content_type("text/plain") |> send_resp(404, "not found")
+    end
+  end
+
+  # GET /canvas-files/:id/:token/:name — one attachment, checked the way a
+  # submit checks it: a regular file inside this session's own `files/`.
+  def attachment(conn, %{"id" => id, "token" => token, "name" => name}) do
+    with {:ok, ^id} <- Phoenix.Token.verify(LoomWeb.Endpoint, @salt, token, max_age: @max_age),
+         {:ok, [file]} <- Files.verify(id, [Path.join(Store.files_dir(id), name)]) do
+      conn
+      |> sandboxed()
+      |> put_resp_content_type(type_of(file.path), nil)
+      |> serve(file.path)
     else
       _ ->
         conn |> sandboxed() |> put_resp_content_type("text/plain") |> send_resp(404, "not found")

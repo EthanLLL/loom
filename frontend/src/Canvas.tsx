@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
-import { canvasBase, downloadAgentOutput, downloadAgentZip } from "./api"
+import {
+  canvasBase,
+  downloadAgentOutput,
+  downloadAgentZip,
+  downloadAttachment,
+  type CanvasBases,
+} from "./api"
 import { viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
 import { Markdown } from "./markdown"
 
@@ -30,7 +36,7 @@ export function Canvas({
   narrow: boolean
   onBack: () => void
 }) {
-  const [base, setBase] = useState<string | null>(null)
+  const [base, setBase] = useState<CanvasBases | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [reloads, setReloads] = useState(0)
   const [downloading, setDownloading] = useState(false)
@@ -49,13 +55,20 @@ export function Canvas({
   }, [sessionId])
 
   const src =
-    base && item ? base + item.path.split("/").map(encodeURIComponent).join("/") : null
+    base && item
+      ? (item.source === "files" ? base.files : base.output) +
+        item.path.split("/").map(encodeURIComponent).join("/")
+      : null
 
   const download = () => {
     if (!sessionId || !item || downloading) return
     setDownloading(true)
     const { kind, path } = item.download
-    ;(kind === "dir" ? downloadAgentZip(sessionId, path) : downloadAgentOutput(sessionId, path))
+    ;(kind === "dir"
+      ? downloadAgentZip(sessionId, path)
+      : kind === "attachment"
+        ? downloadAttachment(sessionId, path)
+        : downloadAgentOutput(sessionId, path))
       .catch((e: Error) => setError(e.message))
       .finally(() => setDownloading(false))
   }

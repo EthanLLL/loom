@@ -82,6 +82,13 @@ defmodule LoomWeb.Router do
     get "/:id/:token/*path", CanvasController, :show
   end
 
+  # The same signed token, for what the user attached rather than what the
+  # agent wrote: a separate prefix, since any name could be a directory in
+  # `output/`.
+  scope "/canvas-files", LoomWeb do
+    get "/:id/:token/:name", CanvasController, :attachment
+  end
+
   scope "/", LoomWeb do
     pipe_through :browser
 

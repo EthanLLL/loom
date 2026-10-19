@@ -44,8 +44,11 @@ defmodule LoomWeb.CanvasControllerTest do
     File.write!(Path.join(out, "clip.mp4"), "0123456789")
 
     authed = put_req_header(conn, "authorization", "Bearer " <> Loom.Auth.mint_token())
-    base = json_response(post(authed, "/api/agents/#{id}/canvas"), 200)["base"]
-    {:ok, conn: conn, id: id, base: base}
+    File.mkdir_p!(Store.files_dir(id))
+    File.write!(Path.join(Store.files_dir(id), "截屏 1.png"), "shot")
+
+    resp = json_response(post(authed, "/api/agents/#{id}/canvas"), 200)
+    {:ok, conn: conn, id: id, base: resp["base"], files: resp["files"]}
   end
 
   test "the prefix needs the token to get", %{conn: conn, id: id, base: base} do
@@ -122,5 +125,28 @@ defmodule LoomWeb.CanvasControllerTest do
     for spec <- ["bytes=5-2", "bytes=x-", "bytes=0-1,4-5", "items=0-1"] do
       assert ranged.(spec).status == 200, spec
     end
+  end
+
+  test "serves the session's attachments, sandboxed, and nothing else", %{
+    conn: conn,
+    id: id,
+    base: base,
+    files: files
+  } do
+    [_, "canvas", ^id, token, _] = String.split(base, "/")
+    assert files == "/canvas-files/#{id}/#{token}/"
+
+    shot = get(conn, files <> URI.encode("截屏 1.png"))
+    assert {shot.status, shot.resp_body} == {200, "shot"}
+    assert [type] = get_resp_header(shot, "content-type")
+    assert type =~ "image/png"
+    [csp] = get_resp_header(shot, "content-security-policy")
+    refute csp =~ "allow-same-origin"
+
+    for name <- ["missing.png", "..%2Foutput%2Frun.log", "..%2Fmeta.json"] do
+      assert get(conn, files <> name).status == 404, name
+    end
+
+    assert get(conn, "/canvas-files/#{id}/forged/" <> URI.encode("截屏 1.png")).status == 404
   end
 end

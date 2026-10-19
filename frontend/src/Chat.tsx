@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react"
 import { buildTimeline, foldFinished, isBusy, type CronJob, type TimelineItem } from "./agent"
-import { itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
+import { itemForAttachment, itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
 import {
@@ -22,6 +22,7 @@ import {
   blobUrl,
   downloadAgentOutput,
   downloadAgentZip,
+  downloadAttachment,
   outputUrl,
   type AgentFile,
   type AgentInfo,
@@ -151,7 +152,8 @@ export function Chat({
 
       {joinError && <div className="chat-banner">{joinError}</div>}
 
-      {/* `output/…` links in a reply become downloads from this session. */}
+      {/* `output/…` links in a reply become downloads from this session, and
+          attachments, sent or about to be, open in the canvas. */}
       <OpenCanvas.Provider value={onOpenCanvas}>
         <OutputLink.Provider
           value={(path, label) => {
@@ -172,23 +174,23 @@ export function Chat({
             onAnswer={submit}
           />
         </OutputLink.Provider>
-      </OpenCanvas.Provider>
 
-      {transcript.queue.length > 0 && (
-        <QueuePanel
-          messages={transcript.queue}
+        {transcript.queue.length > 0 && (
+          <QueuePanel
+            messages={transcript.queue}
+            interrupted={transcript.status === "interrupted"}
+            onDrop={dropQueued}
+          />
+        )}
+
+        <Composer
+          busy={busy}
           interrupted={transcript.status === "interrupted"}
-          onDrop={dropQueued}
+          attachments={attachments}
+          onSubmit={send}
+          onInterrupt={interrupt}
         />
-      )}
-
-      <Composer
-        busy={busy}
-        interrupted={transcript.status === "interrupted"}
-        attachments={attachments}
-        onSubmit={send}
-        onInterrupt={interrupt}
-      />
+      </OpenCanvas.Provider>
     </div>
   )
 }
@@ -631,14 +633,40 @@ function SentFiles({ sessionId, files }: { sessionId: string; files: AgentFile[]
   return (
     <div className="files">
       {files.map((file) => (
-        <FileCard
-          key={file.path}
-          name={file.name}
-          image={isImage(file.content_type) ? blobUrl(attachmentUrl(sessionId, file.path)) : null}
-          title={`${file.name} · ${formatBytes(file.size)}`}
-        />
+        <SentFile key={file.path} sessionId={sessionId} file={file} />
       ))}
     </div>
+  )
+}
+
+/**
+ * One sent attachment. Like an output, a click shows it in the canvas when the
+ * browser can and downloads it otherwise.
+ */
+function SentFile({ sessionId, file }: { sessionId: string; file: AgentFile }) {
+  const openCanvas = useContext(OpenCanvas)
+  const [state, setState] = useState<"idle" | "busy" | { error: string }>("idle")
+  const item = itemForAttachment(file)
+  const stored = file.path.split("/").pop() ?? file.path
+
+  const download = () => {
+    if (state === "busy") return
+    setState("busy")
+    downloadAttachment(sessionId, stored).then(
+      () => setState("idle"),
+      (e: Error) => setState({ error: e.message }),
+    )
+  }
+
+  return (
+    <FileCard
+      name={file.name}
+      image={isImage(file.content_type) ? blobUrl(attachmentUrl(sessionId, file.path)) : null}
+      busy={state === "busy"}
+      error={typeof state === "object" ? state.error : null}
+      title={`${item ? "Show" : "Download"} ${file.name} · ${formatBytes(file.size)}`}
+      onClick={item ? () => openCanvas(item) : download}
+    />
   )
 }
 
@@ -1225,7 +1253,10 @@ function StopIcon() {
   )
 }
 
-/** One pending attachment: uploading, failed, or ready to go. */
+/**
+ * One pending attachment: uploading, failed, or ready to go. Once the server
+ * has it, a click shows it in the canvas, as it will be once sent.
+ */
 function AttachmentChip({
   item,
   onRemove,
@@ -1233,13 +1264,17 @@ function AttachmentChip({
   item: Attachment
   onRemove: () => void
 }) {
+  const openCanvas = useContext(OpenCanvas)
+  const shown = item.file ? itemForAttachment(item.file) : null
+
   return (
     <FileCard
       name={item.name}
       image={item.preview}
       busy={!item.file && !item.error}
       error={item.error}
-      title={`${item.name} · ${formatBytes(item.size)}`}
+      title={`${shown ? "Show " : ""}${item.name} · ${formatBytes(item.size)}`}
+      onClick={shown ? () => openCanvas(shown) : undefined}
       onRemove={onRemove}
     />
   )
