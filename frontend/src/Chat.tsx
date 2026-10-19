@@ -56,8 +56,9 @@ type Props = {
   canvasOpen: boolean
   onToggleCanvas: () => void
   onOpenCanvas: (item: CanvasItem) => void
-  // A turn left outputs, or a message brought attachments.
-  onFilesChanged: () => void
+  // A turn left outputs (their top-level paths), or a message brought
+  // attachments (no paths).
+  onFilesChanged: (outputs: string[]) => void
 }
 
 // How a card or link deep in the transcript opens something in the canvas.
@@ -78,7 +79,10 @@ export function Chat({
   const { transcript, joinError, submit, interrupt, dropQueued, rename } = useAgent(
     session.id,
     (event) => {
-      if (event.kind === "output_files" || event.kind === "user") onFilesChanged()
+      if (event.kind === "output_files") {
+        const files = (event.payload.files as OutputFile[] | undefined) ?? []
+        onFilesChanged(files.map((f) => f.path))
+      } else if (event.kind === "user") onFilesChanged([])
       // A turn that just built a page opens it — only then, and only for the
       // page. Anything else waits for a click.
       const open = event.kind === "output_files" ? event.payload.open : null

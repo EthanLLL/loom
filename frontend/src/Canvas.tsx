@@ -172,8 +172,9 @@ export function Canvas({
         <div className="canvas-view">
           {error && <div className="canvas-note failed">{error}</div>}
           {src && item ? (
-            // Remounted on reload, and when the file changes.
-            <View key={`${src}#${reloads}`} src={src} item={item} />
+            // Remounted on reload, when another file is opened, and when this
+            // one is opened again or rewritten (`rev`).
+            <View key={`${src}#${reloads}#${item.rev ?? 0}`} src={src} item={item} />
           ) : (
             !error && (
               <div className="canvas-note">

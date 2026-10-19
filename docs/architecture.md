@@ -211,7 +211,10 @@ the way NERDTree sits beside a buffer, is a file tree for the whole session:
 `output/` and the uploads in `files/`, newest first, from
 `GET /api/agents/:id/tree`, with the shown file's row marked. The button at the
 left of the canvas's head folds it, and that is remembered. On a phone the tree
-covers the view and folds itself once a file is picked. It lists when shown and
+covers the view and folds itself once a file is picked. A file rewritten in place keeps its path, so the canvas does not go by the
+path alone: opening something reads it again, and so does a live
+`:output_files` event that names what is on show (the file, or the directory a
+page lives in). It lists when shown and
 again whenever a live `:output_files` or `user` event arrives, rather than
 polling. A file opens in the canvas when there is a viewer for it and
 downloads otherwise; a directory offers its page and a zip of itself.

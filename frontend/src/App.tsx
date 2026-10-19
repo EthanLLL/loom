@@ -1,7 +1,7 @@
 import { ChevronLeft, Maximize, Minimize, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
-import type { CanvasItem } from "./canvasItems"
+import { touches, type CanvasItem } from "./canvasItems"
 import { Chat } from "./Chat"
 import { Login } from "./Login"
 import { Sidebar } from "./Sidebar"
@@ -96,10 +96,21 @@ function App() {
     localStorage.setItem(CANVAS_KEY, JSON.stringify(canvases))
   }, [canvases])
 
+  // Opening is also reading again: a second click on a file rewritten since
+  // the first shows what is there now.
   const openCanvas = (sessionId: string, item: CanvasItem) => {
-    setCanvases((all) => ({ ...all, [sessionId]: item }))
+    setCanvases((all) => ({ ...all, [sessionId]: { ...item, rev: Date.now() } }))
     setSide("canvas")
   }
+  // A turn rewrote what the canvas shows: read it again, without opening the
+  // canvas if it is closed.
+  const refreshCanvas = (sessionId: string, outputs: string[]) =>
+    setCanvases((all) => {
+      const item = all[sessionId]
+      return item && touches(item, outputs)
+        ? { ...all, [sessionId]: { ...item, rev: Date.now() } }
+        : all
+    })
   const toggleCanvas = () => setSide((s) => (s === "canvas" ? null : "canvas"))
   // Bumped when the active session's files may have changed, so the canvas's
   // file browser lists them again.
@@ -275,7 +286,10 @@ function App() {
               canvasOpen={side === "canvas"}
               onToggleCanvas={toggleCanvas}
               onOpenCanvas={(item) => openCanvas(active.id, item)}
-              onFilesChanged={() => setFilesRev((n) => n + 1)}
+              onFilesChanged={(outputs) => {
+                setFilesRev((n) => n + 1)
+                refreshCanvas(active.id, outputs)
+              }}
             />
           ) : (
             <div className="placeholder">

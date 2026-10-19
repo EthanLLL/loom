@@ -11,6 +11,19 @@ export type CanvasItem = {
   title: string
   source?: "output" | "files"
   download: { kind: "file" | "dir" | "attachment"; path: string }
+  // Changed to make the canvas read the file again: each time it is opened,
+  // and when a turn rewrites what is on show. A file rewritten in place keeps
+  // its path, so the path alone would go on showing the old version.
+  rev?: number
+}
+
+/**
+ * Whether a turn's outputs — top-level entries of `output/`, each a file or a
+ * whole directory — include what `item` shows.
+ */
+export function touches(item: CanvasItem, changed: string[]): boolean {
+  if (item.source === "files") return false
+  return changed.some((path) => item.path === path || item.path.startsWith(path + "/"))
 }
 
 // What the canvas can show rather than download, by how it shows it: loom's
