@@ -1,3 +1,4 @@
+import { X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import {
@@ -89,7 +90,7 @@ export function DevicesDialog({
         <div className="modal-head">
           <span>Devices</span>
           <button className="icon-btn" onClick={onClose} title="Close">
-            ×
+            <X />
           </button>
         </div>
 
@@ -206,7 +207,7 @@ function DeviceRow({
         install
       </button>
       <button className="session-del device-del" onClick={onRemove} title="Remove device">
-        ×
+        <X />
       </button>
     </div>
   )

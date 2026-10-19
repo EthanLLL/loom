@@ -71,8 +71,8 @@
 
 .icon-btn {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 1.867rem;
+  height: 1.867rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -81,7 +81,7 @@
   border: none;
   border-radius: 6px;
   font-family: var(--mono);
-  font-size: 1.154rem;
+  font-size: 1.067rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -143,13 +143,17 @@
 
 .session-del {
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
+  width: 1.467rem;
+  height: 1.467rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   background: none;
   border: none;
   border-radius: 4px;
   color: var(--fg-dim);
-  font-size: 1.077rem;
+  font-size: 0.933rem;
   line-height: 1;
   cursor: pointer;
   visibility: hidden;
@@ -606,8 +610,8 @@
 }
 
 .pane-btn {
-  width: 20px;
-  height: 20px;
+  width: 1.6rem;
+  height: 1.6rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -616,7 +620,7 @@
   border-radius: 4px;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 1.077rem;
+  font-size: 1rem;
   line-height: 1;
   cursor: pointer;
 }

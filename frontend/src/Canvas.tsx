@@ -1,3 +1,4 @@
+import { ChevronLeft, Download, Maximize, Minimize, RotateCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import {
   canvasBase,
@@ -83,7 +84,7 @@ export function Canvas({
         <span className="pane-title">
           {narrow && (
             <button className="pane-btn" onClick={onBack} title="Back to the chat">
-              ‹
+              <ChevronLeft />
             </button>
           )}
           <span className="canvas-title" title={item?.path}>
@@ -92,8 +93,17 @@ export function Canvas({
         </span>
         {item && (
           <span className="pane-actions">
+            {!narrow && (
+              <button
+                className="pane-btn"
+                onClick={onToggleMaximized}
+                title={maximized ? "Back beside the chat (Esc)" : "Full window"}
+              >
+                {maximized ? <Minimize /> : <Maximize />}
+              </button>
+            )}
             <button className="pane-btn" onClick={() => setReloads((n) => n + 1)} title="Reload">
-              ↻
+              <RotateCw />
             </button>
             <button
               className={"pane-btn download" + (downloading ? " busy" : "")}
@@ -104,17 +114,8 @@ export function Canvas({
                   : `Download ${item.download.path}`
               }
             >
-              ↓
+              <Download />
             </button>
-            {!narrow && (
-              <button
-                className="pane-btn"
-                onClick={onToggleMaximized}
-                title={maximized ? "Back beside the chat (Esc)" : "Full window"}
-              >
-                <MaximizeIcon maximized={maximized} />
-              </button>
-            )}
           </span>
         )}
       </div>
@@ -308,17 +309,4 @@ function parseCsv(text: string): string[][] {
     rows.push(row)
   }
   return rows
-}
-
-/** Corners pointing out to fill the window, or in to give it back. */
-export function MaximizeIcon({ maximized }: { maximized: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      {maximized ? (
-        <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
-      ) : (
-        <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
-      )}
-    </svg>
-  )
 }

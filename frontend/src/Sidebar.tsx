@@ -1,3 +1,4 @@
+import { PanelLeftClose, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { DevicesDialog } from "./Devices"
@@ -41,7 +42,7 @@ export function Sidebar({
         <span className="sidebar-actions">
           <NewSessionButton onCreate={onCreate} />
           <button className="icon-btn" onClick={onCollapse} title="Hide sidebar">
-            ‹
+            <PanelLeftClose />
           </button>
         </span>
       </div>
@@ -83,7 +84,7 @@ export function Sidebar({
                 onDelete(s.id)
               }}
             >
-              ×
+              <X />
             </button>
           </div>
         ))}
@@ -143,7 +144,7 @@ function NewSessionButton({
         onClick={() => setOpen((v) => !v)}
         title="New session"
       >
-        +
+        <Plus />
       </button>
       {open && (
         <div className="backend-menu">

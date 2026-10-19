@@ -1,7 +1,7 @@
+import { ChevronLeft, Maximize, Minimize, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
 import type { CanvasItem } from "./canvasItems"
-import { MaximizeIcon } from "./Canvas"
 import { Chat } from "./Chat"
 import { Login } from "./Login"
 import { Sidebar } from "./Sidebar"
@@ -327,7 +327,7 @@ function App() {
                         onClick={() => setTerminalOpen(false)}
                         title="Back to the chat"
                       >
-                        ‹
+                        <ChevronLeft />
                       </button>
                     )}
                     terminal {index + 1}
@@ -341,7 +341,7 @@ function App() {
                         onClick={toggleFull}
                         title={maximized ? "Back beside the chat (Esc outside a shell)" : "Full window"}
                       >
-                        <MaximizeIcon maximized={maximized} />
+                        {maximized ? <Minimize /> : <Maximize />}
                       </button>
                     )}
                     <button
@@ -349,14 +349,14 @@ function App() {
                       onClick={addTerminal}
                       title="New terminal"
                     >
-                      +
+                      <Plus />
                     </button>
                     <button
                       className="pane-btn"
                       onClick={() => closeTerminal(id)}
                       title="Close this terminal"
                     >
-                      ×
+                      <X />
                     </button>
                   </span>
                 </div>

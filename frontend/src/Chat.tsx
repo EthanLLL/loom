@@ -1,4 +1,18 @@
 import {
+  AppWindow,
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock as ClockIcon,
+  PanelLeftOpen,
+  Plus,
+  Square,
+  SquareTerminal,
+  X,
+} from "lucide-react"
+import {
   createContext,
   useContext,
   useEffect,
@@ -98,7 +112,7 @@ export function Chat({
             onClick={onToggleSidebar}
             title="Show sidebar"
           >
-            ☰
+            <PanelLeftOpen />
           </button>
         )}
 
@@ -137,7 +151,7 @@ export function Chat({
               " (they open in your home directory)"
             }
           >
-            <TerminalIcon />
+            <SquareTerminal />
             {terminalCount > 0 && <span className="count">{terminalCount}</span>}
           </button>
           <button
@@ -145,7 +159,7 @@ export function Chat({
             onClick={onToggleCanvas}
             title={(canvasOpen ? "Hide" : "Show") + " the canvas"}
           >
-            <CanvasIcon />
+            <AppWindow />
           </button>
         </div>
       </header>
@@ -298,7 +312,7 @@ function Timeline({
           title="Jump to the latest"
           aria-label="Jump to the latest"
         >
-          <DownIcon />
+          <ArrowDown />
         </button>
       )}
     </div>
@@ -322,7 +336,7 @@ function Item({
           {item.files.length > 0 && <SentFiles sessionId={sessionId} files={item.files} />}
           {item.queued && <span className="tag">queued</span>}
           {item.origin === "phone" && <span className="tag">phone</span>}
-          {item.origin === "cron" && <span className="tag">⏰ cron</span>}
+          {item.origin === "cron" && <span className="tag"><ClockIcon /> cron</span>}
           {item.at && <Clock at={item.at} />}
         </div>
       )
@@ -513,7 +527,7 @@ function QueuePanel({
             title="Discard this message"
             onClick={() => onDrop(i)}
           >
-            ×
+            <X />
           </button>
         </div>
       ))}
@@ -588,7 +602,7 @@ function FileCard({
             onRemove()
           }}
         >
-          ×
+          <X />
         </button>
       )}
     </span>
@@ -800,7 +814,7 @@ function ToolCard({
         <span className="tool-name">{item.name}</span>
         <span className="tool-summary">{summary}</span>
         <span className="tool-state">
-          {result ? (result.ok ? "✓" : "✕") : "…"}
+          {result ? result.ok ? <Check /> : <X /> : "…"}
         </span>
       </div>
 
@@ -845,7 +859,14 @@ function ToolGroup({
         </span>
         <span className="tool-summary">{names.join(", ")}</span>
         <span className={"tool-state" + (item.failed > 0 ? " bad" : "")}>
-          {item.failed > 0 ? `${item.failed} ✕` : "✓"} {open ? "▾" : "▸"}
+          {item.failed > 0 ? (
+            <>
+              {item.failed} <X />
+            </>
+          ) : (
+            <Check />
+          )}
+          {open ? <ChevronDown /> : <ChevronRight />}
         </span>
       </div>
 
@@ -1067,7 +1088,7 @@ function Composer({
           title="Attach files — or drop them anywhere in the conversation"
           onClick={() => picker.current?.click()}
         >
-          <PlusIcon />
+          <Plus />
         </button>
 
         <textarea
@@ -1149,7 +1170,7 @@ function Composer({
               onClick={onInterrupt}
               title="Stop the turn"
             >
-              <StopIcon />
+              <Square fill="currentColor" />
             </button>
           )}
           {/* While the agent works, an empty box has nothing to send and the
@@ -1169,7 +1190,7 @@ function Composer({
                       : "Send"
               }
             >
-              <SendIcon />
+              <ArrowUp />
             </button>
           )}
         </div>
@@ -1180,78 +1201,6 @@ function Composer({
 
 // Past this the box scrolls instead of eating the conversation.
 const MAX_LINES = 6
-
-// Inline rather than an icon font: three glyphs do not justify a dependency,
-// and the Nerd Font's versions sit on the text baseline instead of centred.
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" aria-hidden>
-      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function SendIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" aria-hidden>
-      <path
-        d="M12 19V5M6 11l6-6 6 6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function CanvasIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M3 9h18" />
-    </svg>
-  )
-}
-
-function TerminalIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1.15em" height="1.15em" aria-hidden>
-      <path
-        d="M5 8l4 4-4 4M12 17h7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function DownIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1.25em" height="1.25em" aria-hidden>
-      <path
-        d="M12 5v14M6 13l6 6 6-6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function StopIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden>
-      <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
-    </svg>
-  )
-}
 
 /**
  * One pending attachment: uploading, failed, or ready to go. Once the server

@@ -89,8 +89,8 @@
 .chip.button.terminal-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
+  gap: 4px;
+  padding: 3px 9px;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
 }
@@ -104,6 +104,11 @@
   color: var(--bg);
 }
 
+.chip.button.terminal-toggle svg,
+.chip.button.canvas-toggle svg {
+  font-size: 1.2em;
+}
+
 .chip.button.terminal-toggle .count {
   font-weight: 600;
   line-height: 1;
@@ -114,7 +119,7 @@
 .chip.button.canvas-toggle {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
+  padding: 3px 9px;
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 12%, var(--bg-card));
 }
@@ -177,6 +182,7 @@
   border-radius: 50%;
   background: var(--bg-card);
   color: var(--fg);
+  font-size: 1.2rem;
   box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
   cursor: pointer;
 }
@@ -269,6 +275,10 @@
 }
 
 .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  vertical-align: middle;
   margin-left: 8px;
   padding: 1px 6px;
   border-radius: 8px;
@@ -353,6 +363,9 @@ pre.code {
 
 .tool-state {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--fg-dim);
 }
 
@@ -484,6 +497,8 @@ pre.code {
 
 .queue-drop {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
   border: 0;
   background: transparent;
   color: var(--fg-dim);
@@ -640,6 +655,7 @@ pre.code {
   background: transparent;
   color: var(--fg-dim);
   font-family: var(--mono);
+  font-size: 1.2rem;
   cursor: pointer;
 }
 
@@ -656,6 +672,7 @@ pre.code {
 }
 
 .composer-btn.stop {
+  font-size: 0.9rem;
   background: var(--line);
   color: var(--fg);
 }
@@ -802,11 +819,13 @@ pre.code {
   position: absolute;
   top: 3px;
   right: 3px;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: 9px;
   background: color-mix(in srgb, var(--bg) 75%, transparent);
   color: var(--fg);
   font-family: var(--mono);
@@ -955,7 +974,8 @@ h3.md-h {
 
 .md-check {
   display: inline-block;
-  width: 1.1em;
+  width: 1.4em;
+  vertical-align: -0.125em;
   color: var(--accent);
 }
 

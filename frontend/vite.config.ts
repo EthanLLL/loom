@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:4000', changeOrigin: true },
       '/canvas/': { target: 'http://localhost:4000', changeOrigin: true },
+      '/canvas-files/': { target: 'http://localhost:4000', changeOrigin: true },
       '/socket': { target: 'ws://localhost:4000', ws: true, changeOrigin: true },
       // loom-node: install script, binaries, and the devices' own socket.
       '/node/': { target: 'http://localhost:4000', ws: true, changeOrigin: true },

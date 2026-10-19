@@ -39,6 +39,14 @@ html {
   }
 }
 
+/* Icons are Lucide's, sized by the font-size of what holds them, so a button
+   sets its icon's size the way it would set a glyph's. */
+svg.lucide {
+  flex: none;
+  width: 1em;
+  height: 1em;
+}
+
 /* No scrollbars anywhere: sidebar, transcript, tool output, the composer, the
    terminals. Every one of them scrolls by wheel, trackpad or touch, and a bar
    only took width and drew a light stripe down a dark UI. The transcript has a

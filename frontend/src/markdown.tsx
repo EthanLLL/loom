@@ -1,3 +1,4 @@
+import { Square as SquareIcon, SquareCheck } from "lucide-react"
 import { createContext, useContext, useMemo, type ReactNode } from "react"
 import { marked, type Token, type Tokens } from "marked"
 
@@ -92,7 +93,7 @@ function Block({ token }: { token: Token }): ReactNode {
         <Tag className="md-list" start={t.ordered ? Number(t.start) || 1 : undefined}>
           {t.items.map((item, i) => (
             <li key={i} className={item.task ? "md-task" : undefined}>
-              {item.task ? <span className="md-check">{item.checked ? "✓" : "○"}</span> : null}
+              {item.task ? <span className="md-check">{item.checked ? <SquareCheck /> : <SquareIcon />}</span> : null}
               {blocks(item.tokens)}
             </li>
           ))}
