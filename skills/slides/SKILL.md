@@ -89,7 +89,9 @@ Process.send_after(self(), :tick, 1_000)
 - **Images and other assets** go beside `index.html` and are referenced
   relatively (`img/arch.png`), never by absolute path or URL.
 - **Charts**: draw them as inline SVG or plain HTML/CSS. There is no charting
-  library under `/vendor/`.
+  library under `/vendor/`. Give each slide's `<svg>` its own `<defs>` (arrow
+  markers, gradients) with ids unique in the page: reveal hides the other
+  slides, and a `url(#id)` pointing into a hidden one renders nothing.
 - **Content**: one idea per slide, at most about six short bullets, no
   paragraphs. Use `class="fragment"` to build a slide up step by step, and
   nested `<section>`s (vertical slides) only for optional detail.
