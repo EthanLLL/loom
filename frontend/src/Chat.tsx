@@ -23,6 +23,7 @@ import {
 } from "react"
 import { buildTimeline, foldFinished, isBusy, type CronJob, type TimelineItem } from "./agent"
 import { itemForAttachment, itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
+import { isComposing } from "./ime"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
 import {
@@ -469,6 +470,7 @@ function Title({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
+            if (isComposing(e)) return
             if (e.key === "Enter") commit()
             if (e.key === "Escape") {
               setDraft(title)

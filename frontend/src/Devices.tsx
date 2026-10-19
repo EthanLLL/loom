@@ -1,6 +1,7 @@
 import { X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
+import { isComposing } from "./ime"
 import {
   createDevice,
   deleteDevice,
@@ -180,6 +181,7 @@ function DeviceRow({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {
+              if (isComposing(e)) return
               if (e.key === "Enter") commit()
               if (e.key === "Escape") {
                 setDraft(device.name)
