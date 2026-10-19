@@ -238,7 +238,7 @@ function App() {
   )
 
   return (
-    <div className={"app" + (maximized ? " maximized" : "")}>
+    <div className={"app" + (side !== null ? " side-open" : "") + (maximized ? " maximized" : "")}>
       {narrow ? (
         // Always mounted so it can slide rather than pop. Over the chat, not
         // beside it: a phone has no width to give a second column.

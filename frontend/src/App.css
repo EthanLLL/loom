@@ -870,3 +870,66 @@
 .canvas-doc .md-table-wrap {
   overflow: visible;
 }
+
+/* Installed, with the title bar hidden (Chromium's Window Controls Overlay):
+   the page runs to the top of the window and the OS's buttons float over it,
+   the traffic lights top-left and Chrome's own top-right. The top bar of
+   whichever column is outermost on each side moves its content clear of them,
+   and the top bars drag the window — everywhere but their buttons. A browser
+   tab, a phone, or the title bar shown again: none of this applies. */
+@media (display-mode: window-controls-overlay) {
+  .app {
+    --wco-left: env(titlebar-area-x, 0px);
+    --wco-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  }
+
+  .sidebar-head,
+  .chat-header,
+  .side-column > .canvas > .pane-head,
+  .terminal-pane:first-child > .pane-head {
+    min-height: env(titlebar-area-height, 0px);
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  .sidebar-head button,
+  .chat-header button,
+  .chat-header input,
+  .chat-name,
+  .pane-head button {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
+  /* Only the name renames on a double-click; the rest of the title column is
+     the window's, where a double-click zooms it. */
+  .chat-name {
+    align-self: flex-start;
+    max-width: 100%;
+  }
+
+  /* Left: the sidebar when it is there, else the chat, else (maximized) the
+     column. */
+  .sidebar-head {
+    padding-left: calc(var(--wco-left) + 12px);
+  }
+
+  .app:not(:has(> .sidebar)) .chat-header {
+    padding-left: calc(var(--wco-left) + 14px);
+  }
+
+  .app.maximized .side-column > .canvas > .pane-head,
+  .app.maximized .terminal-pane:first-child > .pane-head {
+    padding-left: calc(var(--wco-left) + 10px);
+  }
+
+  /* Right: the column when it is open, else the chat. */
+  .app:not(.side-open) .chat-header {
+    padding-right: calc(var(--wco-right) + 14px);
+  }
+
+  .app.side-open .side-column > .canvas > .pane-head,
+  .app.side-open .terminal-pane:first-child > .pane-head {
+    padding-right: calc(var(--wco-right) + 6px);
+  }
+}
