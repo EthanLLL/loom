@@ -1,6 +1,8 @@
 :root {
   --bg: #010c18;
   --bg-raised: #04101f;
+  /* The top bars' shared height; see .sidebar-head below. */
+  --head-h: 3.933rem;
   --bg-card: #0b1f33;
   --line: #16314f;
   --fg: #ecdef4;
@@ -48,6 +50,19 @@
   min-width: 0;
   background: var(--bg-raised);
   border-right: 1px solid var(--line);
+}
+
+/* One height for the top bar of every column — the sidebar's, the chat's, and
+   the first pane of the right-hand column — so their bottom edges make one
+   line across the window. The chat's two-line title is what sets it: --head-h, in :root
+   above. With the title bar hidden (see the end of this file) this row is the title bar. */
+.sidebar-head,
+.chat-header,
+.side-column > .canvas > .pane-head,
+.terminal-pane:first-child > .pane-head {
+  box-sizing: border-box;
+  height: var(--head-h);
+  border-bottom: 1px solid var(--line);
 }
 
 .sidebar-head {
