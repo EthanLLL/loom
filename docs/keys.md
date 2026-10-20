@@ -1,8 +1,8 @@
 # Keys
 
 Desktop only; a phone layout has none of these. `?` in Loom lists them too.
-**Vim mode** at the bottom of the sidebar turns them all off, `` Ctrl-` ``
-included, and back on; it is remembered per browser.
+They are off until **Vim mode** at the bottom of the sidebar is turned on,
+`` Ctrl-` `` included; the setting is remembered per browser.
 
 ## Where the keys go
 

@@ -295,7 +295,8 @@ function App() {
   //
   // The canvas's file tree is walked the same way, by `treeNav`, which the
   // tree fills in.
-  const [vim, setVim] = useState(() => localStorage.getItem(VIM_KEY) !== "0")
+  // Off until turned on: not everyone wants single keys to do things.
+  const [vim, setVim] = useState(() => localStorage.getItem(VIM_KEY) === "1")
   useEffect(() => {
     localStorage.setItem(VIM_KEY, vim ? "1" : "0")
   }, [vim])
