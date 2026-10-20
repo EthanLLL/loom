@@ -645,6 +645,63 @@ defmodule Loom.Agent.SessionTest do
     end
   end
 
+  describe "announcing turn ends" do
+    # What `Loom.Push` notifies with: once a turn is over and nothing follows it.
+    test "carries the title and the turn's last reply" do
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.turns_topic())
+      Agent.submit(id, "weekly report")
+      BackendStub.await_turn()
+
+      backend_sends(id, [
+        {:event, :assistant_text, %{block_id: "b1", text: "Looking."}},
+        {:event, :assistant_text, %{block_id: "b2", text: "Done: 3 files."}}
+      ])
+
+      finish_turn(id)
+
+      assert_receive {:turn_ended, ^id,
+                      %{title: "weekly report", outcome: {:ok, "Done: 3 files."}}},
+                     500
+    end
+
+    test "a failed turn carries the error, not the text before it" do
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.turns_topic())
+      Agent.submit(id, "go")
+      BackendStub.await_turn()
+      backend_sends(id, [{:event, :assistant_text, %{block_id: "b1", text: "Starting."}}])
+      backend_sends(id, [{:event, :turn_failed, %{reason: "boom"}}])
+
+      assert_receive {:turn_ended, ^id, %{outcome: {:error, "boom"}}}, 500
+    end
+
+    test "not while a queued message is about to start the next turn" do
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.turns_topic())
+      Agent.submit(id, "go")
+      BackendStub.await_turn()
+      BackendStub.fail_next_steer()
+      Agent.submit(id, "parked")
+
+      finish_turn(id)
+      assert BackendStub.await_turn() == "parked"
+      refute_receive {:turn_ended, ^id, _}, 100
+
+      finish_turn(id)
+      assert_receive {:turn_ended, ^id, %{outcome: {:ok, nil}}}, 500
+    end
+
+    test "not on an interrupt" do
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.turns_topic())
+      Agent.submit(id, "go")
+      BackendStub.await_turn()
+      :ok = Agent.interrupt(id)
+      refute_receive {:turn_ended, ^id, _}, 200
+    end
+  end
+
   describe "output files" do
     # What the agent left for the user is announced once per turn, from the
     # directory itself rather than from what the model said. See

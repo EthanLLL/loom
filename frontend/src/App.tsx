@@ -4,6 +4,7 @@ import { Canvas } from "./Canvas"
 import { touches, type CanvasItem } from "./canvasItems"
 import { Chat } from "./Chat"
 import { Login } from "./Login"
+import { usePush, useVisible } from "./push"
 import { Sidebar } from "./Sidebar"
 import { Terminal } from "./Terminal"
 import { useLobby } from "./useLobby"
@@ -38,11 +39,28 @@ function loadCanvases(): Record<string, CanvasItem> {
 }
 const TOUCH = matchMedia("(hover: none)")
 
+function takeSessionParam(): string | null {
+  const url = new URL(window.location.href)
+  const id = url.searchParams.get("session")
+  if (id) {
+    url.searchParams.delete("session")
+    history.replaceState(null, "", url.pathname + url.search + url.hash)
+  }
+  return id
+}
+
 function App() {
   const [authed, setAuthed] = useState(!!getToken())
   // Pushed by the server as sessions change; see `useLobby`.
-  const { sessions, devices, upsertDevice, loaded, upsert, drop } = useLobby(authed)
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const push = usePush(authed)
+  const visible = useVisible()
+  // Opened from a notification: `?session=` names the session to show, and
+  // goes from the address bar once read.
+  const [activeId, setActiveId] = useState<string | null>(takeSessionParam)
+  const { sessions, devices, upsertDevice, loaded, upsert, drop } = useLobby(
+    authed,
+    push.endpoint ? { endpoint: push.endpoint, session: visible ? activeId : null } : null,
+  )
   const narrow = useNarrow()
 
   // The token outlives the app now (see `getToken`), so a stored one can be
@@ -158,6 +176,19 @@ function App() {
     setDrawerOpen(false)
   }
 
+  // A notification tapped while the app is already open: the worker names the
+  // session rather than opening a second window.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "open-session" && typeof e.data.session === "string") {
+        setActiveId(e.data.session)
+        setDrawerOpen(false)
+      }
+    }
+    navigator.serviceWorker?.addEventListener("message", onMessage)
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage)
+  }, [])
+
   const remove = async (id: string) => {
     // A mouse has to hover to even see the button; a finger can hit it while
     // scrolling the list, and the history does not come back.
@@ -243,6 +274,7 @@ function App() {
       sessions={sessions}
       devices={devices}
       onUpsertDevice={upsertDevice}
+      push={push}
       activeId={activeId}
       onSelect={select}
       onCreate={create}

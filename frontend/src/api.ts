@@ -470,3 +470,21 @@ export function deviceInstallCode(id: string): Promise<{ code: string }> {
 export function installCommand(code: string): string {
   return `curl -fsSL ${window.location.origin}/node/install/${code} | sh`
 }
+
+// ── Notifications (see push.ts) ───────────────────────────────────────────
+
+/** The key the server signs pushes with, base64url, to subscribe against. */
+export function pushKey(): Promise<{ key: string }> {
+  return deviceCall("/api/push", { method: "GET" })
+}
+
+export function savePushSubscription(subscription: PushSubscriptionJSON, test: boolean): Promise<void> {
+  return deviceCall("/api/push/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({ subscription, origin: window.location.origin, test }),
+  })
+}
+
+export function deletePushSubscription(endpoint: string): Promise<void> {
+  return deviceCall("/api/push/subscriptions", { method: "DELETE", body: JSON.stringify({ endpoint }) })
+}

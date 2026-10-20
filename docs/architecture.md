@@ -107,6 +107,32 @@ scheduler would run outside Loom and update nothing. The message is marked
 - **`/cron`**, typed in any session, lists every job. Like `/reload`, it never
   reaches a backend.
 
+### 2.6 Notifications
+
+`Loom.Push` sends a Web Push notification to every device that turned them on
+(the bell at the foot of the sidebar) when a turn ends with nothing queued
+behind it: the session's title, and the start of the last reply or the error.
+An interrupt sends nothing. Tapping it opens that session.
+
+- **No account anywhere.** The VAPID key pair is made on first boot and kept
+  in `~/.loom/push.json`, beside the subscriptions; encryption and signing are
+  `:crypto` (`Loom.Push.WebPush`). Losing the file orphans every device, which
+  then has to turn notifications on again.
+- **The session broadcasts, Push decides.** A session only announces
+  `{:turn_ended, id, summary}` on `Loom.Agent.turns_topic/0`.
+- **Not to a device that is looking.** Each subscribed device tells the lobby
+  channel which session it is showing (`watching`, `nil` when hidden), and is
+  skipped for that one. In memory against the channel's pid, so a device that
+  drops off counts as not looking.
+- **Declarative Web Push payload** (`web_push: 8030`): Safari 18.4+ shows it
+  even if the service worker never runs; elsewhere `frontend/public/sw.js`
+  shows the same fields. The worker has no fetch handler and caches nothing.
+- **iPhone:** only from the home-screen app (iOS 16.4+); Safari tabs have no
+  Push API. Apple refuses a VAPID subject on `localhost` or plain http, so a
+  dev server signs with a stand-in address.
+- A push service answering 404 or 410 has dropped the subscription, and so
+  does Loom.
+
 ## 3. Client protocol
 
 ```
@@ -311,6 +337,7 @@ Loom.Supervisor
 ├─ Loom.Agent.Bootstrap           reattaches persisted sessions at boot
 ├─ Loom.Cron                      scheduled prompts
 ├─ Loom.Nodes                     the user's devices (loom-node)
+├─ Loom.Push                      notifications when a turn ends
 ├─ Loom.Restarter                 restart-when-idle, for deploys
 └─ LoomWeb.Endpoint
 ```
@@ -344,6 +371,7 @@ Chat.tsx          timeline, tool cards, queue, composer
 agent.ts          pure reducers: applySnapshot / applyEvent / applyDelta / buildTimeline / foldFinished
 markdown.tsx      markdown for assistant messages only
 Terminal.tsx      one xterm pane
+push.ts           this device's notifications on/off, and whether it is looking
 useAgent.ts       one agent channel's lifecycle
 ```
 

@@ -47,6 +47,29 @@ defmodule LoomWeb.LobbyChannelTest do
     assert is_integer(seq)
   end
 
+  test "a device says which session it is showing, for notifications" do
+    {:ok, _reply, socket} = join_lobby()
+    push(socket, "watching", %{"endpoint" => "https://push.example/lobby", "session" => "a_1"})
+
+    assert_eventually(fn ->
+      match?({"a_1", _, _}, :sys.get_state(Loom.Push).watching["https://push.example/lobby"])
+    end)
+
+    push(socket, "watching", %{"endpoint" => "https://push.example/lobby", "session" => nil})
+
+    assert_eventually(fn ->
+      !Map.has_key?(:sys.get_state(Loom.Push).watching, "https://push.example/lobby")
+    end)
+  end
+
+  defp assert_eventually(fun, tries \\ 50) do
+    cond do
+      fun.() -> :ok
+      tries == 0 -> flunk("condition never became true")
+      true -> Process.sleep(20) && assert_eventually(fun, tries - 1)
+    end
+  end
+
   test "a rename is pushed with a newer seq", %{id: id} do
     {:ok, %{sessions: [%{seq: before}]}, _socket} = join_lobby()
 

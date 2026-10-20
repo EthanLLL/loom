@@ -47,6 +47,10 @@ defmodule LoomWeb.Router do
     patch "/devices/:id", DevicesController, :update
     delete "/devices/:id", DevicesController, :delete
     post "/devices/:id/install", DevicesController, :install
+
+    get "/push", PushController, :show
+    post "/push/subscriptions", PushController, :create
+    delete "/push/subscriptions", PushController, :delete
   end
 
   # The `loom-node` CLI on this host, relaying to a device. Not the browser's

@@ -111,6 +111,13 @@ defmodule Loom.Agent do
   """
   def lobby_topic, do: "agents"
 
+  @doc """
+  The topic turn ends are announced on, for `Loom.Push`: `{:turn_ended, id,
+  %{title:, outcome:}}` once a turn is over and nothing queued follows it.
+  `outcome` is `{:ok, last_reply_or_nil}` or `{:error, message}`.
+  """
+  def turns_topic, do: "turns"
+
   defp safe_info(id) do
     Session.info(id)
   catch

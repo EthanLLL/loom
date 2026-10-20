@@ -615,7 +615,7 @@ defmodule Loom.Agent.Session do
     state = %{state | turns: state.turns + 1}
 
     if state.queue == [] do
-      state |> set_status(:idle) |> schedule_release()
+      state |> set_status(:idle) |> announce_turn_end() |> schedule_release()
     else
       drain(state)
     end
@@ -667,6 +667,27 @@ defmodule Loom.Agent.Session do
     |> emit(:status, %{status: :interrupted, queued: length(state.queue), message: message})
     |> set_status(:interrupted)
     |> schedule_release()
+  end
+
+  # For notifications (`Loom.Push`). The reply is the turn's last text, found by
+  # reading back to the message that started it; an error after it wins, since
+  # that is how the turn actually ended.
+  defp announce_turn_end(state) do
+    outcome =
+      Enum.find_value(state.transcript, {:ok, nil}, fn
+        %{kind: :error, payload: %{message: message}} -> {:error, message}
+        %{kind: :assistant_text, payload: %{text: text}} -> {:ok, text}
+        %{kind: :user} -> {:ok, nil}
+        _ -> nil
+      end)
+
+    Phoenix.PubSub.broadcast(
+      Loom.PubSub,
+      Loom.Agent.turns_topic(),
+      {:turn_ended, state.id, %{title: state.title, outcome: outcome}}
+    )
+
+    state
   end
 
   # Announce what the turn left in the output directory. Before the turn's own

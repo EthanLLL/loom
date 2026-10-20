@@ -15,7 +15,7 @@ defmodule LoomWeb do
   # `mix assets.deploy`. Nothing else in `priv/static` is reachable.
   def static_paths,
     do:
-      ~w(assets fonts icons favicon.ico favicon.svg icons.svg manifest.webmanifest robots.txt index.html)
+      ~w(assets fonts icons favicon.ico favicon.svg icons.svg manifest.webmanifest sw.js robots.txt index.html)
 
   def router do
     quote do

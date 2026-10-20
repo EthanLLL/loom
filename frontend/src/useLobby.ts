@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { Channel } from "phoenix"
 import { getSocket } from "./socket"
 import type { AgentInfo, Device } from "./api"
+
+export type Watching = { endpoint: string; session: string | null }
 
 type Lobby = {
   sessions: AgentInfo[]
@@ -25,11 +28,19 @@ type Lobby = {
  *
  * A summary can arrive older than the copy we hold (the server subscribes
  * before it reads the list), so the higher `seq` wins.
+ *
+ * `watching` goes the other way: which session this device is showing, for a
+ * device with notifications on, so the server holds back the ones for what is
+ * already on screen. Sent on every join too, as the server forgets it with the
+ * channel.
  */
-export function useLobby(enabled: boolean): Lobby {
+export function useLobby(enabled: boolean, watching: Watching | null = null): Lobby {
   const [byId, setById] = useState<Map<string, AgentInfo>>(new Map())
   const [loaded, setLoaded] = useState(false)
   const [devices, setDevices] = useState<Map<string, Device>>(new Map())
+  const joinedChannel = useRef<Channel | null>(null)
+  const watchingRef = useRef(watching)
+  watchingRef.current = watching
 
   // No `seq` to compare: a device's summary is only ever sent from the one
   // process that owns the registry, in order.
@@ -88,6 +99,8 @@ export function useLobby(enabled: boolean): Lobby {
           channel.leave()
           return
         }
+        joinedChannel.current = channel
+        if (watchingRef.current) channel.push("watching", watchingRef.current)
         setById(new Map(sessions.map((s) => [s.id, s])))
         setDevices(new Map((nodes ?? []).map((d) => [d.id, d])))
         setLoaded(true)
@@ -96,10 +109,17 @@ export function useLobby(enabled: boolean): Lobby {
       .receive("error", () => setLoaded(true))
 
     return () => {
+      joinedChannel.current = null
       if (joined) channel.leave()
       else leaveWhenJoined = true
     }
   }, [enabled, upsert, drop, upsertDevice, dropDevice])
+
+  const endpoint = watching?.endpoint
+  const session = watching?.session
+  useEffect(() => {
+    if (endpoint) joinedChannel.current?.push("watching", { endpoint, session })
+  }, [endpoint, session])
 
   // Most recently active first, so the conversation you are in stays on top.
   const sessions = useMemo(

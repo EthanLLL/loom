@@ -47,6 +47,8 @@ defmodule Loom.Application do
       Loom.Cron,
       # The user's own machines that agents can run commands on.
       Loom.Nodes,
+      # Notifications on the user's devices when a turn ends.
+      Loom.Push,
       # Restarts the node once every session is idle, on request. See its doc.
       Loom.Restarter,
       # Start to serve requests, typically the last entry

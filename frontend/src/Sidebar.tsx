@@ -1,13 +1,15 @@
-import { PanelLeftClose, Plus, X } from "lucide-react"
+import { Bell, BellOff, PanelLeftClose, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { DevicesDialog } from "./Devices"
+import type { Push } from "./push"
 import { lastActive } from "./useLobby"
 
 type Props = {
   sessions: AgentInfo[]
   devices: Device[]
   onUpsertDevice: (device: Device) => void
+  push: Push
   activeId: string | null
   onSelect: (id: string) => void
   onCreate: (backend: AgentBackend) => void
@@ -19,6 +21,7 @@ export function Sidebar({
   sessions,
   devices,
   onUpsertDevice,
+  push,
   activeId,
   onSelect,
   onCreate,
@@ -90,6 +93,8 @@ export function Sidebar({
         ))}
       </div>
 
+      <PushButton push={push} />
+
       {/* The user's own machines, reachable by agents through loom-node. */}
       <button className="devices-btn" onClick={() => setDevicesOpen(true)} title="Devices">
         <span className={"dot" + (online > 0 ? " online" : "")} />
@@ -106,6 +111,33 @@ export function Sidebar({
         />
       )}
     </aside>
+  )
+}
+
+const PUSH_HINT: Record<Push["state"], string> = {
+  on: "This device is notified when a turn ends. Click to stop.",
+  off: "Get a notification on this device when a turn ends",
+  denied: "Notifications are blocked for this site in the browser's settings",
+  unsupported: "On an iPhone, add Loom to the Home Screen and open it from there to get notifications",
+}
+
+/** Notifications for this device, on or off; see `usePush`. */
+function PushButton({ push }: { push: Push }) {
+  const on = push.state === "on"
+  const Icon = on ? Bell : BellOff
+  return (
+    <button
+      className={"devices-btn push-btn" + (on ? " on" : "")}
+      onClick={push.toggle}
+      disabled={push.busy || push.state === "denied" || push.state === "unsupported"}
+      title={push.error ?? PUSH_HINT[push.state]}
+    >
+      <Icon />
+      <span>Notifications</span>
+      <span className="devices-count">
+        {push.error ? "failed" : push.busy ? "…" : on ? "on" : push.state === "off" ? "off" : "n/a"}
+      </span>
+    </button>
   )
 }
 

@@ -85,6 +85,9 @@ that machine as you:
 ### App
 
 - Installable as a PWA, with the title bar hidden on desktop.
+- **Notifications** when a turn ends, on the phone's lock screen too (iPhone:
+  from the home-screen app). Not for the session you are looking at; tapping
+  one opens the session. No account or API key: Loom signs them itself.
 - Built for phones too: the keyboard, safe areas and scrolling behave.
 - Deploy Loom from inside Loom: `rel/deploy.sh` stages a new release, and Loom
   restarts into it once every session is idle, so no turn is cut off.

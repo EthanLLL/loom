@@ -53,6 +53,7 @@ npm-debug.log
 /priv/static/icons.svg
 /priv/static/icons/
 /priv/static/manifest.webmanifest
+/priv/static/sw.js
 /priv/static/vendor/
 
 # loom-node binaries, built by `make -C node` (rel/deploy.sh).
