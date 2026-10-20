@@ -1,4 +1,4 @@
-import { Bell, BellOff, Keyboard, KeyboardOff, PanelLeftClose, Plus, X } from "lucide-react"
+import { Bell, BellOff, Keyboard, KeyboardOff, MonitorSmartphone, PanelLeftClose, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { RenameInput } from "./Confirm"
@@ -129,8 +129,13 @@ export function Sidebar({
         <PushButton push={push} />
 
         {/* The user's own machines, reachable by agents through loom-node. */}
-        <button className="devices-btn" onClick={() => setDevicesOpen(true)} title="Devices">
-          <span className={"dot" + (online > 0 ? " online" : "")} />
+        <button
+          className={"devices-btn push-btn" + (online > 0 ? " on" : "")}
+          onClick={() => setDevicesOpen(true)}
+          title="Devices"
+        >
+          {/* An icon like the two above, so the labels line up; lit while any is online. */}
+          <MonitorSmartphone />
           <span>Devices</span>
           <span className="devices-count">
             {online}/{devices.length}
