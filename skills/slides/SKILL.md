@@ -78,6 +78,8 @@ Process.send_after(self(), :tick, 1_000)
     hash: true,
     slideNumber: "c/t",
     pdfSeparateFragments: false,
+    // Keep the slides at any canvas width; see Rules.
+    scrollActivationWidth: null,
     katex: { local: "/vendor/katex" },
     plugins: [RevealHighlight, RevealMath.KaTeX, RevealZoom],
   })
@@ -96,6 +98,10 @@ Process.send_after(self(), :tick, 1_000)
 
 ## Rules
 
+- **Keep `scrollActivationWidth: null`.** Below 435px wide reveal switches
+  to a scrolling view, and the canvas is that narrow with its file tree open;
+  widening it again (the tree closed, full window, `F`) then leaves only the
+  backgrounds, the text gone.
 - **Themes**: only `white`, `black`, `serif`, `dracula`, `white-contrast`,
   `black-contrast`. The others import Google Fonts and break offline.
 - **Plugins**: `highlight`, `math` (KaTeX, always with
