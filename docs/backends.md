@@ -65,6 +65,9 @@ hand.
 | `assistant` | `:assistant_text` / `:thinking` / `:tool_use` |
 | `user` (tool_result) | `:tool_result` |
 | `result/success` | `:turn_done` |
+| `result` with `is_error: true` | `:turn_failed`, reason from `result` (§6.13) |
+| `system/api_retry` | `:api_retry` (§6.13) |
+| `assistant` with `model: "<synthetic>"` | nothing (§6.13) |
 | `result/error_during_execution` + `interrupted?` | nothing |
 | `system/compact_boundary` | `:compacted`; `post_tokens` becomes the context size |
 
@@ -206,6 +209,32 @@ an id and nothing behind it:
 
 A write to a CLI that has already exited is ignored rather than raised: the
 `exit_status` that follows reports it.
+
+### 6.13 The API refusing (Bedrock 503)
+
+CC retries a refused request by itself, 10 times by default
+(`CLAUDE_CODE_MAX_RETRIES`), with backoff. Against Bedrock's 503 each attempt
+took about 10 s to fail, so the whole run took 4½ minutes (2026-10-19, measured),
+and the only output during it is one `system/api_retry` per attempt:
+
+```json
+{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":557,"error_status":503,"error":"server_error"}
+```
+
+Dropped, it made the turn look hung until it was interrupted. It is now
+`:api_retry`, and the chat shows the latest one as a single line.
+
+When it gives up, CC writes its own reply, `model: "<synthetic>"`, with
+`API Error: 503 …` as its text, then a `result` that still says `"subtype":
+"success"` but has `is_error: true`, `api_error_status` and the same text in
+`result`. So `is_error` decides, the turn fails with that text, and the
+synthetic reply is dropped, as it would only repeat it as if the model had
+said it. The other synthetic replies seen are a safeguard refusal (also
+`API Error: …`, the same shape) and `No response requested.` after an
+interrupt.
+
+Reproduce: a local server answering every POST with 503, and
+`ANTHROPIC_BEDROCK_BASE_URL=http://127.0.0.1:<port> CLAUDE_CODE_MAX_RETRIES=3`.
 
 ## 7. Not done: permission prompts
 

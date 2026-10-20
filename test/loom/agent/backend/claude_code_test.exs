@@ -455,6 +455,64 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
       assert [{:turn_failed, _}] = events(out)
     end
 
+    # Recorded from `claude` 2.1.300 against a stand-in Bedrock that answers
+    # every request with 503, `CLAUDE_CODE_MAX_RETRIES=3`, trimmed.
+    @gave_up [
+      %{"type" => "system", "subtype" => "status", "status" => "requesting"},
+      %{
+        "type" => "system",
+        "subtype" => "api_retry",
+        "attempt" => 1,
+        "max_retries" => 3,
+        "retry_delay_ms" => 609,
+        "error_status" => 503,
+        "error" => "server_error"
+      },
+      %{
+        "type" => "assistant",
+        "message" => %{
+          "id" => "5f917141-2ae8-49eb-96a1-855e4d5bf809",
+          "model" => "<synthetic>",
+          "role" => "assistant",
+          "content" => [
+            %{
+              "type" => "text",
+              "text" => "API Error: 503 Bedrock is unable to process your request."
+            }
+          ]
+        }
+      },
+      %{
+        "type" => "result",
+        "subtype" => "success",
+        "is_error" => true,
+        "api_error_status" => 503,
+        "terminal_reason" => "api_error",
+        "result" => "API Error: 503 Bedrock is unable to process your request.",
+        "usage" => %{}
+      }
+    ]
+
+    test "a retry is reported, so a turn the API keeps refusing does not look hung" do
+      {_handle, out} = feed(handle(), Enum.take(@gave_up, 2))
+
+      assert [
+               {:api_retry,
+                %{attempt: 1, max_retries: 3, delay_ms: 609, status: 503, error: "server_error"}}
+             ] = events(out)
+    end
+
+    test "a turn the API gave up on fails with its error, not a reply saying it" do
+      # `"subtype": "success"` all the same; `is_error` is what says otherwise.
+      {_handle, out} = feed(handle(), Enum.drop(@gave_up, 2))
+
+      assert [
+               {:turn_failed,
+                %{reason: "API Error: 503 Bedrock" <> _, terminal_reason: "api_error"}}
+             ] =
+               events(out)
+    end
+
     @result %{
       "type" => "result",
       "subtype" => "success",

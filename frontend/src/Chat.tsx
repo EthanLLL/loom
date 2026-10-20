@@ -402,6 +402,8 @@ function Item({
 
     case "notice":
       return <div className="notice">{item.text}</div>
+    case "retry":
+      return <div className="notice retry">{item.text}</div>
 
     case "cron":
       return <CronJobs jobs={item.jobs} />

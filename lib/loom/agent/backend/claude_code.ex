@@ -477,6 +477,24 @@ defmodule Loom.Agent.Backend.ClaudeCode do
      ]}
   end
 
+  # A request the API refused (Bedrock's 503, an overload) that Claude Code is
+  # about to send again, after `retry_delay_ms`. It says nothing else while it
+  # waits — ten attempts at a 503 took 4½ minutes, measured — so without this
+  # the turn looks hung.
+  defp translate(handle, %{"type" => "system", "subtype" => "api_retry"} = message) do
+    {handle,
+     [
+       {:event, :api_retry,
+        %{
+          attempt: message["attempt"],
+          max_retries: message["max_retries"],
+          delay_ms: message["retry_delay_ms"],
+          status: message["error_status"],
+          error: message["error"]
+        }}
+     ]}
+  end
+
   defp translate(handle, %{"type" => "system"}), do: {handle, []}
 
   # The ack for our own interrupt. `still_queued` would list messages that
@@ -510,6 +528,14 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   # messages — one per block — so a block's position in `content` is not its
   # position in the stream. Counting it there gave the tool_use event the text
   # block's id, which made it clear the wrong placeholder and orphan its own.
+  # Not the model: Claude Code's own words, written as a reply. When the API
+  # gave up ("API Error: 503 …") the `result` that follows says the same as an
+  # error, which is how it is shown; as a reply as well it would read as if
+  # the model had said it. The rest ("No response requested." after an
+  # interrupt) is noise.
+  defp translate(handle, %{"type" => "assistant", "message" => %{"model" => "<synthetic>"}}),
+    do: {handle, []}
+
   defp translate(handle, %{"type" => "assistant", "message" => %{"content" => content}})
        when is_list(content) do
     Enum.reduce(content, {handle, []}, fn block, {acc, out} ->
@@ -565,7 +591,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
          [
            {:event, :turn_failed,
             %{
-              reason: message["subtype"] || "unknown",
+              reason: failure_reason(message),
               terminal_reason: message["terminal_reason"],
               usage: usage
             }}
@@ -575,8 +601,17 @@ defmodule Loom.Agent.Backend.ClaudeCode do
 
   defp translate(handle, _message), do: {handle, []}
 
+  # `is_error` first: a turn the API gave up on still says `"subtype":
+  # "success"`, with the error in `result` and `api_error_status`.
+  defp result_ok?(%{"is_error" => true}), do: false
   defp result_ok?(%{"subtype" => "success"}), do: true
   defp result_ok?(_message), do: false
+
+  defp failure_reason(%{"is_error" => true, "result" => text})
+       when is_binary(text) and text != "",
+       do: text
+
+  defp failure_reason(message), do: message["subtype"] || "unknown"
 
   @doc """
   How big the prompt of one API call was.

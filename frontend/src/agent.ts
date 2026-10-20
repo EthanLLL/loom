@@ -348,6 +348,7 @@ export type TimelineItem =
   // counts files past the server's cap.
   | { key: string; kind: "outputs"; files: OutputFile[]; more: number }
   | { key: string; kind: "notice"; text: string }
+  | { key: string; kind: "retry"; text: string }
   // The answer to `/cron`: every scheduled job, as of when it was typed.
   | { key: string; kind: "cron"; jobs: CronJob[] }
   | { key: string; kind: "error"; text: string }
@@ -456,6 +457,21 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
       case "error":
         items.push({ key, kind: "error", text: String(p.message ?? "error") })
         break
+
+      case "api_retry": {
+        // The API refused a request and the backend is about to try again.
+        // One line for the whole run of them, showing the latest: ten
+        // attempts would otherwise be ten lines saying the same thing.
+        const status = p.status ? `${p.status}${p.error ? ` ${p.error}` : ""}` : String(p.error ?? "error")
+        const delay = Number(p.delay_ms ?? 0)
+        const text =
+          `API ${status}, retrying ${p.attempt}/${p.max_retries}` +
+          (delay >= 1000 ? ` in ${Math.round(delay / 1000)}s` : "")
+        const last = items[items.length - 1]
+        if (last?.kind === "retry") items[items.length - 1] = { ...last, text }
+        else items.push({ key, kind: "retry", text })
+        break
+      }
 
       case "compacted": {
         // The backend compacted its own context. Worth one line so a jump in
