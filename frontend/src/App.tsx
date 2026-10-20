@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
 import { touches, type CanvasItem } from "./canvasItems"
 import { Chat } from "./Chat"
+import type { TreeNav } from "./FileBrowser"
 import { KeyHelp, useGlobalKey, useKeys, WhichKey, type Keymap } from "./keys"
 import { Login } from "./Login"
 import { usePush, useVisible } from "./push"
@@ -28,6 +29,7 @@ import "./App.css"
 const SIDEBAR_KEY = "loom_sidebar_open"
 const CANVAS_KEY = "loom_canvas"
 const TREE_KEY = "loom_canvas_tree"
+const VIM_KEY = "loom_vim"
 
 // The right-hand side shows one thing at a time: the terminals or the canvas.
 type Side = "terminal" | "canvas" | null
@@ -275,14 +277,31 @@ function App() {
   //
   // See keys.tsx and docs/keys.md. The session list has a cursor of its own
   // while it is being walked with j/k; Enter opens the session under it.
-  const [listCursor, setListCursor] = useState<string | null>(null)
-  const [help, setHelp] = useState(false)
+  //
+  // The canvas's file tree is walked the same way, by `treeNav`, which the
+  // tree fills in.
+  const [vim, setVim] = useState(() => localStorage.getItem(VIM_KEY) !== "0")
   useEffect(() => {
-    if (listCursor === null) return
-    const away = () => setListCursor(null)
+    localStorage.setItem(VIM_KEY, vim ? "1" : "0")
+  }, [vim])
+  const [listCursor, setListCursor] = useState<string | null>(null)
+  const [treeWalk, setTreeWalk] = useState(false)
+  const treeNav = useRef<TreeNav | null>(null)
+  const [help, setHelp] = useState(false)
+  const walking = listCursor !== null || treeWalk
+  useEffect(() => {
+    if (!walking) return
+    const away = () => {
+      setListCursor(null)
+      setTreeWalk(false)
+    }
     window.addEventListener("mousedown", away)
     return () => window.removeEventListener("mousedown", away)
-  }, [listCursor])
+  }, [walking])
+  // Nothing to walk once the tree is out of sight.
+  useEffect(() => {
+    if (side !== "canvas" || !treeOpen) setTreeWalk(false)
+  }, [side, treeOpen])
 
   const timeline = () => document.querySelector<HTMLElement>(".timeline")
   const scroll = (by: (el: HTMLElement) => number, smooth = false) => {
@@ -298,18 +317,23 @@ function App() {
 
   const leader: Keymap = {
     "Space e": {
-      desc: "canvas file tree",
+      desc: "file tree (j/k, h/l, Enter)",
       run: () => {
-        if (side === "canvas") setTreeOpen((open) => !open)
-        else {
-          setSide("canvas")
-          setTreeOpen(true)
+        setListCursor(null)
+        if (treeWalk) {
+          setTreeWalk(false)
+          setTreeOpen(false)
+          return
         }
+        setSide("canvas")
+        setTreeOpen(true)
+        setTreeWalk(true)
       },
     },
     "Space b": {
       desc: "session list (j/k, Enter)",
       run: () => {
+        setTreeWalk(false)
         if (listCursor !== null) {
           setListCursor(null)
           setSidebarOpen(false)
@@ -326,8 +350,17 @@ function App() {
     "Space n c": { desc: "new Claude Code session", run: () => void create("claude_code") },
     "Space n x": { desc: "new Codex session", run: () => void create("codex") },
   }
-  const keymap: Keymap =
-    listCursor !== null
+  const keymap: Keymap = treeWalk
+    ? {
+        j: { desc: "next file", run: () => treeNav.current?.move(1) },
+        k: { desc: "previous file", run: () => treeNav.current?.move(-1) },
+        h: { desc: "fold, or up to the folder", run: () => treeNav.current?.left() },
+        l: { desc: "unfold, or open", run: () => treeNav.current?.right() },
+        Enter: { desc: "open the file, or fold the folder", run: () => treeNav.current?.enter() },
+        Esc: { desc: "leave the tree", run: () => setTreeWalk(false) },
+        ...leader,
+      }
+    : listCursor !== null
       ? {
           j: { desc: "next session", run: () => setListCursor((c) => step(ids, c, 1)) },
           k: { desc: "previous session", run: () => setListCursor((c) => step(ids, c, -1)) },
@@ -357,7 +390,7 @@ function App() {
           ...leader,
           "?": { desc: "all keys", run: () => setHelp(true) },
         }
-  const keysOn = authed && loaded && !narrow
+  const keysOn = vim && authed && loaded && !narrow
   const pending = useKeys(keysOn, keymap)
   useGlobalKey(keysOn, (e) => e.ctrlKey && e.code === "Backquote", () => void toggleTerminal())
 
@@ -372,6 +405,7 @@ function App() {
       devices={devices}
       onUpsertDevice={upsertDevice}
       push={push}
+      vim={narrow ? null : { on: vim, toggle: () => setVim((v) => !v) }}
       activeId={activeId}
       cursorId={listCursor}
       onSelect={select}
@@ -456,6 +490,9 @@ function App() {
             onToggleMaximized={toggleFull}
             treeOpen={treeOpen}
             onTreeOpen={setTreeOpen}
+            walking={treeWalk}
+            onWalked={() => setTreeWalk(false)}
+            nav={treeNav}
           />
         </div>
 

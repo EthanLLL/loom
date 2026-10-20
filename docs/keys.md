@@ -1,6 +1,8 @@
 # Keys
 
 Desktop only; a phone layout has none of these. `?` in Loom lists them too.
+**Vim keys** at the bottom of the sidebar turns them all off, `` Ctrl-` ``
+included, and back on; it is remembered per browser.
 
 ## Where the keys go
 
@@ -33,7 +35,7 @@ After Space, a box in the bottom right lists what can follow. `Esc` gives up.
 
 | Key | Does |
 |---|---|
-| `␣e` | The canvas's file tree. Opens the canvas with the tree if the canvas is closed; otherwise shows or hides the tree |
+| `␣e` | The canvas's file tree; see below |
 | `␣b` | The session list; see below |
 | `␣t` | Terminals, shown or hidden. Showing them focuses the shell |
 | `␣c` | The canvas, shown or hidden |
@@ -52,6 +54,22 @@ hidden. Then:
 | `Enter` | Open that session |
 | `Esc` | Leave the list, sidebar still shown |
 | `␣b` | Leave the list and hide the sidebar |
+
+A click anywhere also leaves it.
+
+## The file tree (`␣e`)
+
+`␣e` opens the canvas and its file tree as needed and puts a cursor on what the
+canvas shows, or on the top row. Then:
+
+| Key | Does |
+|---|---|
+| `j` / `k` | Move the cursor |
+| `Enter` | A folder folds or unfolds; a file opens in the canvas (or downloads, if it has no viewer) and the walk ends |
+| `l` | Unfold a folder, or step into an unfolded one; a file opens, as `Enter` |
+| `h` | Fold an unfolded folder, or go up to the folder this row is in |
+| `Esc` | Leave the tree, still shown |
+| `␣e` | Leave the tree and hide it |
 
 A click anywhere also leaves it.
 

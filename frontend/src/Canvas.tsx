@@ -1,5 +1,5 @@
 import { ChevronLeft, Download, FolderTree, Maximize, Minimize, RotateCw } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type RefObject } from "react"
 import {
   canvasBase,
   downloadAgentOutput,
@@ -8,7 +8,7 @@ import {
   type CanvasBases,
 } from "./api"
 import { viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
-import { FileBrowser } from "./FileBrowser"
+import { FileBrowser, type TreeNav } from "./FileBrowser"
 import { Markdown } from "./markdown"
 
 /**
@@ -45,6 +45,9 @@ export function Canvas({
   onToggleMaximized,
   treeOpen,
   onTreeOpen,
+  walking,
+  onWalked,
+  nav,
 }: {
   sessionId: string | null
   item: CanvasItem | null
@@ -58,6 +61,10 @@ export function Canvas({
   // Desktop only, and kept by the app, which has a key for it.
   treeOpen: boolean
   onTreeOpen: (open: boolean) => void
+  // The tree walked from the keyboard; see `FileBrowser`.
+  walking: boolean
+  onWalked: () => void
+  nav: RefObject<TreeNav | null>
 }) {
   const [base, setBase] = useState<CanvasBases | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -166,7 +173,15 @@ export function Canvas({
             className={"canvas-tree" + (narrow ? " overlay" : "")}
             style={{ display: showTree ? undefined : "none" }}
           >
-            <FileBrowser sessionId={sessionId} rev={filesRev} current={itemKey} onOpen={pick} />
+            <FileBrowser
+              sessionId={sessionId}
+              rev={filesRev}
+              current={itemKey}
+              onOpen={pick}
+              walking={walking && showTree}
+              onWalked={onWalked}
+              nav={nav}
+            />
           </div>
         )}
         <div className="canvas-view">

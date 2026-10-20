@@ -1,4 +1,4 @@
-import { Bell, BellOff, PanelLeftClose, Plus, X } from "lucide-react"
+import { Bell, BellOff, Keyboard, KeyboardOff, PanelLeftClose, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { DevicesDialog } from "./Devices"
@@ -10,6 +10,8 @@ type Props = {
   devices: Device[]
   onUpsertDevice: (device: Device) => void
   push: Push
+  // Desktop only, so null on a phone; see keys.tsx.
+  vim: { on: boolean; toggle: () => void } | null
   activeId: string | null
   // The session under the keyboard's cursor while the list is walked; see App.
   cursorId: string | null
@@ -24,6 +26,7 @@ export function Sidebar({
   devices,
   onUpsertDevice,
   push,
+  vim,
   activeId,
   cursorId,
   onSelect,
@@ -98,6 +101,18 @@ export function Sidebar({
           </div>
         ))}
       </div>
+
+      {vim && (
+        <button
+          className={"devices-btn push-btn" + (vim.on ? " on" : "")}
+          onClick={vim.toggle}
+          title={vim.on ? "Vim-style keys are on; ? lists them. Click to turn them off." : "Turn on Vim-style keys"}
+        >
+          {vim.on ? <Keyboard /> : <KeyboardOff />}
+          <span>Vim keys</span>
+          <span className="devices-count">{vim.on ? "on" : "off"}</span>
+        </button>
+      )}
 
       <PushButton push={push} />
 

@@ -14,7 +14,7 @@ import {
   FolderOpen,
   type LucideIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react"
 import {
   downloadAgentOutput,
   downloadAgentZip,
@@ -26,6 +26,16 @@ import { itemForAttachment, itemForPath, viewerFor, type CanvasItem, type Viewer
 import { formatBytes } from "./format"
 
 type Section = "output" | "files"
+
+/** The tree walked from the keyboard; see the keys in App.tsx. */
+export type TreeNav = {
+  move: (by: number) => void
+  // Enter: a directory folds or unfolds, a file opens (and the walk ends).
+  enter: () => void
+  // h: fold, or up to the parent. l: unfold, or into it; a file opens.
+  left: () => void
+  right: () => void
+}
 
 type Node = {
   name: string
@@ -51,18 +61,27 @@ type Node = {
  *
  * Listed when shown and again whenever `rev` moves — the session bumps it when
  * a turn leaves outputs or a message brings attachments — rather than polled.
+ *
+ * While `walking`, a cursor moves over the rows that are showing, by `nav`.
  */
 export function FileBrowser({
   sessionId,
   rev,
   current,
   onOpen,
+  walking,
+  onWalked,
+  nav,
 }: {
   sessionId: string
   rev: number
   // What the canvas shows, as `source:path`, so its row can be marked.
   current: string | null
   onOpen: (item: CanvasItem) => void
+  walking: boolean
+  // A file was opened from the keyboard.
+  onWalked: () => void
+  nav: RefObject<TreeNav | null>
 }) {
   const [tree, setTree] = useState<{ files: TreeFile[]; output: TreeFile[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -89,14 +108,18 @@ export function FileBrowser({
 
   const fail = (e: Error) => setError(e.message)
 
+  const fold = (key: string, open: boolean) =>
+    setUnfolded((s) => {
+      const next = new Set(s)
+      if (open) next.add(key)
+      else next.delete(key)
+      return next
+    })
+
   const open = (section: Section, node: Node) => {
     if (node.children) {
       const key = `${section}:${node.path}`
-      setUnfolded((s) => {
-        const next = new Set(s)
-        if (!next.delete(key)) next.add(key)
-        return next
-      })
+      fold(key, !unfolded.has(key))
       return
     }
     const item =
@@ -117,6 +140,59 @@ export function FileBrowser({
     done.catch(fail)
   }
 
+  // The rows showing, top to bottom, for the cursor to move over.
+  type Row = { key: string; section: Section; node: Node; parent: string | null }
+  const showing: Row[] = []
+  const walk = (section: Section, nodes: Node[], parent: string | null) => {
+    for (const node of nodes) {
+      const key = `${section}:${node.path}`
+      showing.push({ key, section, node, parent })
+      if (node.children && unfolded.has(key)) walk(section, node.children, key)
+    }
+  }
+  walk("output", output, null)
+  walk("files", files, null)
+
+  // Starts on what the canvas shows, or at the top.
+  const [cursor, setCursor] = useState<string | null>(null)
+  const any = showing.length > 0
+  useEffect(() => {
+    if (!walking || !any) return
+    setCursor((c) =>
+      c !== null && showing.some((r) => r.key === c)
+        ? c
+        : (showing.find((r) => r.key === current)?.key ?? showing[0].key),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walking, any])
+
+  const at = showing.findIndex((r) => r.key === cursor)
+  const here = at === -1 ? undefined : showing[at]
+  nav.current = {
+    move: (by) => {
+      if (!any) return
+      setCursor(showing[Math.min(showing.length - 1, Math.max(0, at + by))].key)
+    },
+    enter: () => {
+      if (!here) return
+      open(here.section, here.node)
+      if (!here.node.children) onWalked()
+    },
+    left: () => {
+      if (!here) return
+      if (here.node.children && unfolded.has(here.key)) fold(here.key, false)
+      else if (here.parent) setCursor(here.parent)
+    },
+    right: () => {
+      if (!here) return
+      if (!here.node.children) {
+        open(here.section, here.node)
+        onWalked()
+      } else if (!unfolded.has(here.key)) fold(here.key, true)
+      else if (showing[at + 1]?.parent === here.key) setCursor(showing[at + 1].key)
+    },
+  }
+
   const rows = (section: Section, nodes: Node[], depth: number): ReactNode[] =>
     nodes.flatMap((node) => {
       const isDir = !!node.children
@@ -127,10 +203,13 @@ export function FileBrowser({
       const shown =
         current === `${section}:${node.path}` ||
         (isDir && !unfoldedHere && !!current?.startsWith(`${section}:${node.path}/`))
+      const key = `${section}:${node.path}`
+      const onCursor = walking && key === cursor
       const row = (
         <div
-          key={`${section}:${node.path}`}
-          className={"tree-row" + (shown ? " current" : "")}
+          key={key}
+          ref={onCursor ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+          className={"tree-row" + (shown ? " current" : "") + (onCursor ? " cursor" : "")}
           style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
           onClick={() => open(section, node)}
           title={`${node.path}\n${formatBytes(node.size)} · ${formatTime(node.mtime)}`}

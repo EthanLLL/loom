@@ -679,6 +679,11 @@
   color: var(--blue);
 }
 
+.tree-row.cursor {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .tree-fold {
   flex: none;
   width: 1em;
