@@ -1,7 +1,8 @@
 import { ChevronLeft, Maximize, Minimize, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
-import { touches, type CanvasItem } from "./canvasItems"
+import { moved, touches, type CanvasItem } from "./canvasItems"
+import { Confirm } from "./Confirm"
 import { Chat } from "./Chat"
 import type { TreeNav } from "./FileBrowser"
 import { KeyHelp, useGlobalKey, useKeys, WhichKey, type Keymap } from "./keys"
@@ -18,6 +19,7 @@ import {
   deleteAgent,
   deleteSession,
   checkAuth,
+  renameAgent,
   getToken,
   listSessions,
   onUnauthorized,
@@ -41,7 +43,6 @@ function loadCanvases(): Record<string, CanvasItem> {
     return {}
   }
 }
-const TOUCH = matchMedia("(hover: none)")
 
 function takeSessionParam(): string | null {
   const url = new URL(window.location.href)
@@ -101,7 +102,10 @@ function App() {
   useEffect(() => {
     if (!maximized) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || (e.target as Element | null)?.closest?.(".terminal-pane")) return
+      // Not from a shell, where Esc is the editor's, nor one something else
+      // took already (a rename box putting the old name back).
+      if (e.key !== "Escape" || e.defaultPrevented) return
+      if ((e.target as Element | null)?.closest?.(".terminal-pane")) return
       setFull(false)
     }
     window.addEventListener("keydown", onKey)
@@ -132,6 +136,16 @@ function App() {
       return item && touches(item, outputs)
         ? { ...all, [sessionId]: { ...item, rev: Date.now() } }
         : all
+    })
+  // Something renamed or deleted in the file tree: the canvas follows it to its
+  // new name, or lets go of it.
+  const followCanvas = (sessionId: string, source: "output" | "files", from: string, to: string | null) =>
+    setCanvases((all) => {
+      const item = all[sessionId]
+      const next = item && moved(item, source, from, to)
+      if (next === undefined) return all
+      const { [sessionId]: _gone, ...rest } = all
+      return next === null ? rest : { ...all, [sessionId]: { ...next, rev: Date.now() } }
     })
   const toggleCanvas = () => setSide((s) => (s === "canvas" ? null : "canvas"))
   // The canvas's file tree, beside what it shows. Remembered like the sidebar.
@@ -198,12 +212,13 @@ function App() {
     return () => navigator.serviceWorker?.removeEventListener("message", onMessage)
   }, [])
 
-  const remove = async (id: string) => {
-    // A mouse has to hover to even see the button; a finger can hit it while
-    // scrolling the list, and the history does not come back.
-    if (TOUCH.matches && !confirm("Delete this session and its history?")) return
-    await deleteAgent(id)
-    drop(id)
+  // Asked first, always: the history does not come back. See `Confirm`.
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const remove = (id: string) => setDeleting(id)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const renamed = async (id: string, title: string | null) => {
+    if (title !== null) upsert(await renameAgent(id, title))
+    setRenaming(null)
   }
 
   // ── Terminals ────────────────────────────────────────────────────────────
@@ -291,7 +306,9 @@ function App() {
   const walking = listCursor !== null || treeWalk
   useEffect(() => {
     if (!walking) return
-    const away = () => {
+    // A dialog the walk opened (deleting, asks first) is still part of it.
+    const away = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.(".modal")) return
       setListCursor(null)
       setTreeWalk(false)
     }
@@ -364,6 +381,8 @@ function App() {
         l: { desc: "unfold, or open", run: () => treeNav.current?.right() },
         Enter: { desc: "open the file, or fold the folder", run: () => treeNav.current?.enter() },
         Esc: { desc: "leave the tree", run: () => setTreeWalk(false) },
+        d: { desc: "delete it (asks)", run: () => treeNav.current?.remove() },
+        r: { desc: "rename it", run: () => treeNav.current?.rename() },
         ...leader,
       }
     : listCursor !== null
@@ -378,6 +397,8 @@ function App() {
             },
           },
           Esc: { desc: "leave the list", run: () => setListCursor(null) },
+          d: { desc: "delete the session (asks)", run: () => setDeleting(listCursor) },
+          r: { desc: "rename the session", run: () => setRenaming(listCursor) },
           l: { desc: "back to the chat", run: () => setListCursor(null) },
           ...leader,
         }
@@ -417,6 +438,8 @@ function App() {
       vim={narrow ? null : { on: vim, toggle: () => setVim((v) => !v) }}
       activeId={activeId}
       cursorId={listCursor}
+      renamingId={renaming}
+      onRenamed={renamed}
       onSelect={select}
       onCreate={create}
       onDelete={remove}
@@ -501,6 +524,7 @@ function App() {
             onTreeOpen={setTreeOpen}
             walking={treeWalk}
             nav={treeNav}
+            onMoved={(source, from, to) => active && followCanvas(active.id, source, from, to)}
           />
         </div>
 
@@ -566,6 +590,20 @@ function App() {
         )}
       </main>
 
+      {deleting && (
+        <Confirm
+          title={`Delete ${sessions.find((s) => s.id === deleting)?.title ?? deleting}?`}
+          detail="The session and its whole history, with what it made. This cannot be undone."
+          onYes={async () => {
+            const id = deleting
+            // The cursor moves on to a neighbour rather than off the list.
+            if (listCursor === id) setListCursor(step(ids, id, 1) === id ? step(ids, id, -1) : step(ids, id, 1))
+            await deleteAgent(id)
+            drop(id)
+          }}
+          onClose={() => setDeleting(null)}
+        />
+      )}
       <WhichKey pending={pending} keymap={keymap} groups={{ "Space n": "new session" }} />
       {help && (
         <KeyHelp

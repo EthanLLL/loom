@@ -47,6 +47,7 @@ export function Canvas({
   onTreeOpen,
   walking,
   nav,
+  onMoved,
 }: {
   sessionId: string | null
   item: CanvasItem | null
@@ -63,6 +64,8 @@ export function Canvas({
   // The tree walked from the keyboard; see `FileBrowser`.
   walking: boolean
   nav: RefObject<TreeNav | null>
+  // A file renamed or deleted from the tree; see `FileBrowser`.
+  onMoved: (source: "output" | "files", from: string, to: string | null) => void
 }) {
   const [base, setBase] = useState<CanvasBases | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -178,6 +181,7 @@ export function Canvas({
               onOpen={pick}
               walking={walking && showTree}
               nav={nav}
+              onMoved={onMoved}
             />
           </div>
         )}

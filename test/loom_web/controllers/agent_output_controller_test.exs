@@ -123,4 +123,44 @@ defmodule LoomWeb.AgentOutputControllerTest do
       assert get(authed, "/api/agents/a_nope/tree").status == 404
     end
   end
+
+  describe "rename and delete" do
+    test "renames a file in place, and refuses a taken or unusable name", %{authed: conn, id: id} do
+      File.write!(Path.join([Store.output_dir(id), "deck", "other.md"]), "x")
+      url = "/api/agents/#{id}/output/deck/#{URI.encode("季度 report.pptx")}"
+
+      assert %{"path" => "deck/新名字.pptx"} =
+               conn |> patch(url, %{new_name: "新名字.pptx"}) |> json_response(200)
+
+      assert File.read!(Path.join([Store.output_dir(id), "deck", "新名字.pptx"])) == "slides"
+
+      url = "/api/agents/#{id}/output/deck/#{URI.encode("新名字.pptx")}"
+      assert conn |> patch(url, %{new_name: "other.md"}) |> json_response(409)
+
+      for bad <- ["../x", ".hidden", "a/b", ""] do
+        assert conn |> patch(url, %{new_name: bad}) |> json_response(422)
+      end
+    end
+
+    test "renames a directory", %{authed: conn, id: id} do
+      assert %{"path" => "slides"} =
+               conn
+               |> patch("/api/agents/#{id}/output/deck", %{new_name: "slides"})
+               |> json_response(200)
+
+      assert File.dir?(Path.join(Store.output_dir(id), "slides"))
+    end
+
+    test "deletes a file or a directory, and nothing outside", %{authed: conn, id: id} do
+      outside = Path.join(Store.session_dir(id), "meta-copy")
+      File.write!(outside, "keep")
+
+      assert conn |> delete("/api/agents/#{id}/output/..%2Fmeta-copy") |> response(404)
+      assert File.exists?(outside)
+
+      assert conn |> delete("/api/agents/#{id}/output/deck") |> response(204)
+      refute File.exists?(Path.join(Store.output_dir(id), "deck"))
+      assert conn |> delete("/api/agents/#{id}/output/deck") |> response(404)
+    end
+  end
 end

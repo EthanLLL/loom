@@ -46,6 +46,25 @@ defmodule LoomWeb.AgentFileController do
     end
   end
 
+  # DELETE /api/agents/:id/files/:name
+  def delete(conn, %{"id" => id, "name" => name}) do
+    with true <- Agent.exists?(id), :ok <- Files.delete(id, name) do
+      send_resp(conn, :no_content, "")
+    else
+      _ -> conn |> put_status(:not_found) |> json(%{error: "no such attachment"})
+    end
+  end
+
+  # PATCH /api/agents/:id/files/:name {new_name} — not `name`, which the route has.
+  def update(conn, %{"id" => id, "name" => name, "new_name" => new_name}) do
+    with true <- Agent.exists?(id), {:ok, stored} <- Files.rename(id, name, new_name) do
+      json(conn, %{path: stored})
+    else
+      {:error, reason} -> LoomWeb.AgentOutputController.rename_failed(conn, reason)
+      _ -> conn |> put_status(:not_found) |> json(%{error: "no such attachment"})
+    end
+  end
+
   defp store_all(conn, id, uploads) do
     results = Enum.map(uploads, &Files.store(id, &1))
 

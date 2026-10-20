@@ -1057,6 +1057,70 @@
    whichever column is outermost on each side moves its content clear of them,
    and the top bars drag the window — everywhere but their buttons. A browser
    tab, a phone, or the title bar shown again: none of this applies. */
+/* Deleting something for good asks first; see Confirm.tsx. */
+.modal.confirm {
+  width: min(26rem, 100%);
+}
+
+.confirm-body {
+  padding: 12px;
+}
+
+.confirm-body p {
+  margin: 0 0 12px;
+  color: var(--fg-dim);
+  overflow-wrap: anywhere;
+}
+
+.confirm-body .confirm-error {
+  color: var(--red);
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.text-btn.danger {
+  color: var(--red);
+}
+
+.text-btn.danger:hover {
+  background: var(--red);
+  color: var(--bg);
+}
+
+.text-btn kbd {
+  margin-left: 6px;
+  opacity: 0.6;
+  font-family: inherit;
+}
+
+/* A name edited in place, in the session list or the file tree. */
+.rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rename-input {
+  min-width: 0;
+  padding: 1px 4px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.rename-error {
+  color: var(--red);
+  font-size: 0.8rem;
+  white-space: normal;
+}
+
 /* The keys still to come after a leader, as which-key.nvim shows them; and
    `?`, every key. See keys.tsx. */
 .which-key {

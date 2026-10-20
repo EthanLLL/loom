@@ -134,6 +134,40 @@ defmodule Loom.Agent.Files do
   end
 
   @doc """
+  Delete one attachment by its stored name. What `verify/2` would accept, and
+  nothing else.
+
+  The message that sent it keeps its chip, which then has nothing to show.
+  """
+  def delete(session_id, name) do
+    with {:ok, path} <- resolve(session_id, name), do: File.rm(path)
+  end
+
+  @doc """
+  Rename one attachment. The name is checked as an output's is
+  (`Loom.Agent.Output.valid_name/1`), and a taken one is refused.
+  """
+  def rename(session_id, name, new_name) do
+    with {:ok, path} <- resolve(session_id, name),
+         {:ok, new_name} <- Loom.Agent.Output.valid_name(new_name),
+         dest = Path.join(Path.dirname(path), new_name),
+         false <- File.exists?(dest) && :exists,
+         :ok <- File.rename(path, dest) do
+      {:ok, new_name}
+    else
+      :exists -> {:error, :exists}
+      other -> other
+    end
+  end
+
+  defp resolve(session_id, name) do
+    case verify(session_id, [Path.join(Store.files_dir(session_id), to_string(name))]) do
+      {:ok, [file]} -> {:ok, file.path}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc """
   A name for a session whose first message was an attachment with no words.
 
   Without it such a session shows up in the sidebar as an opaque id.

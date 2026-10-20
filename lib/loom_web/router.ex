@@ -34,7 +34,11 @@ defmodule LoomWeb.Router do
 
     post "/agents/:id/files", AgentFileController, :create
     get "/agents/:id/files/:name", AgentFileController, :show
+    patch "/agents/:id/files/:name", AgentFileController, :update
+    delete "/agents/:id/files/:name", AgentFileController, :delete
     get "/agents/:id/output/*path", AgentOutputController, :show
+    patch "/agents/:id/output/*path", AgentOutputController, :update
+    delete "/agents/:id/output/*path", AgentOutputController, :delete
     get "/agents/:id/zip/*path", AgentOutputController, :zip
     get "/agents/:id/tree", AgentOutputController, :tree
     post "/agents/:id/canvas", CanvasController, :token

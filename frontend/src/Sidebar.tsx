@@ -1,6 +1,7 @@
 import { Bell, BellOff, Keyboard, KeyboardOff, PanelLeftClose, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
+import { RenameInput } from "./Confirm"
 import { DevicesDialog } from "./Devices"
 import { backendShort } from "./format"
 import type { Push } from "./push"
@@ -16,6 +17,9 @@ type Props = {
   activeId: string | null
   // The session under the keyboard's cursor while the list is walked; see App.
   cursorId: string | null
+  // The session whose name is being edited in its row, and where it goes.
+  renamingId: string | null
+  onRenamed: (id: string, title: string | null) => Promise<void>
   onSelect: (id: string) => void
   onCreate: (backend: AgentBackend) => void
   onDelete: (id: string) => void
@@ -30,6 +34,8 @@ export function Sidebar({
   vim,
   activeId,
   cursorId,
+  renamingId,
+  onRenamed,
   onSelect,
   onCreate,
   onDelete,
@@ -72,7 +78,11 @@ export function Sidebar({
             onClick={() => onSelect(s.id)}
           >
             <span className={"dot " + s.status} title={s.status} />
-            <span className="session-label">{s.title ?? s.id}</span>
+            {s.id === renamingId ? (
+              <RenameInput value={s.title ?? s.id} stem={false} onDone={(title) => onRenamed(s.id, title)} />
+            ) : (
+              <span className="session-label">{s.title ?? s.id}</span>
+            )}
             {s.queued > 0 && (
               <span className="session-queued" title="queued messages">
                 {s.queued}

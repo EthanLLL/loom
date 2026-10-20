@@ -135,4 +135,40 @@ defmodule LoomWeb.AgentFileControllerTest do
       assert json_response(get(build_conn(), "/api/agents/#{id}/files/x.png"), 401)
     end
   end
+
+  describe "renaming and deleting an attachment" do
+    setup %{conn: conn, id: id} do
+      post(conn, ~p"/api/agents/#{id}/files", %{
+        "files" => [upload("a.txt", "hi"), upload("b.txt", "yo")]
+      })
+
+      :ok
+    end
+
+    test "renames, refusing a taken name", %{conn: conn, id: id} do
+      assert %{"path" => "截图.txt"} =
+               conn
+               |> patch("/api/agents/#{id}/files/a.txt", %{new_name: "截图.txt"})
+               |> json_response(200)
+
+      assert File.read!(Path.join(Store.files_dir(id), "截图.txt")) == "hi"
+
+      assert conn
+             |> patch("/api/agents/#{id}/files/#{URI.encode("截图.txt")}", %{new_name: "b.txt"})
+             |> json_response(409)
+
+      assert conn
+             |> patch("/api/agents/#{id}/files/b.txt", %{new_name: "../b.txt"})
+             |> json_response(422)
+    end
+
+    test "deletes, and only its own", %{conn: conn, id: id} do
+      File.write!(Path.join(Store.session_dir(id), "meta-ish.json"), "{}")
+      assert conn |> delete("/api/agents/#{id}/files/..%2fmeta-ish.json") |> json_response(404)
+      assert File.exists?(Path.join(Store.session_dir(id), "meta-ish.json"))
+
+      assert conn |> delete("/api/agents/#{id}/files/a.txt") |> response(204)
+      refute File.exists?(Path.join(Store.files_dir(id), "a.txt"))
+    end
+  end
 end

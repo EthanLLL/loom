@@ -26,6 +26,30 @@ export function touches(item: CanvasItem, changed: string[]): boolean {
   return changed.some((path) => item.path === path || item.path.startsWith(path + "/"))
 }
 
+/**
+ * What `item` becomes once `from` (a file or directory under `source`) is
+ * renamed to `to`, or deleted (`to` null): the same item at its new path,
+ * `null` when it went with the deletion, or `undefined` when it was not
+ * affected at all.
+ */
+export function moved(
+  item: CanvasItem,
+  source: "output" | "files",
+  from: string,
+  to: string | null,
+): CanvasItem | null | undefined {
+  const under = (path: string) => path === from || path.startsWith(from + "/")
+  if ((item.source ?? "output") !== source || !under(item.path)) return undefined
+  if (to === null) return null
+  const move = (path: string) => (under(path) ? to + path.slice(from.length) : path)
+  return {
+    ...item,
+    path: move(item.path),
+    title: move(item.title),
+    download: { ...item.download, path: move(item.download.path) },
+  }
+}
+
 // What the canvas can show rather than download, by how it shows it: loom's
 // own viewers for images, media, markdown, tables and text, and a sandboxed
 // iframe for pages and PDFs, which the browser renders itself. Anything else

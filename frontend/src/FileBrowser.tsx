@@ -16,12 +16,15 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react"
 import {
+  deleteAgentOutputOrAttachment,
   downloadAgentOutput,
   downloadAgentZip,
   downloadAttachment,
+  renameAgentOutputOrAttachment,
   sessionTree,
   type TreeFile,
 } from "./api"
+import { Confirm, RenameInput } from "./Confirm"
 import { itemForAttachment, itemForPath, viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
 import { formatBytes } from "./format"
 
@@ -37,6 +40,9 @@ export type TreeNav = {
   // l: unfold, or into it; a file opens.
   left: () => boolean
   right: () => void
+  // d and r, on the row under the cursor.
+  remove: () => void
+  rename: () => void
 }
 
 type Node = {
@@ -64,7 +70,9 @@ type Node = {
  * Listed when shown and again whenever `rev` moves — the session bumps it when
  * a turn leaves outputs or a message brings attachments — rather than polled.
  *
- * While `walking`, a cursor moves over the rows that are showing, by `nav`.
+ * While `walking`, a cursor moves over the rows that are showing, by `nav`,
+ * which can also delete (after asking) or rename the row it is on. Either one
+ * is reported by `onMoved`, so the canvas can follow what it shows.
  */
 export function FileBrowser({
   sessionId,
@@ -73,6 +81,7 @@ export function FileBrowser({
   onOpen,
   walking,
   nav,
+  onMoved,
 }: {
   sessionId: string
   rev: number
@@ -81,11 +90,19 @@ export function FileBrowser({
   onOpen: (item: CanvasItem) => void
   walking: boolean
   nav: RefObject<TreeNav | null>
+  onMoved: (source: Section, from: string, to: string | null) => void
 }) {
   const [tree, setTree] = useState<{ files: TreeFile[]; output: TreeFile[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Unfolded directories, as `section:path`.
   const [unfolded, setUnfolded] = useState<Set<string>>(() => new Set())
+  // Listed again after a rename or a delete here, which no turn reports.
+  const [changes, setChanges] = useState(0)
+  // The row whose name is being edited, and the one waiting for a yes.
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [asking, setAsking] = useState<{ key: string; section: Section; node: Node } | null>(
+    null,
+  )
 
   useEffect(() => {
     let live = true
@@ -100,7 +117,7 @@ export function FileBrowser({
     return () => {
       live = false
     }
-  }, [sessionId, rev])
+  }, [sessionId, rev, changes])
 
   const output = useMemo(() => (tree ? build(tree.output) : []), [tree])
   const files = useMemo(() => (tree ? build(tree.files) : []), [tree])
@@ -187,6 +204,38 @@ export function FileBrowser({
       else if (!unfolded.has(here.key)) fold(here.key, true)
       else if (showing[at + 1]?.parent === here.key) setCursor(showing[at + 1].key)
     },
+    remove: () => {
+      if (here) setAsking(here)
+    },
+    rename: () => {
+      if (here) setRenaming(here.key)
+    },
+  }
+
+  const remove = async (section: Section, node: Node) => {
+    const key = `${section}:${node.path}`
+    await deleteAgentOutputOrAttachment(sessionId, section, node.path)
+    // The cursor goes to the next row that is not inside what went, else the
+    // one before.
+    const i = showing.findIndex((r) => r.key === key)
+    const next =
+      showing.slice(i + 1).find((r) => !r.key.startsWith(key + "/")) ?? showing[i - 1]
+    if (cursor === key) setCursor(next?.key ?? null)
+    onMoved(section, node.path, null)
+    setChanges((n) => n + 1)
+  }
+
+  const rename = async (section: Section, node: Node, name: string | null) => {
+    if (name === null) return setRenaming(null)
+    const { path } = await renameAgentOutputOrAttachment(sessionId, section, node.path, name)
+    const from = `${section}:${node.path}`
+    const to = `${section}:${path}`
+    const move = (k: string) => (k === from || k.startsWith(from + "/") ? to + k.slice(from.length) : k)
+    setUnfolded((s) => new Set([...s].map(move)))
+    setCursor((c) => (c === null ? c : move(c)))
+    setRenaming(null)
+    onMoved(section, node.path, path)
+    setChanges((n) => n + 1)
   }
 
   const rows = (section: Section, nodes: Node[], depth: number): ReactNode[] =>
@@ -214,7 +263,11 @@ export function FileBrowser({
             {isDir && (unfoldedHere ? <ChevronDown /> : <ChevronRight />)}
           </span>
           <Icon className="tree-icon" />
-          <span className="tree-name">{node.name}</span>
+          {renaming === key ? (
+            <RenameInput value={node.name} onDone={(name) => rename(section, node, name)} />
+          ) : (
+            <span className="tree-name">{node.name}</span>
+          )}
           <span className="tree-actions">
             {page && (
               <button
@@ -250,6 +303,18 @@ export function FileBrowser({
 
   return (
     <div className="file-browser">
+      {asking && (
+        <Confirm
+          title={`Delete ${asking.node.name}?`}
+          detail={
+            asking.node.children
+              ? `The folder ${asking.node.path} and everything in it. This cannot be undone.`
+              : `${asking.node.path} — this cannot be undone.`
+          }
+          onYes={() => remove(asking.section, asking.node)}
+          onClose={() => setAsking(null)}
+        />
+      )}
       {error && <div className="canvas-note failed">{error}</div>}
       {!tree && !error && <div className="canvas-note">loading…</div>}
       {tree && (

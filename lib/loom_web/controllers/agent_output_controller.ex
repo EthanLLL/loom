@@ -78,6 +78,39 @@ defmodule LoomWeb.AgentOutputController do
     end
   end
 
+  # DELETE /api/agents/:id/output/*path — a file, or a directory and all in it.
+  def delete(conn, %{"id" => id, "path" => parts}) do
+    with true <- Agent.exists?(id), :ok <- Output.delete(id, Path.join(parts)) do
+      send_resp(conn, :no_content, "")
+    else
+      _ -> conn |> put_status(:not_found) |> json(%{error: "no such output"})
+    end
+  end
+
+  # PATCH /api/agents/:id/output/*path {new_name} — renamed where it is.
+  def update(conn, %{"id" => id, "path" => parts, "new_name" => name}) do
+    with true <- Agent.exists?(id),
+         {:ok, path} <- Output.rename(id, Path.join(parts), name) do
+      json(conn, %{path: path})
+    else
+      {:error, reason} -> rename_failed(conn, reason)
+      _ -> conn |> put_status(:not_found) |> json(%{error: "no such output"})
+    end
+  end
+
+  @doc false
+  def rename_failed(conn, :exists),
+    do: conn |> put_status(:conflict) |> json(%{error: "that name is taken"})
+
+  def rename_failed(conn, :bad_name),
+    do: conn |> put_status(:unprocessable_entity) |> json(%{error: "not a usable name"})
+
+  def rename_failed(conn, :not_found),
+    do: conn |> put_status(:not_found) |> json(%{error: "no such file"})
+
+  def rename_failed(conn, reason),
+    do: conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
+
   # GET /api/agents/:id/output/*path
   def show(conn, %{"id" => id, "path" => parts}) do
     # Also what keeps the id from being a path: an unknown one has no process.

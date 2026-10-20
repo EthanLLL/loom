@@ -434,9 +434,9 @@ export type Device = {
   last_seen_at: string | null
 }
 
-// The server words its refusals ("there is already a device called mac"), so
-// they are shown as they are.
-async function deviceCall<T>(url: string, init: RequestInit): Promise<T> {
+// The server words its refusals ("there is already a device called mac", "that
+// name is taken"), so they are shown as they are.
+async function apiCall<T>(url: string, init: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -450,20 +450,20 @@ async function deviceCall<T>(url: string, init: RequestInit): Promise<T> {
 
 /** Register a device: it comes back with its one-time install code. */
 export function createDevice(name: string): Promise<{ node: Device; code: string }> {
-  return deviceCall("/api/devices", { method: "POST", body: JSON.stringify({ name }) })
+  return apiCall("/api/devices", { method: "POST", body: JSON.stringify({ name }) })
 }
 
 export function renameDevice(id: string, name: string): Promise<{ node: Device }> {
-  return deviceCall(`/api/devices/${id}`, { method: "PATCH", body: JSON.stringify({ name }) })
+  return apiCall(`/api/devices/${id}`, { method: "PATCH", body: JSON.stringify({ name }) })
 }
 
 export function deleteDevice(id: string): Promise<void> {
-  return deviceCall(`/api/devices/${id}`, { method: "DELETE" })
+  return apiCall(`/api/devices/${id}`, { method: "DELETE" })
 }
 
 /** A new install code for a device; using it replaces the device's token. */
 export function deviceInstallCode(id: string): Promise<{ code: string }> {
-  return deviceCall(`/api/devices/${id}/install`, { method: "POST" })
+  return apiCall(`/api/devices/${id}/install`, { method: "POST" })
 }
 
 /** What to paste into a terminal on the device. */
@@ -475,16 +475,54 @@ export function installCommand(code: string): string {
 
 /** The key the server signs pushes with, base64url, to subscribe against. */
 export function pushKey(): Promise<{ key: string }> {
-  return deviceCall("/api/push", { method: "GET" })
+  return apiCall("/api/push", { method: "GET" })
 }
 
 export function savePushSubscription(subscription: PushSubscriptionJSON, test: boolean): Promise<void> {
-  return deviceCall("/api/push/subscriptions", {
+  return apiCall("/api/push/subscriptions", {
     method: "POST",
     body: JSON.stringify({ subscription, origin: window.location.origin, test }),
   })
 }
 
 export function deletePushSubscription(endpoint: string): Promise<void> {
-  return deviceCall("/api/push/subscriptions", { method: "DELETE", body: JSON.stringify({ endpoint }) })
+  return apiCall("/api/push/subscriptions", { method: "DELETE", body: JSON.stringify({ endpoint }) })
+}
+
+// ── Files in the canvas's tree ─────────────────────────────────────────────
+
+/** Renamed where it is; comes back as its new path. */
+export function renameOutput(id: string, path: string, name: string): Promise<{ path: string }> {
+  return apiCall(outputUrl(id, path), { method: "PATCH", body: JSON.stringify({ new_name: name }) })
+}
+
+/** A file, or a directory and everything in it. */
+export function deleteOutput(id: string, path: string): Promise<void> {
+  return apiCall(outputUrl(id, path), { method: "DELETE" })
+}
+
+export function renameAttachment(id: string, name: string, newName: string): Promise<{ path: string }> {
+  return apiCall(attachmentUrl(id, name), { method: "PATCH", body: JSON.stringify({ new_name: newName }) })
+}
+
+export function deleteAttachment(id: string, name: string): Promise<void> {
+  return apiCall(attachmentUrl(id, name), { method: "DELETE" })
+}
+
+/** Either side of the tree: an output by its path, an attachment by its name. */
+export function renameAgentOutputOrAttachment(
+  id: string,
+  source: "output" | "files",
+  path: string,
+  name: string,
+): Promise<{ path: string }> {
+  return source === "files" ? renameAttachment(id, path, name) : renameOutput(id, path, name)
+}
+
+export function deleteAgentOutputOrAttachment(
+  id: string,
+  source: "output" | "files",
+  path: string,
+): Promise<void> {
+  return source === "files" ? deleteAttachment(id, path) : deleteOutput(id, path)
 }

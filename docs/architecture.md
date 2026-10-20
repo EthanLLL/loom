@@ -245,6 +245,13 @@ again whenever a live `:output_files` or `user` event arrives, rather than
 polling. A file opens in the canvas when there is a viewer for it and
 downloads otherwise; a directory offers its page and a zip of itself.
 
+From the keyboard (docs/keys.md) a row can also be renamed or deleted:
+`PATCH`/`DELETE /api/agents/:id/output/*path` and `…/files/:name`, the new
+name in `new_name`. The same path checks as a download, plus: a rename keeps
+the directory, refuses a taken name (409) and one that would hide or move it
+(422). The chat's cards and chips still name the old path, and show nothing
+once it has gone; the canvas follows what it shows to the new name.
+
 The page is model output, so it is treated as hostile:
 
 - It runs in `<iframe sandbox="allow-scripts …">` without `allow-same-origin`,

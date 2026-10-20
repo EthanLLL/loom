@@ -53,6 +53,8 @@ hidden. Then:
 |---|---|
 | `j` / `k` | Move the cursor |
 | `Enter` | Open that session |
+| `r` | Rename the session in its row: Enter keeps it, Esc puts the old name back |
+| `d` | Delete the session, after asking |
 | `Esc` or `l` | Leave the list for the chat, sidebar still shown |
 | `␣b` | Leave the list and hide the sidebar |
 
@@ -69,10 +71,20 @@ canvas shows, or on the top row. Then:
 | `Enter` | A folder folds or unfolds; a file opens in the canvas (or downloads, if it has no viewer). The cursor stays, so `j` `Enter` `j` `Enter` pages through files |
 | `l` | Unfold a folder, or step into an unfolded one; a file opens, as `Enter` |
 | `h` | Fold an unfolded folder, or go up to the folder this row is in; at the top level, back to the chat |
+| `r` | Rename it where it is (the name before the extension is selected): Enter keeps it, Esc puts the old name back. A taken name is refused and can be fixed |
+| `d` | Delete it, a folder with everything in it, after asking |
 | `Esc` | Leave the tree, still shown |
 | `␣e` | Leave the tree and hide it |
 
 A click anywhere also leaves it.
+
+## Asking before a delete
+
+Every delete asks first, the session list's × button too: `y` or **Delete**
+deletes, `n`, `Esc` or **Cancel** does not. Enter does nothing there.
+
+While a rename box or a dialog is up, keys are its own, and an IME composing
+in a rename box keeps Enter and Esc.
 
 ## Anywhere
 

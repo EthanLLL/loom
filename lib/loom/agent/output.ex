@@ -237,6 +237,65 @@ defmodule Loom.Agent.Output do
   end
 
   @doc """
+  Delete one output, a file or a whole directory, for the file browser.
+
+  Only what `resolve/2` or `resolve_dir/2` would hand out: nothing hidden,
+  nothing through a symlink, never the output directory itself.
+  """
+  def delete(session_id, rel) do
+    case resolve_any(session_id, rel) do
+      {:ok, path} ->
+        {:ok, _} = File.rm_rf(path)
+        :ok
+
+      :error ->
+        :error
+    end
+  end
+
+  @doc """
+  Rename one output in place, keeping its directory: `name` is the new last
+  component, not a path. Returns the new path relative to the output directory.
+  Refuses a name that is taken rather than overwriting what is there.
+  """
+  def rename(session_id, rel, name) do
+    with {:ok, path} <- resolve_any(session_id, rel),
+         {:ok, name} <- valid_name(name),
+         dest = Path.join(Path.dirname(path), name),
+         false <- File.exists?(dest) && :exists,
+         :ok <- File.rename(path, dest) do
+      dir = session_id |> Store.output_dir() |> Path.expand()
+      {:ok, Path.relative_to(dest, dir)}
+    else
+      :exists -> {:error, :exists}
+      {:error, reason} -> {:error, reason}
+      :error -> :error
+    end
+  end
+
+  @doc """
+  A new name for a file or directory, as typed: one component, nothing that
+  would hide it (a leading dot) or reach elsewhere.
+  """
+  def valid_name(name) when is_binary(name) do
+    name = String.trim(name)
+
+    cond do
+      name in ["", ".", ".."] -> {:error, :bad_name}
+      String.starts_with?(name, ".") or String.starts_with?(name, "~$") -> {:error, :bad_name}
+      String.match?(name, ~r/[\x00-\x1f\/\\]/u) -> {:error, :bad_name}
+      byte_size(name) > 255 -> {:error, :bad_name}
+      true -> {:ok, name}
+    end
+  end
+
+  def valid_name(_name), do: {:error, :bad_name}
+
+  defp resolve_any(session_id, rel) do
+    with :error <- resolve(session_id, rel), do: resolve_dir(session_id, rel)
+  end
+
+  @doc """
   Every file a zip of `rel` may contain, relative to the output directory: the
   same files `resolve/2` would serve one at a time, and nothing else.
   """
