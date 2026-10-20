@@ -84,6 +84,8 @@ hand.
 | `thread/tokenUsage/updated` | context size (§6.1) |
 | `item/completed` (contextCompaction) | `:compacted` |
 | `turn/completed` | `:turn_done`, or nothing if interrupted |
+| `error` with `willRetry: true` | `:api_retry` (§6.13) |
+| `error`, last, inside a turn | nothing: `turn/completed` reports it (§6.13) |
 
 A non-zero `exitCode` overrides `status: "completed"`, which only means the
 call finished, not that the command succeeded.
@@ -212,6 +214,8 @@ A write to a CLI that has already exited is ignored rather than raised: the
 
 ### 6.13 The API refusing (Bedrock 503)
 
+**Claude Code:**
+
 CC retries a refused request by itself, 10 times by default
 (`CLAUDE_CODE_MAX_RETRIES`), with backoff. Against Bedrock's 503 each attempt
 took about 10 s to fail, so the whole run took 4½ minutes (2026-10-19, measured),
@@ -233,8 +237,19 @@ said it. The other synthetic replies seen are a safeguard refusal (also
 `API Error: …`, the same shape) and `No response requested.` after an
 interrupt.
 
+**Codex** (0.162.1) says it in `error` notifications. One per retry, with
+`willRetry: true`, `"message": "Reconnecting... 1/5"` and the status under
+`codexErrorInfo` (`{"responseStreamDisconnected": {"httpStatusCode": 503}}`);
+then one with `willRetry: false`; then `turn/completed` with `status:
+"failed"` and the same error. Every `error` used to fail the turn, so the
+first retry ended it while Codex was still trying and each later one failed
+it again. Now a retry is `:api_retry`, and only `turn/completed` fails it.
+
 Reproduce: a local server answering every POST with 503, and
-`ANTHROPIC_BEDROCK_BASE_URL=http://127.0.0.1:<port> CLAUDE_CODE_MAX_RETRIES=3`.
+`ANTHROPIC_BEDROCK_BASE_URL=http://127.0.0.1:<port> CLAUDE_CODE_MAX_RETRIES=3`
+for CC; for Codex a `CODEX_HOME` whose provider has `base_url =
+"http://127.0.0.1:<port>/v1"`, `wire_api = "responses"` and
+`stream_max_retries = 2`.
 
 ## 7. Not done: permission prompts
 

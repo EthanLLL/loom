@@ -464,8 +464,10 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
         // attempts would otherwise be ten lines saying the same thing.
         const status = p.status ? `${p.status}${p.error ? ` ${p.error}` : ""}` : String(p.error ?? "error")
         const delay = Number(p.delay_ms ?? 0)
+        // Codex gives neither a delay nor an error kind, and might not count.
+        const count = p.attempt ? ` ${p.attempt}${p.max_retries ? `/${p.max_retries}` : ""}` : ""
         const text =
-          `API ${status}, retrying ${p.attempt}/${p.max_retries}` +
+          `API ${status}, retrying${count}` +
           (delay >= 1000 ? ` in ${Math.round(delay / 1000)}s` : "")
         const last = items[items.length - 1]
         if (last?.kind === "retry") items[items.length - 1] = { ...last, text }

@@ -134,8 +134,38 @@ defmodule Loom.Agent.Backend.CodexTest do
       assert [{:turn_failed, %{reason: "no quota"}}] = events(out)
     end
 
-    test "a top-level error becomes a turn failure" do
-      {_handle, out} = feed(handle(), "error", %{"message" => "stream closed"})
+    # Captured on 0.162.1 against a provider answering every request with 503,
+    # `stream_max_retries = 2`, trimmed.
+    @retrying %{
+      "error" => %{
+        "message" => "Reconnecting... 1/2",
+        "codexErrorInfo" => %{"responseStreamDisconnected" => %{"httpStatusCode" => 503}},
+        "additionalDetails" => "unexpected status 503 Service Unavailable"
+      },
+      "willRetry" => true,
+      "threadId" => @thread,
+      "turnId" => @turn
+    }
+
+    test "an error Codex will retry is a retry, not the end of the turn" do
+      {_handle, out} = feed(handle(), "error", @retrying)
+
+      assert [{:api_retry, %{attempt: 1, max_retries: 2, status: 503}}] = events(out)
+    end
+
+    test "the last error is left to `turn/completed`, so the turn fails once" do
+      {_handle, out} =
+        feed(handle(), "error", %{
+          @retrying
+          | "error" => %{"message" => "unexpected status 503", "codexErrorInfo" => %{}},
+            "willRetry" => false
+        })
+
+      assert out == []
+    end
+
+    test "an error outside a turn is still reported" do
+      {_handle, out} = feed(handle(), "error", %{"error" => %{"message" => "stream closed"}})
       assert [{:turn_failed, %{reason: "stream closed"}}] = events(out)
     end
 

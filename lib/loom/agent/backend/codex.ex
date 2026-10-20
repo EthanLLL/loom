@@ -351,8 +351,35 @@ defmodule Loom.Agent.Backend.Codex do
     {handle, [{:delta, %{block_id: params["itemId"], type: :thinking, chunk: params["delta"]}}]}
   end
 
+  # Measured on 0.162.1 against a provider answering 503: one `error` per
+  # retry with `willRetry: true` ("Reconnecting... 1/5"), a last one with
+  # `willRetry: false`, then `turn/completed` as `failed` with the same error.
+  # Only that last step ends the turn: taken as a failure, the first retry
+  # ended it while Codex was still trying, and every later one failed it again.
+  defp translate(handle, "error", %{"willRetry" => true} = params) do
+    error = params["error"] || %{}
+    {attempt, max} = retry_count(error["message"])
+
+    {handle,
+     [
+       {:event, :api_retry,
+        %{
+          attempt: attempt,
+          max_retries: max,
+          delay_ms: nil,
+          status: http_status(error["codexErrorInfo"]),
+          error: nil
+        }}
+     ]}
+  end
+
+  defp translate(handle, "error", %{"turnId" => turn_id}) when is_binary(turn_id),
+    do: {handle, []}
+
+  # Not about a turn, so no `turn/completed` will say it.
   defp translate(handle, "error", params) do
-    {handle, [{:event, :turn_failed, %{reason: params["message"] || inspect(params)}}]}
+    reason = get_in(params, ["error", "message"]) || params["message"] || inspect(params)
+    {handle, [{:event, :turn_failed, %{reason: reason}}]}
   end
 
   defp translate(handle, method, params) when method in ["warning", "guardianWarning"] do
@@ -389,6 +416,25 @@ defmodule Loom.Agent.Backend.Codex do
       context_window: handle.context_window
     }
   end
+
+  defp retry_count(message) when is_binary(message) do
+    case Regex.run(~r/(\d+)\s*\/\s*(\d+)/, message) do
+      [_, attempt, max] -> {String.to_integer(attempt), String.to_integer(max)}
+      nil -> {nil, nil}
+    end
+  end
+
+  defp retry_count(_message), do: {nil, nil}
+
+  # `{"responseStreamDisconnected": {"httpStatusCode": 503}}`, keyed by kind.
+  defp http_status(%{} = info) do
+    Enum.find_value(info, fn
+      {_kind, %{"httpStatusCode" => status}} -> status
+      _ -> nil
+    end)
+  end
+
+  defp http_status(_info), do: nil
 
   defp turn_error(params) do
     case get_in(params, ["turn", "error"]) do
