@@ -136,6 +136,12 @@
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* Walking the list with j/k; see the keys in App.tsx. */
+.session.cursor {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .session-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -1031,6 +1037,49 @@
    whichever column is outermost on each side moves its content clear of them,
    and the top bars drag the window — everywhere but their buttons. A browser
    tab, a phone, or the title bar shown again: none of this applies. */
+/* The keys still to come after a leader, as which-key.nvim shows them; and
+   `?`, every key. See keys.tsx. */
+.which-key {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  min-width: 14rem;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+  font-size: 0.9rem;
+}
+
+.which-key-head {
+  margin-bottom: 4px;
+  color: var(--fg-dim);
+}
+
+.which-key-row {
+  display: flex;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.which-key-key {
+  min-width: 3.5rem;
+  color: var(--accent);
+}
+
+.key-help-hint {
+  color: var(--fg-dim);
+  font-weight: normal;
+  font-size: 0.85rem;
+}
+
+.key-help-body {
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
 @media (display-mode: window-controls-overlay) {
   .app {
     --wco-left: env(titlebar-area-x, 0px);

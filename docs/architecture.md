@@ -372,6 +372,7 @@ agent.ts          pure reducers: applySnapshot / applyEvent / applyDelta / build
 markdown.tsx      markdown for assistant messages only
 Terminal.tsx      one xterm pane
 push.ts           this device's notifications on/off, and whether it is looking
+keys.tsx          vim-style keys, desktop only (docs/keys.md)
 useAgent.ts       one agent channel's lifecycle
 ```
 

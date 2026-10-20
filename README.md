@@ -89,6 +89,8 @@ that machine as you:
   from the home-screen app). Not for the session you are looking at; tapping
   one opens the session. No account or API key: Loom signs them itself.
 - Built for phones too: the keyboard, safe areas and scrolling behave.
+- **Vim-style keys** on desktop: `i` to type, `j`/`k` to scroll, Space as the
+  leader for the panes, `?` for the list. See [docs/keys.md](docs/keys.md).
 - Deploy Loom from inside Loom: `rel/deploy.sh` stages a new release, and Loom
   restarts into it once every session is idle, so no turn is cut off.
 
@@ -97,6 +99,7 @@ that machine as you:
 - [docs/architecture.md](docs/architecture.md): how Loom is built
 - [docs/backends.md](docs/backends.md): the Claude Code and Codex protocols, as measured
 - [docs/deploy.md](docs/deploy.md): EC2 + Cloudflare Tunnel + systemd
+- [docs/keys.md](docs/keys.md): the keyboard
 
 ## Requirements
 

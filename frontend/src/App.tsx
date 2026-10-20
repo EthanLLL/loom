@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
 import { touches, type CanvasItem } from "./canvasItems"
 import { Chat } from "./Chat"
+import { KeyHelp, useGlobalKey, useKeys, WhichKey, type Keymap } from "./keys"
 import { Login } from "./Login"
 import { usePush, useVisible } from "./push"
 import { Sidebar } from "./Sidebar"
@@ -26,6 +27,7 @@ import "./App.css"
 
 const SIDEBAR_KEY = "loom_sidebar_open"
 const CANVAS_KEY = "loom_canvas"
+const TREE_KEY = "loom_canvas_tree"
 
 // The right-hand side shows one thing at a time: the terminals or the canvas.
 type Side = "terminal" | "canvas" | null
@@ -130,6 +132,11 @@ function App() {
         : all
     })
   const toggleCanvas = () => setSide((s) => (s === "canvas" ? null : "canvas"))
+  // The canvas's file tree, beside what it shows. Remembered like the sidebar.
+  const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0")
+  useEffect(() => {
+    localStorage.setItem(TREE_KEY, treeOpen ? "1" : "0")
+  }, [treeOpen])
   // Bumped when the active session's files may have changed, so the canvas's
   // file browser lists them again.
   const [filesRev, setFilesRev] = useState(0)
@@ -264,6 +271,96 @@ function App() {
     await deleteSession(id).catch(() => {})
   }
 
+  // ── Keys ─────────────────────────────────────────────────────────────────
+  //
+  // See keys.tsx and docs/keys.md. The session list has a cursor of its own
+  // while it is being walked with j/k; Enter opens the session under it.
+  const [listCursor, setListCursor] = useState<string | null>(null)
+  const [help, setHelp] = useState(false)
+  useEffect(() => {
+    if (listCursor === null) return
+    const away = () => setListCursor(null)
+    window.addEventListener("mousedown", away)
+    return () => window.removeEventListener("mousedown", away)
+  }, [listCursor])
+
+  const timeline = () => document.querySelector<HTMLElement>(".timeline")
+  const scroll = (by: (el: HTMLElement) => number, smooth = false) => {
+    const el = timeline()
+    el?.scrollBy({ top: by(el), behavior: smooth ? "smooth" : "instant" })
+  }
+  const step = (ids: string[], from: string | null, by: number) => {
+    if (ids.length === 0) return null
+    const at = from === null ? -1 : ids.indexOf(from)
+    return ids[at === -1 ? 0 : Math.min(ids.length - 1, Math.max(0, at + by))]
+  }
+  const ids = sessions.map((s) => s.id)
+
+  const leader: Keymap = {
+    "Space e": {
+      desc: "canvas file tree",
+      run: () => {
+        if (side === "canvas") setTreeOpen((open) => !open)
+        else {
+          setSide("canvas")
+          setTreeOpen(true)
+        }
+      },
+    },
+    "Space b": {
+      desc: "session list (j/k, Enter)",
+      run: () => {
+        if (listCursor !== null) {
+          setListCursor(null)
+          setSidebarOpen(false)
+          return
+        }
+        setFull(false)
+        setSidebarOpen(true)
+        setListCursor(activeId ?? ids[0] ?? null)
+      },
+    },
+    "Space t": { desc: "terminal", run: () => void toggleTerminal() },
+    "Space c": { desc: "canvas", run: toggleCanvas },
+    "Space f": { desc: "full window", run: () => side !== null && toggleFull() },
+    "Space n c": { desc: "new Claude Code session", run: () => void create("claude_code") },
+    "Space n x": { desc: "new Codex session", run: () => void create("codex") },
+  }
+  const keymap: Keymap =
+    listCursor !== null
+      ? {
+          j: { desc: "next session", run: () => setListCursor((c) => step(ids, c, 1)) },
+          k: { desc: "previous session", run: () => setListCursor((c) => step(ids, c, -1)) },
+          Enter: {
+            desc: "open it",
+            run: () => {
+              select(listCursor)
+              setListCursor(null)
+            },
+          },
+          Esc: { desc: "leave the list", run: () => setListCursor(null) },
+          ...leader,
+        }
+      : {
+          i: {
+            desc: "type a message",
+            run: () => document.querySelector<HTMLElement>(".composer-input")?.focus(),
+          },
+          j: { desc: "scroll down", run: () => scroll(() => 60) },
+          k: { desc: "scroll up", run: () => scroll(() => -60) },
+          "C-d": { desc: "half a page down", run: () => scroll((el) => el.clientHeight / 2, true) },
+          "C-u": { desc: "half a page up", run: () => scroll((el) => -el.clientHeight / 2, true) },
+          "g g": { desc: "top", run: () => timeline()?.scrollTo({ top: 0 }) },
+          G: { desc: "bottom", run: () => scroll((el) => el.scrollHeight) },
+          J: { desc: "next session", run: () => activeId && select(step(ids, activeId, 1)!) },
+          K: { desc: "previous session", run: () => activeId && select(step(ids, activeId, -1)!) },
+          ...leader,
+          "?": { desc: "all keys", run: () => setHelp(true) },
+        }
+  const keysOn = authed && loaded && !narrow
+  const pending = useKeys(keysOn, keymap)
+  useGlobalKey(keysOn, (e) => e.ctrlKey && e.code === "Backquote", () => void toggleTerminal())
+
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
   if (!loaded) return <div className="loading">connecting…</div>
 
@@ -276,6 +373,7 @@ function App() {
       onUpsertDevice={upsertDevice}
       push={push}
       activeId={activeId}
+      cursorId={listCursor}
       onSelect={select}
       onCreate={create}
       onDelete={remove}
@@ -356,6 +454,8 @@ function App() {
             onBack={() => setSide(null)}
             maximized={maximized}
             onToggleMaximized={toggleFull}
+            treeOpen={treeOpen}
+            onTreeOpen={setTreeOpen}
           />
         </div>
 
@@ -420,6 +520,15 @@ function App() {
           </div>
         )}
       </main>
+
+      <WhichKey pending={pending} keymap={keymap} groups={{ "Space n": "new session" }} />
+      {help && (
+        <KeyHelp
+          keymap={keymap}
+          extra={[["C-`", "terminal, from anywhere — a shell too"]]}
+          onClose={() => setHelp(false)}
+        />
+      )}
     </div>
   )
 }

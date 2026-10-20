@@ -17,6 +17,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -93,7 +94,10 @@ export function Chat({
     },
   )
   const busy = isBusy(transcript)
-  const items = foldFinished(buildTimeline(transcript), busy)
+  // Kept while the transcript is: the timeline follows the end whenever the
+  // items change, so a fresh array on every render (the app's keys re-render
+  // it) would pull it back down just after `gg` or `k` scrolled it up.
+  const items = useMemo(() => foldFinished(buildTimeline(transcript), busy), [transcript, busy])
 
   const attachments = useAttachments(session.id)
   // Dropping is accepted anywhere in the conversation, not just on the

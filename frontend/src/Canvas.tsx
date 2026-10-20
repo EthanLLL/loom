@@ -34,8 +34,6 @@ import { Markdown } from "./markdown"
  * phone there is no room for both, so the tree covers the view while it is
  * open and folds itself once something is picked.
  */
-const TREE_KEY = "loom_canvas_tree"
-
 export function Canvas({
   sessionId,
   item,
@@ -45,6 +43,8 @@ export function Canvas({
   onBack,
   maximized,
   onToggleMaximized,
+  treeOpen,
+  onTreeOpen,
 }: {
   sessionId: string | null
   item: CanvasItem | null
@@ -55,20 +55,19 @@ export function Canvas({
   onBack: () => void
   maximized: boolean
   onToggleMaximized: () => void
+  // Desktop only, and kept by the app, which has a key for it.
+  treeOpen: boolean
+  onTreeOpen: (open: boolean) => void
 }) {
   const [base, setBase] = useState<CanvasBases | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [reloads, setReloads] = useState(0)
   const [downloading, setDownloading] = useState(false)
-  const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0")
-  useEffect(() => {
-    localStorage.setItem(TREE_KEY, treeOpen ? "1" : "0")
-  }, [treeOpen])
   // On a phone the tree covers the view, so it starts folded when there is
   // something to see, and folds again when something is picked.
   const [phoneTree, setPhoneTree] = useState(false)
   const showTree = narrow ? phoneTree || !item : treeOpen
-  const toggleTree = () => (narrow ? setPhoneTree(!showTree) : setTreeOpen((o) => !o))
+  const toggleTree = () => (narrow ? setPhoneTree(!showTree) : onTreeOpen(!treeOpen))
 
   const itemKey = item ? `${item.source ?? "output"}:${item.path}` : null
   const pick = (picked: CanvasItem) => {

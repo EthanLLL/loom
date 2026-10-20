@@ -11,6 +11,8 @@ type Props = {
   onUpsertDevice: (device: Device) => void
   push: Push
   activeId: string | null
+  // The session under the keyboard's cursor while the list is walked; see App.
+  cursorId: string | null
   onSelect: (id: string) => void
   onCreate: (backend: AgentBackend) => void
   onDelete: (id: string) => void
@@ -23,6 +25,7 @@ export function Sidebar({
   onUpsertDevice,
   push,
   activeId,
+  cursorId,
   onSelect,
   onCreate,
   onDelete,
@@ -58,7 +61,10 @@ export function Sidebar({
         {sessions.map((s) => (
           <div
             key={s.id}
-            className={"session" + (s.id === activeId ? " active" : "")}
+            ref={s.id === cursorId ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+            className={
+              "session" + (s.id === activeId ? " active" : "") + (s.id === cursorId ? " cursor" : "")
+            }
             onClick={() => onSelect(s.id)}
           >
             <span className={"dot " + s.status} title={s.status} />
