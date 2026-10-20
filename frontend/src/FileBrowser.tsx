@@ -30,10 +30,12 @@ type Section = "output" | "files"
 /** The tree walked from the keyboard; see the keys in App.tsx. */
 export type TreeNav = {
   move: (by: number) => void
-  // Enter: a directory folds or unfolds, a file opens (and the walk ends).
+  // Enter: a directory folds or unfolds, a file opens. The walk goes on
+  // either way: the canvas takes no keys, so there is nowhere else to be.
   enter: () => void
-  // h: fold, or up to the parent. l: unfold, or into it; a file opens.
-  left: () => void
+  // h: fold, or up to the parent; false when neither, at the left edge.
+  // l: unfold, or into it; a file opens.
+  left: () => boolean
   right: () => void
 }
 
@@ -70,7 +72,6 @@ export function FileBrowser({
   current,
   onOpen,
   walking,
-  onWalked,
   nav,
 }: {
   sessionId: string
@@ -79,8 +80,6 @@ export function FileBrowser({
   current: string | null
   onOpen: (item: CanvasItem) => void
   walking: boolean
-  // A file was opened from the keyboard.
-  onWalked: () => void
   nav: RefObject<TreeNav | null>
 }) {
   const [tree, setTree] = useState<{ files: TreeFile[]; output: TreeFile[] } | null>(null)
@@ -174,21 +173,18 @@ export function FileBrowser({
       setCursor(showing[Math.min(showing.length - 1, Math.max(0, at + by))].key)
     },
     enter: () => {
-      if (!here) return
-      open(here.section, here.node)
-      if (!here.node.children) onWalked()
+      if (here) open(here.section, here.node)
     },
     left: () => {
-      if (!here) return
-      if (here.node.children && unfolded.has(here.key)) fold(here.key, false)
-      else if (here.parent) setCursor(here.parent)
+      if (here?.node.children && unfolded.has(here.key)) fold(here.key, false)
+      else if (here?.parent) setCursor(here.parent)
+      else return false
+      return true
     },
     right: () => {
       if (!here) return
-      if (!here.node.children) {
-        open(here.section, here.node)
-        onWalked()
-      } else if (!unfolded.has(here.key)) fold(here.key, true)
+      if (!here.node.children) open(here.section, here.node)
+      else if (!unfolded.has(here.key)) fold(here.key, true)
       else if (showing[at + 1]?.parent === here.key) setCursor(showing[at + 1].key)
     },
   }

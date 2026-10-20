@@ -46,7 +46,6 @@ export function Canvas({
   treeOpen,
   onTreeOpen,
   walking,
-  onWalked,
   nav,
 }: {
   sessionId: string | null
@@ -63,7 +62,6 @@ export function Canvas({
   onTreeOpen: (open: boolean) => void
   // The tree walked from the keyboard; see `FileBrowser`.
   walking: boolean
-  onWalked: () => void
   nav: RefObject<TreeNav | null>
 }) {
   const [base, setBase] = useState<CanvasBases | null>(null)
@@ -179,7 +177,6 @@ export function Canvas({
               current={itemKey}
               onOpen={pick}
               walking={walking && showTree}
-              onWalked={onWalked}
               nav={nav}
             />
           </div>

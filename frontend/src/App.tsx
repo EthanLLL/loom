@@ -315,33 +315,36 @@ function App() {
   }
   const ids = sessions.map((s) => s.id)
 
+  // Into the columns either side of the chat, opening them as needed: `h` and
+  // `␣b` to the session list, `l` and `␣e` to the file tree.
+  const toList = () => {
+    setTreeWalk(false)
+    setFull(false)
+    setSidebarOpen(true)
+    setListCursor(activeId ?? ids[0] ?? null)
+  }
+  const toTree = () => {
+    setListCursor(null)
+    setSide("canvas")
+    setTreeOpen(true)
+    setTreeWalk(true)
+  }
+
   const leader: Keymap = {
     "Space e": {
       desc: "file tree (j/k, h/l, Enter)",
       run: () => {
-        setListCursor(null)
-        if (treeWalk) {
-          setTreeWalk(false)
-          setTreeOpen(false)
-          return
-        }
-        setSide("canvas")
-        setTreeOpen(true)
-        setTreeWalk(true)
+        if (!treeWalk) return toTree()
+        setTreeWalk(false)
+        setTreeOpen(false)
       },
     },
     "Space b": {
       desc: "session list (j/k, Enter)",
       run: () => {
-        setTreeWalk(false)
-        if (listCursor !== null) {
-          setListCursor(null)
-          setSidebarOpen(false)
-          return
-        }
-        setFull(false)
-        setSidebarOpen(true)
-        setListCursor(activeId ?? ids[0] ?? null)
+        if (listCursor === null) return toList()
+        setListCursor(null)
+        setSidebarOpen(false)
       },
     },
     "Space t": { desc: "terminal", run: () => void toggleTerminal() },
@@ -354,7 +357,10 @@ function App() {
     ? {
         j: { desc: "next file", run: () => treeNav.current?.move(1) },
         k: { desc: "previous file", run: () => treeNav.current?.move(-1) },
-        h: { desc: "fold, or up to the folder", run: () => treeNav.current?.left() },
+        h: {
+          desc: "fold, up to the folder, or back to the chat",
+          run: () => treeNav.current?.left() || setTreeWalk(false),
+        },
         l: { desc: "unfold, or open", run: () => treeNav.current?.right() },
         Enter: { desc: "open the file, or fold the folder", run: () => treeNav.current?.enter() },
         Esc: { desc: "leave the tree", run: () => setTreeWalk(false) },
@@ -372,6 +378,7 @@ function App() {
             },
           },
           Esc: { desc: "leave the list", run: () => setListCursor(null) },
+          l: { desc: "back to the chat", run: () => setListCursor(null) },
           ...leader,
         }
       : {
@@ -385,6 +392,8 @@ function App() {
           "C-u": { desc: "half a page up", run: () => scroll((el) => -el.clientHeight / 2, true) },
           "g g": { desc: "top", run: () => timeline()?.scrollTo({ top: 0 }) },
           G: { desc: "bottom", run: () => scroll((el) => el.scrollHeight) },
+          h: { desc: "to the session list", run: toList },
+          l: { desc: "to the file tree", run: toTree },
           J: { desc: "next session", run: () => activeId && select(step(ids, activeId, 1)!) },
           K: { desc: "previous session", run: () => activeId && select(step(ids, activeId, -1)!) },
           ...leader,
@@ -491,7 +500,6 @@ function App() {
             treeOpen={treeOpen}
             onTreeOpen={setTreeOpen}
             walking={treeWalk}
-            onWalked={() => setTreeWalk(false)}
             nav={treeNav}
           />
         </div>

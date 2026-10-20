@@ -2,7 +2,7 @@
   --bg: #010c18;
   --bg-raised: #04101f;
   /* The top bars' shared height; see .sidebar-head below. */
-  --head-h: 3.933rem;
+  --head-h: 2.8rem;
   --bg-card: #0b1f33;
   --line: #16314f;
   --fg: #ecdef4;
@@ -16,6 +16,12 @@
      columns is a comfortable line of text and still wide enough for shell
      output, where the old prose measure (78) was cramped. */
   --measure: 100ch;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --head-h: 3.933rem;
+  }
 }
 
 .app {
@@ -54,8 +60,9 @@
 
 /* One height for the top bar of every column — the sidebar's, the chat's, and
    the first pane of the right-hand column — so their bottom edges make one
-   line across the window. The chat's two-line title is what sets it: --head-h, in :root
-   above. With the title bar hidden (see the end of this file) this row is the title bar. */
+   line across the window. The sidebar's buttons are what sets it: --head-h, in :root
+   above. (A phone keeps the old, taller one: its header sits under the notch, and
+   was measured with it.) With the title bar hidden (see the end of this file) this row is the title bar. */
 .sidebar-head,
 .chat-header,
 .side-column > .canvas > .pane-head,
@@ -69,7 +76,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -229,14 +236,22 @@
    The user's own machines (loom-node). A line at the foot of the sidebar,
    and a dialog to manage them. */
 
+/* Vim mode, notifications and devices: one group under one line. */
+.sidebar-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
 .devices-btn {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 7px 14px;
   border: none;
-  border-top: 1px solid var(--line);
   background: transparent;
   color: var(--fg-dim);
   font: inherit;

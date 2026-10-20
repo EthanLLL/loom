@@ -2,6 +2,7 @@ import { Bell, BellOff, Keyboard, KeyboardOff, PanelLeftClose, Plus, X } from "l
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { DevicesDialog } from "./Devices"
+import { backendShort } from "./format"
 import type { Push } from "./push"
 import { lastActive } from "./useLobby"
 
@@ -86,7 +87,7 @@ export function Sidebar({
             {/* Which engine is running it is not a detail: the two behave
                 differently and the binding is permanent. */}
             <span className={"session-backend " + s.backend}>
-              {SHORT[s.backend] ?? s.backend}
+              {backendShort(s.backend)}
             </span>
             <button
               className="session-del"
@@ -102,35 +103,37 @@ export function Sidebar({
         ))}
       </div>
 
-      {vim && (
-        <button
-          className={"devices-btn push-btn" + (vim.on ? " on" : "")}
-          onClick={vim.toggle}
-          title={vim.on ? "Vim-style keys are on; ? lists them. Click to turn them off." : "Turn on Vim-style keys"}
-        >
-          {vim.on ? <Keyboard /> : <KeyboardOff />}
-          <span>Vim keys</span>
-          <span className="devices-count">{vim.on ? "on" : "off"}</span>
+      <div className="sidebar-foot">
+        {vim && (
+          <button
+            className={"devices-btn push-btn" + (vim.on ? " on" : "")}
+            onClick={vim.toggle}
+            title={vim.on ? "Vim mode is on; ? lists the keys. Click to turn it off." : "Turn on Vim mode: keys for the panes, ? lists them"}
+          >
+            {vim.on ? <Keyboard /> : <KeyboardOff />}
+            <span>Vim mode</span>
+            <span className="devices-count">{vim.on ? "on" : "off"}</span>
+          </button>
+        )}
+
+        <PushButton push={push} />
+
+        {/* The user's own machines, reachable by agents through loom-node. */}
+        <button className="devices-btn" onClick={() => setDevicesOpen(true)} title="Devices">
+          <span className={"dot" + (online > 0 ? " online" : "")} />
+          <span>Devices</span>
+          <span className="devices-count">
+            {online}/{devices.length}
+          </span>
         </button>
-      )}
-
-      <PushButton push={push} />
-
-      {/* The user's own machines, reachable by agents through loom-node. */}
-      <button className="devices-btn" onClick={() => setDevicesOpen(true)} title="Devices">
-        <span className={"dot" + (online > 0 ? " online" : "")} />
-        <span>Devices</span>
-        <span className="devices-count">
-          {online}/{devices.length}
-        </span>
-      </button>
-      {devicesOpen && (
-        <DevicesDialog
-          devices={devices}
-          onUpsert={onUpsertDevice}
-          onClose={() => setDevicesOpen(false)}
-        />
-      )}
+        {devicesOpen && (
+          <DevicesDialog
+            devices={devices}
+            onUpsert={onUpsertDevice}
+            onClose={() => setDevicesOpen(false)}
+          />
+        )}
+      </div>
     </aside>
   )
 }
@@ -207,11 +210,6 @@ function NewSessionButton({
       )}
     </span>
   )
-}
-
-const SHORT: Record<string, string> = {
-  claude_code: "cc",
-  codex: "cx",
 }
 
 function when(ms: number): string {

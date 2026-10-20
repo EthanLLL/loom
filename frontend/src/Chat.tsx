@@ -24,7 +24,7 @@ import {
 } from "react"
 import { buildTimeline, foldFinished, isBusy, type CronJob, type TimelineItem } from "./agent"
 import { itemForAttachment, itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
-import { formatBytes } from "./format"
+import { backendShort, formatBytes } from "./format"
 import { isComposing } from "./ime"
 import { Markdown, OutputLink } from "./markdown"
 import { useAgent } from "./useAgent"
@@ -132,7 +132,8 @@ export function Chat({
 
         <Title
           title={session.title ?? session.id}
-          backend={session.backend_label}
+          backend={session.backend}
+          backendLabel={session.backend_label}
           onRename={rename}
         />
 
@@ -460,10 +461,12 @@ function CronJobs({ jobs }: { jobs: CronJob[] }) {
 function Title({
   title,
   backend,
+  backendLabel,
   onRename,
 }: {
   title: string
   backend: string
+  backendLabel: string
   onRename: (title: string) => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -477,6 +480,12 @@ function Title({
 
   return (
     <div className="chat-title">
+      {/* Which engine runs it: permanent, and the two behave differently
+          enough that it belongs by the name. The sidebar's badge, so the
+          header is one line. */}
+      <span className={"session-backend " + backend} title={backendLabel}>
+        {backendShort(backend)}
+      </span>
       {editing ? (
         <input
           className="chat-name-input"
@@ -505,7 +514,6 @@ function Title({
           {title}
         </span>
       )}
-      <span className="chat-backend">{backend}</span>
     </div>
   )
 }

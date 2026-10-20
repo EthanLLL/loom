@@ -23,7 +23,8 @@
    header does not jump horizontally as the sidebar is toggled. */
 .chat-title {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -31,14 +32,6 @@
 .chat-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Which engine runs this session. Permanent, and the two behave differently
-   enough that it belongs next to the name. */
-.chat-backend {
-  color: var(--fg-dim);
-  font-size: 0.846rem;
   white-space: nowrap;
 }
 
