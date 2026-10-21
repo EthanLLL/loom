@@ -53,7 +53,7 @@ async function shrink(file: File): Promise<File | null> {
 
   let out: Blob = blob
   if (type === "image/jpeg" && file.type === "image/jpeg") {
-    let exif: Uint8Array | null = null
+    let exif: Uint8Array<ArrayBuffer> | null = null
     try {
       exif = exifSegment(new Uint8Array(await file.arrayBuffer()), w, h)
     } catch {
@@ -72,7 +72,7 @@ async function shrink(file: File): Promise<File | null> {
  * the new one; and the thumbnail is dropped, as it is still the unturned one.
  * Patched in place, so every offset inside — the maker note's too — still holds.
  */
-function exifSegment(jpeg: Uint8Array, width: number, height: number): Uint8Array | null {
+function exifSegment(jpeg: Uint8Array, width: number, height: number): Uint8Array<ArrayBuffer> | null {
   let at = 2
   while (at + 4 <= jpeg.length && jpeg[0] === 0xff && jpeg[1] === 0xd8) {
     if (jpeg[at] !== 0xff) return null
@@ -129,7 +129,7 @@ function patchTiff(seg: Uint8Array, base: number, width: number, height: number)
 }
 
 /** `jpeg` with `exif` put in after its JFIF header, where readers look. */
-function withExif(jpeg: Uint8Array, exif: Uint8Array): Blob {
+function withExif(jpeg: Uint8Array, exif: Uint8Array<ArrayBuffer>): Blob {
   let at = 2
   if (jpeg[2] === 0xff && jpeg[3] === 0xe0) at = 4 + ((jpeg[4] << 8) | jpeg[5])
   return new Blob([jpeg.slice(0, at), exif, jpeg.slice(at)], { type: "image/jpeg" })
