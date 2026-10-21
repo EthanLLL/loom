@@ -34,6 +34,8 @@ Optional settings:
 - `LOOM_HOME` (default `~/.loom`)
 - `LOOM_WORKSPACE`
 - `LOOM_CLAUDE_CLI` and `LOOM_CODEX_CLI`
+- `LOOM_CLAUDE_FALLBACK_MODEL`: Claude Code's `--fallback-model`, for when
+  the usual model is overloaded (see docs/backends.md §6.13)
 
 No TLS settings and no model API keys are needed.
 

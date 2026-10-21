@@ -224,7 +224,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
           :exit_status,
           :use_stdio,
           :hide,
-          args: @base_args ++ session_args(handle) ++ instruction_args(handle),
+          args: @base_args ++ fallback_args() ++ session_args(handle) ++ instruction_args(handle),
           cd: handle.cwd,
           env: Loom.ChildEnv.port_env()
         ])
@@ -277,6 +277,17 @@ defmodule Loom.Agent.Backend.ClaudeCode do
     do: Path.wildcard(Path.join([claude_dir(), "projects", "*", id <> ".jsonl"])) != []
 
   defp claude_dir, do: System.get_env("CLAUDE_CONFIG_DIR") || Path.expand("~/.claude")
+
+  # What to answer with when the model is unavailable. Claude Code (2.1.300)
+  # switches on a 500 or 503 after one attempt, on a 529 after its retries,
+  # never on a 429; the switch lasts the rest of the turn, and the next turn
+  # starts on the usual model again. See docs/backends.md.
+  defp fallback_args do
+    case Application.get_env(:loom, Loom.Agent, [])[:claude_fallback_model] do
+      model when is_binary(model) and model != "" -> ["--fallback-model", model]
+      _ -> []
+    end
+  end
 
   defp instruction_args(%{instructions: text}) when is_binary(text) and text != "",
     do: ["--append-system-prompt", text]

@@ -251,6 +251,20 @@ for CC; for Codex a `CODEX_HOME` whose provider has `base_url =
 "http://127.0.0.1:<port>/v1"`, `wire_api = "responses"` and
 `stream_max_retries = 2`.
 
+**Falling back.** With `LOOM_CLAUDE_FALLBACK_MODEL` set (e.g.
+`us.anthropic.claude-opus-5[1m]`), CC runs with `--fallback-model`. Measured
+against the same local server (CC 2.1.300, `CLAUDE_CODE_MAX_RETRIES=2`):
+
+| status | usual model | fallback |
+|---|---|---|
+| 500, 503 | one attempt | then its retries |
+| 529 | all retries | then its retries |
+| 429 | all retries | never tried |
+
+The switch lasts until the turn ends; the next one tries the usual model
+first. A model with a context window smaller than the conversation would fail
+there too, so the fallback should be a 1M one when the usual model is.
+
 ## 7. Not done: permission prompts
 
 Codex has proper approval requests. CC auto-denies under

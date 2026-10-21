@@ -35,6 +35,9 @@ config :loom, Loom.Agent,
   # Override only to pin a specific binary (an absolute path, a wrapper).
   claude_cli: System.get_env("LOOM_CLAUDE_CLI") || "claude",
   codex_cli: System.get_env("LOOM_CODEX_CLI") || "codex",
+  # Claude Code's `--fallback-model`: a model id, or several comma-separated,
+  # for when the usual one is overloaded. Unset, there is none.
+  claude_fallback_model: System.get_env("LOOM_CLAUDE_FALLBACK_MODEL"),
   # Working directory for new sessions. Sessions have no project root of their
   # own: which project is being worked on is a fact in the conversation, and
   # the model composes absolute paths from it.
