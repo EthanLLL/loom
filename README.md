@@ -124,3 +124,7 @@ Open http://localhost:5173. The password is `LOOM_PASSWORD` (`loom` in dev).
 | `cd frontend && pnpm build` | Type-check and build |
 | `cd frontend && pnpm md:check` | Markdown renderer cases |
 | `cd frontend && pnpm transcript …` | Record / replay a live agent stream ([details](docs/architecture.md#81-debugging-record-and-replay)) |
+
+## License
+
+[MIT](LICENSE)
