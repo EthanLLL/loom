@@ -196,6 +196,15 @@ is no base64 and no multimodal content block.
   copy. Otherwise it is fetched with the token, from
   `GET /api/agents/:id/files/:name` or the output route, and cached for the
   page.
+- **Images are scaled down in the browser first** (`shrink.ts`), to 2000 px
+  on the long edge, about what CC and Codex scale them to before a model sees
+  them. A phone photo goes from about 4 MB to under 1 MB, which matters on a
+  phone's uplink and against Bedrock's ~32 MB cap on a request, which every
+  turn's history counts toward. Only the size changes: the format stays (HEIC
+  becomes JPEG), and a JPEG keeps its EXIF — time, GPS, camera — with the
+  orientation set to 1, as the pixels are turned upright. A file that is small
+  already, would come out bigger (a screenshot's PNG often does), or will not
+  decode goes up untouched; GIF and SVG always do.
 - **A path is a capability.** `Files.verify/2` rejects anything outside this
   session's `files/`, and file names are treated as hostile.
 

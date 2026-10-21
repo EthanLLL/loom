@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { attachmentUrl, seedBlobUrl, uploadAgentFiles, type AgentFile } from "./api"
+import { shrinkImage } from "./shrink"
 
 /**
  * One row in the composer's attachment tray.
@@ -64,8 +65,13 @@ export function useAttachments(sessionId: string | null): Attachments {
 
       // One request per file: the server stores a request all-or-nothing, so
       // batching would let an oversized fourth file void three good ones.
+      // An image is scaled down first; see shrink.ts.
       files.forEach((file, i) => {
-        uploadAgentFiles(sessionId, [file])
+        shrinkImage(file)
+          .then((small) => {
+            if (small !== file) patch(rows[i].key, { name: small.name, size: small.size })
+            return uploadAgentFiles(sessionId, [small])
+          })
           .then(([stored]) => {
             // The sent bubble will ask for this file by its server URL; it can
             // have the local copy instead. Never revoked for the same reason.
