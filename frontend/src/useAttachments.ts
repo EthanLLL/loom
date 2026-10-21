@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { attachmentUrl, seedBlobUrl, uploadAgentFiles, type AgentFile } from "./api"
+import { attachmentUrl, isThumbnail, seedBlobUrl, uploadAgentFiles, type AgentFile } from "./api"
 import { shrinkImage } from "./shrink"
 
 /**
@@ -57,7 +57,7 @@ export function useAttachments(sessionId: string | null): Attachments {
         name: file.name,
         size: file.size,
         type: file.type,
-        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        preview: isThumbnail(file.type) ? URL.createObjectURL(file) : null,
         file: null,
         error: null,
       }))

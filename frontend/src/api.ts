@@ -267,6 +267,15 @@ export function attachmentUrl(id: string, path: string): string {
 const blobs = new Map<string, Promise<string>>()
 
 /**
+ * Whether a file of this type may be shown as a thumbnail. Not SVG: it is a
+ * document that can carry script, and an object URL has loom's own origin — an
+ * `<img>` would not run it, but "open image in new tab" would, with the login
+ * token in reach.
+ */
+export const isThumbnail = (contentType: string | undefined) =>
+  !!contentType?.startsWith("image/") && !contentType.startsWith("image/svg")
+
+/**
  * An authenticated file as something `<img src>` can show.
  *
  * The routes are behind the bearer token, which an `<img>` cannot send, so the
@@ -326,7 +335,10 @@ async function download(url: string, filename: string): Promise<void> {
   if (res.status === 413) throw new Error("too big to zip (over 1 GB)")
   if (!res.ok) throw new Error(`download failed: ${res.status}`)
 
-  const href = URL.createObjectURL(await res.blob())
+  // Typed as opaque bytes: an HTML or SVG blob that a browser navigated to
+  // instead of saving would run on loom's origin.
+  const blob = new Blob([await res.blob()], { type: "application/octet-stream" })
+  const href = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = href
   a.download = filename

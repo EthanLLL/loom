@@ -37,6 +37,7 @@ import {
 import {
   attachmentUrl,
   blobUrl,
+  isThumbnail,
   downloadAgentOutput,
   downloadAgentZip,
   downloadAttachment,
@@ -665,8 +666,6 @@ function extension(name: string): string {
   return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).slice(0, 5).toUpperCase() : "FILE"
 }
 
-const isImage = (contentType: string | undefined) => !!contentType?.startsWith("image/")
-
 /** The attachments that went out with a message. */
 function SentFiles({ sessionId, files }: { sessionId: string; files: AgentFile[] }) {
   return (
@@ -700,7 +699,7 @@ function SentFile({ sessionId, file }: { sessionId: string; file: AgentFile }) {
   return (
     <FileCard
       name={file.name}
-      image={isImage(file.content_type) ? blobUrl(attachmentUrl(sessionId, file.path)) : null}
+      image={isThumbnail(file.content_type) ? blobUrl(attachmentUrl(sessionId, file.path)) : null}
       busy={state === "busy"}
       error={typeof state === "object" ? state.error : null}
       title={`${item ? "Show" : "Download"} ${file.name} · ${formatBytes(file.size)}`}
@@ -763,7 +762,7 @@ function OutputCard({ sessionId, file }: { sessionId: string; file: OutputFile }
     <FileCard
       name={name}
       label={dir ? (file.index ? "PAGE" : "DIR") : undefined}
-      image={!dir && isImage(file.content_type) ? blobUrl(outputUrl(sessionId, file.path)) : null}
+      image={!dir && isThumbnail(file.content_type) ? blobUrl(outputUrl(sessionId, file.path)) : null}
       busy={state === "busy"}
       error={typeof state === "object" ? state.error : null}
       title={
