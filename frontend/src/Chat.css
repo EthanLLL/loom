@@ -316,6 +316,11 @@ code {
   font-family: var(--mono);
 }
 
+.code-block {
+  position: relative;
+  margin: 8px 0;
+}
+
 pre.code {
   margin: 8px 0;
   padding: 9px 11px;
@@ -1057,10 +1062,53 @@ h3.md-h {
   color: var(--fg-dim);
 }
 
-/* The language tag on a fenced block, floated into its top-right corner. */
+.code-block > pre.code {
+  margin: 0;
+  /* Room for the copy button on short blocks, which never scroll under it. */
+  padding-right: 40px;
+}
+
+/* Language tag and copy button, pinned to the block's top-right corner so
+   they stay put while a long line scrolls sideways beneath them. */
+.code-tools {
+  position: absolute;
+  /* Just inside the border, so nothing scrolled beneath shows past it. */
+  top: 1px;
+  right: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 2px 2px 8px;
+  border-radius: 0 5px 0 5px;
+  background: var(--bg-raised);
+}
+
+.code-copy {
+  width: 1.733rem;
+  height: 1.733rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.code-copy svg {
+  width: 15px;
+  height: 15px;
+}
+
+.code-copy:hover {
+  background: var(--bg-card);
+  color: var(--fg);
+}
+
+/* The language tag on a fenced block, beside its copy button. */
 .code-lang {
-  float: right;
-  margin: -2px 0 0 8px;
   color: var(--fg-dim);
   font-size: 0.769rem;
   letter-spacing: 0.04em;

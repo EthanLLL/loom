@@ -1,5 +1,5 @@
-import { Square as SquareIcon, SquareCheck } from "lucide-react"
-import { createContext, useContext, useMemo, type ReactNode } from "react"
+import { Check, Copy, Square as SquareIcon, SquareCheck } from "lucide-react"
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 import { marked, type Token, type Tokens } from "marked"
 
 /**
@@ -72,10 +72,13 @@ function Block({ token }: { token: Token }): ReactNode {
     case "code": {
       const t = token as Tokens.Code
       return (
-        <pre className="code">
-          {t.lang ? <span className="code-lang">{t.lang}</span> : null}
-          {t.text}
-        </pre>
+        <div className="code-block">
+          <pre className="code">{t.text}</pre>
+          <div className="code-tools">
+            {t.lang ? <span className="code-lang">{t.lang}</span> : null}
+            <CopyButton text={t.text} />
+          </div>
+        </div>
       )
     }
 
@@ -253,4 +256,41 @@ function outputPath(href: string): string | null {
 function safeHref(href: string): string | null {
   const trimmed = (href ?? "").trim()
   return SAFE_SCHEME.test(trimmed) ? trimmed : null
+}
+
+/**
+ * Copies a fenced block whole. On a phone, selecting a command by hand fights
+ * the sidebar's edge swipe and the block's own horizontal scroll, so this is
+ * the way to take one away.
+ */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 1500)
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch {
+      // No clipboard (an http origin, or permission refused): the block is
+      // still selectable by hand.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="code-copy"
+      onClick={copy}
+      title={copied ? "Copied" : "Copy"}
+      aria-label={copied ? "Copied" : "Copy code"}
+    >
+      {copied ? <Check /> : <Copy />}
+    </button>
+  )
 }
