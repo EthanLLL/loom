@@ -13,8 +13,10 @@ defmodule LoomWeb.Endpoint do
 
   # TLS terminates at the edge (Cloudflare) and the WS arrives proxied, so its
   # Origin won't match our host. Auth is enforced by the token in connect/2.
+  # Compressed: opening a session replays its transcript, which is JSON and
+  # several hundred KB for a long one, and shrinks to about a third.
   socket "/socket", LoomWeb.UserSocket,
-    websocket: [check_origin: false],
+    websocket: [check_origin: false, compress: true],
     longpoll: false
 
   # `loom-node daemon` on the user's own machines. Its own socket, so a device
@@ -28,19 +30,40 @@ defmodule LoomWeb.Endpoint do
 
   # The frontend, straight from the release. There is no web server in front,
   # so if this is not here nothing serves the UI at all and the browser gets
-  # only `/api`. Vite fingerprints every asset filename, which is what makes
-  # the long cache on versioned requests safe.
+  # only `/api`.
+  #
+  # Vite fingerprints every filename under `assets/`, so those are cached for
+  # good: a new release names new files, and `index.html` — never cached, see
+  # `LoomWeb.SpaController` — is what points at them.
+  plug Plug.Static,
+    at: "/assets",
+    from: {:loom, "priv/static/assets"},
+    gzip: false,
+    cache_control_for_etags: "public, max-age=31536000, immutable"
+
   # Libraries for pages the agent writes (reveal.js, KaTeX; see
   # `frontend/tools/vendor.mjs`), so a deck opens whenever loom does, CDN or
   # not. A canvas page runs on an opaque origin, which makes every request it
   # sends here cross-origin, and fonts load only with CORS — hence the header.
-  # Unversioned paths, so not the long cache.
+  # Unversioned paths, so a day rather than for good.
   plug Plug.Static,
     at: "/vendor",
     from: {:loom, "priv/static/vendor"},
     gzip: false,
+    cache_control_for_etags: "public, max-age=86400",
     headers: %{"access-control-allow-origin" => "*"}
 
+  # Fonts and icons: unversioned too, and they change about never. The terminal
+  # fonts are 2.8 MB each, which is what makes this worth having.
+  plug Plug.Static,
+    at: "/",
+    from: :loom,
+    gzip: false,
+    cache_control_for_etags: "public, max-age=86400",
+    only: ~w(fonts icons favicon.ico favicon.svg icons.svg manifest.webmanifest robots.txt)
+
+  # Asked about every time: the shell, and the service worker, whose update
+  # check should reach the server rather than a cached copy.
   plug Plug.Static,
     at: "/",
     from: :loom,

@@ -21,6 +21,23 @@ const DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
   ? "phone"
   : "desktop"
 
+// The last few sessions' transcripts, kept when their chat unmounts so going
+// back to one shows it at once and the join asks only for what came since.
+// Memory only, and bounded: a long transcript is a few megabytes of objects.
+const CACHED_SESSIONS = 8
+const cache = new Map<string, Transcript>()
+
+function remember(id: string, t: Transcript) {
+  cache.delete(id)
+  // Nothing in flight survives a remount: streaming placeholders are dropped
+  // by the join anyway, and a pending bubble's ack may never come to this mount.
+  cache.set(id, { ...t, streaming: [], toolStreams: [], lastDeltaSeq: 0, pending: [] })
+  for (const old of cache.keys()) {
+    if (cache.size <= CACHED_SESSIONS) break
+    cache.delete(old)
+  }
+}
+
 type Agent = {
   transcript: Transcript
   joinError: string | null
@@ -48,16 +65,25 @@ export function useAgent(
 ): Agent {
   const onLiveRef = useRef(onLiveEvent)
   onLiveRef.current = onLiveEvent
-  const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
+  // Straight from the cache on the first render, so there is no empty frame.
+  const [transcript, setTranscript] = useState<Transcript>(
+    () => (sessionId && cache.get(sessionId)) || emptyTranscript,
+  )
   const [joinError, setJoinError] = useState<string | null>(null)
   const channelRef = useRef<Channel | null>(null)
   // Read inside the params closure on rejoin, so it must not be state.
   const lastSeqRef = useRef(0)
+  // For the cache, written on unmount.
+  const transcriptRef = useRef(transcript)
+  transcriptRef.current = transcript
+  // Bumped to join again from nothing when the cache turns out to be wrong.
+  const [epoch, setEpoch] = useState(0)
 
   useEffect(() => {
-    setTranscript(emptyTranscript)
+    const cached = sessionId ? cache.get(sessionId) : undefined
+    setTranscript(cached ?? emptyTranscript)
     setJoinError(null)
-    lastSeqRef.current = 0
+    lastSeqRef.current = cached?.lastSeq ?? 0
     if (!sessionId) return
 
     let joined = false
@@ -94,14 +120,29 @@ export function useAgent(
     channel
       .join()
       .receive("ok", (snapshot: Snapshot) => {
-        lastSeqRef.current = Math.max(lastSeqRef.current, snapshot.last_seq)
         const wasJoined = joined
         joined = true
         if (leaveWhenJoined || channelRef.current !== channel) {
           channel.leave()
           return
         }
-        setTranscript((t) => applySnapshot(snapshot, wasJoined ? t : undefined))
+        // Behind what we hold: not a gap but a different history (the session
+        // was replaced under the same id). The cache is no use; start over.
+        if (snapshot.last_seq < lastSeqRef.current) {
+          cache.delete(sessionId)
+          channelRef.current = null
+          channel.leave()
+          setEpoch((e) => e + 1)
+          return
+        }
+        // A gap like a rejoin's, from the cache too — unless the server has
+        // since dropped events we never saw. Then the reply is everything it
+        // still keeps, and merging would hide the hole.
+        const hole =
+          snapshot.truncated_before !== null && lastSeqRef.current < snapshot.truncated_before
+        const merge = (wasJoined || !!cached) && !hole
+        lastSeqRef.current = snapshot.last_seq
+        setTranscript((t) => applySnapshot(snapshot, merge ? t : undefined))
         setJoinError(null)
       })
       .receive("error", (resp: { reason?: string }) =>
@@ -123,9 +164,12 @@ export function useAgent(
       }
 
       channelRef.current = null
+      // Only a transcript the server has filled; an unjoined mount holds
+      // nothing worth keeping, and must not replace what the cache has.
+      if (joined && transcriptRef.current.lastSeq > 0) remember(sessionId, transcriptRef.current)
       // The socket is shared with the terminal; never disconnect it here.
     }
-  }, [sessionId])
+  }, [sessionId, epoch])
 
   const submit = useCallback((text: string, files: AgentFile[] = []) => {
     const channel = channelRef.current

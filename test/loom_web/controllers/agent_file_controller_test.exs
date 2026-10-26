@@ -115,6 +115,9 @@ defmodule LoomWeb.AgentFileControllerTest do
 
       conn = get(conn, "/api/agents/#{id}/files/shot.png")
       assert response(conn, 200) == "PNG"
+      # Behind the token, so never in a shared cache; a stored name is never
+      # rewritten, so the browser may keep it.
+      assert get_resp_header(conn, "cache-control") == ["private, max-age=86400"]
     end
 
     test "anything outside the session's files is a 404", %{conn: conn, id: id} do

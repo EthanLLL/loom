@@ -17,6 +17,26 @@ defmodule LoomWeb.SpaControllerTest do
     assert conn.status == 200
   end
 
+  test "unversioned static files are cached for a day", %{conn: conn} do
+    conn = get(conn, "/favicon.ico")
+    assert get_resp_header(conn, "cache-control") == ["public, max-age=86400"]
+  end
+
+  test "fingerprinted assets are cached for good", %{conn: conn} do
+    # A name of its own, so a real build's files are never touched.
+    path = Path.join(:code.priv_dir(:loom), "static/assets/cache-test-0000.js")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "1")
+    on_exit(fn -> File.rm(path) end)
+
+    conn = get(conn, "/assets/cache-test-0000.js")
+    assert conn.status == 200
+
+    assert get_resp_header(conn, "cache-control") == [
+             "public, max-age=31536000, immutable"
+           ]
+  end
+
   test "an asset not in the allowlist is not reachable", %{conn: conn} do
     # `only:` is the whole reason `priv/` is not browsable.
     assert get(conn, "/agent_sessions/anything.json").status == 404

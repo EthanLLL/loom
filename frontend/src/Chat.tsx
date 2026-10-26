@@ -14,6 +14,8 @@ import {
 } from "lucide-react"
 import {
   createContext,
+  memo,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -100,6 +102,22 @@ export function Chat({
   // it) would pull it back down just after `gg` or `k` scrolled it up.
   const items = useMemo(() => foldFinished(buildTimeline(transcript), busy), [transcript, busy])
 
+  // Stable, because a context change re-renders every message that links a
+  // file — memoised or not — and this would otherwise change with each delta.
+  const renderOutput = useCallback(
+    (path: string, label: ReactNode) => {
+      const item = itemForPath(path)
+      return item ? (
+        <button type="button" className="md-download" title={`Show ${path}`} onClick={() => onOpenCanvas(item)}>
+          {label}
+        </button>
+      ) : (
+        <DownloadLink sessionId={session.id} path={path} label={label} />
+      )
+    },
+    [session.id, onOpenCanvas],
+  )
+
   const attachments = useAttachments(session.id)
   // Dropping is accepted anywhere in the conversation, not just on the
   // composer: by the time you have dragged a screenshot this far, aiming at a
@@ -185,18 +203,7 @@ export function Chat({
       {/* `output/…` links in a reply become downloads from this session, and
           attachments, sent or about to be, open in the canvas. */}
       <OpenCanvas.Provider value={onOpenCanvas}>
-        <OutputLink.Provider
-          value={(path, label) => {
-            const item = itemForPath(path)
-            return item ? (
-              <button type="button" className="md-download" title={`Show ${path}`} onClick={() => onOpenCanvas(item)}>
-                {label}
-              </button>
-            ) : (
-              <DownloadLink sessionId={session.id} path={path} label={label} />
-            )
-          }}
-        >
+        <OutputLink.Provider value={renderOutput}>
           <Timeline
             items={items}
             sessionId={session.id}
@@ -227,6 +234,13 @@ export function Chat({
 
 // ── Timeline ───────────────────────────────────────────────────────────────
 
+// How many items are rendered at first, and added each time the reader nears
+// the top. A session keeps 500 events; on a phone, laying all of them out
+// before the newest one shows is the slow part of opening it.
+const PAGE = 60
+// How close to the top counts as nearing it, in pixels.
+const NEAR_TOP = 600
+
 function Timeline({
   items,
   sessionId,
@@ -247,6 +261,28 @@ function Timeline({
   // way down, and judging those by position would unpin it again — and bring
   // the button straight back — before it lands.
   const jumpingRef = useRef(false)
+  // The tail that is rendered. Grows, never shrinks, for this mount.
+  const [shown, setShown] = useState(PAGE)
+  // The scroll height before more was rendered above, so the reader stays on
+  // the line they were reading instead of jumping with the new content.
+  const growFromRef = useRef<number | null>(null)
+  const hidden = Math.max(0, items.length - shown)
+  const visible = hidden > 0 ? items.slice(hidden) : items
+
+  const showMore = () => {
+    const el = ref.current
+    if (!el || hidden === 0 || growFromRef.current !== null) return
+    growFromRef.current = el.scrollHeight
+    setShown((n) => n + PAGE)
+  }
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    const from = growFromRef.current
+    if (!el || from === null) return
+    growFromRef.current = null
+    el.scrollTop += el.scrollHeight - from
+  }, [shown])
 
   // Only follow the output when the user is already at the bottom; scrolling up
   // to read something while the agent streams must not yank them back down.
@@ -254,6 +290,7 @@ function Timeline({
     const el = ref.current
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (el.scrollTop < NEAR_TOP) showMore()
     if (jumpingRef.current) {
       if (!atBottom) return
       jumpingRef.current = false
@@ -302,7 +339,13 @@ function Timeline({
             width — a card spanning the window while the text beside it stopped
             half way across read as two different layouts. */}
         <div className="timeline-inner">
-          {truncatedBefore ? (
+          {hidden > 0 ? (
+            // Scrolling up gets here first and loads more on its own; this is
+            // for `gg`, which lands on it, and for anyone who would rather click.
+            <button type="button" className="notice show-earlier" onClick={showMore}>
+              {hidden} earlier
+            </button>
+          ) : truncatedBefore ? (
             <div className="notice">
               earlier messages are no longer kept in memory (up to #
               {truncatedBefore})
@@ -313,7 +356,7 @@ function Timeline({
             <div className="empty">Send a message to start.</div>
           )}
 
-          {items.map((item) => (
+          {visible.map((item) => (
             <Item key={item.key} item={item} sessionId={sessionId} onAnswer={onAnswer} />
           ))}
         </div>
@@ -335,15 +378,44 @@ function Timeline({
   )
 }
 
-function Item({
-  item,
-  sessionId,
-  onAnswer,
-}: {
+type ItemProps = {
   item: TimelineItem
   sessionId: string
   onAnswer: (text: string) => void
-}) {
+}
+
+/**
+ * One message, re-rendered only when it changed.
+ *
+ * The timeline is rebuilt from the transcript on every event and every
+ * streamed chunk, so each item is a fresh object every time — but what is in
+ * it comes from the events, which do not change once they have arrived. Without
+ * this, each chunk of a reply re-rendered the whole conversation, markdown and
+ * all, which on a long one is most of the time a phone spends.
+ */
+const Item = memo(ItemView, (a: ItemProps, b: ItemProps) =>
+  a.sessionId === b.sessionId && a.onAnswer === b.onAnswer && same(a.item, b.item),
+)
+
+// Structural equality that is cheap for timeline items: what they hold is
+// mostly the very objects and strings of the events, so `===` settles nearly
+// every comparison before any walking happens.
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false
+    return a.every((x, i) => same(x, b[i]))
+  }
+  if (Array.isArray(b)) return false
+  const ka = Object.keys(a)
+  if (ka.length !== Object.keys(b).length) return false
+  const ra = a as Record<string, unknown>
+  const rb = b as Record<string, unknown>
+  return ka.every((k) => k in rb && same(ra[k], rb[k]))
+}
+
+function ItemView({ item, sessionId, onAnswer }: ItemProps) {
   switch (item.kind) {
     case "user":
       return (

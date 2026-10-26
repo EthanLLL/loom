@@ -37,10 +37,17 @@ defmodule LoomWeb.AgentFileController do
   # GET /api/agents/:id/files/:name — an attachment read back, for the
   # thumbnail in the bubble that sent it. The same check as a submit: only a
   # regular file inside this session's own `files/` is served.
+  #
+  # Cached a day, privately: behind the token, and an attachment is not
+  # rewritten — `Files.store/2` never reuses a name that is taken. A name freed
+  # by a delete or a rename could come back as a different file, and a browser
+  # that saw the old one would show that for up to the day.
   def show(conn, %{"id" => id, "name" => name}) do
     with true <- Agent.exists?(id),
          {:ok, [file]} <- Files.verify(id, [Path.join(Store.files_dir(id), name)]) do
-      send_download(conn, {:file, file.path}, filename: file.name)
+      conn
+      |> put_resp_header("cache-control", "private, max-age=86400")
+      |> send_download({:file, file.path}, filename: file.name)
     else
       _ -> conn |> put_status(:not_found) |> json(%{error: "no such attachment"})
     end

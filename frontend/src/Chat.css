@@ -288,6 +288,19 @@
   white-space: pre-wrap;
 }
 
+.show-earlier {
+  align-self: center;
+  padding: 4px 10px;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.show-earlier:hover {
+  color: var(--fg);
+}
+
 .error {
   padding: 7px 10px;
   border-left: 2px solid var(--red);
