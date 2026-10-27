@@ -14,6 +14,10 @@ Environment=LANG=C.UTF-8
 ExecStart=/home/ubuntu/loom/rel/browser/loom-browser.sh
 Restart=always
 RestartSec=3
+# A host without swap: past this, Chromium loses a tab, not loom or an agent its
+# process. High reclaims first; Max is the wall.
+MemoryHigh=3500M
+MemoryMax=4500M
 
 [Install]
 WantedBy=multi-user.target
