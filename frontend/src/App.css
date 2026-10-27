@@ -1220,3 +1220,10 @@
     padding-right: calc(var(--wco-right) + 6px);
   }
 }
+
+/* Loom's browser, over VNC (Browser.tsx). */
+.browser-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.browser-state { margin-left: 8px; font-size: 0.85em; color: var(--fg-dim); }
+.browser-type { display: flex; gap: 4px; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.browser-type input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.browser-screen { flex: 1; min-height: 0; background: #1a1a1a; }

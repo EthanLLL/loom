@@ -1,5 +1,5 @@
 import { ChevronLeft, Maximize, Minimize, Plus, X } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { Canvas } from "./Canvas"
 import { moved, touches, type CanvasItem } from "./canvasItems"
 import { Confirm } from "./Confirm"
@@ -10,6 +10,8 @@ import { Login } from "./Login"
 import { usePush, useVisible } from "./push"
 import { Sidebar } from "./Sidebar"
 import { Terminal } from "./Terminal"
+// noVNC is only for the browser pane, so it loads when that is first opened.
+const Browser = lazy(() => import("./Browser").then((m) => ({ default: m.Browser })))
 import { useLobby } from "./useLobby"
 import { useNarrow } from "./useNarrow"
 import { useSwipe } from "./useSwipe"
@@ -34,7 +36,7 @@ const TREE_KEY = "loom_canvas_tree"
 const VIM_KEY = "loom_vim"
 
 // The right-hand side shows one thing at a time: the terminals or the canvas.
-type Side = "terminal" | "canvas" | null
+type Side = "terminal" | "canvas" | "browser" | null
 
 function loadCanvases(): Record<string, CanvasItem> {
   try {
@@ -445,6 +447,11 @@ function App() {
       onCreate={create}
       onDelete={remove}
       onCollapse={() => (narrow ? setDrawerOpen(false) : setSidebarOpen(false))}
+      browserOpen={side === "browser"}
+      onToggleBrowser={() => {
+        if (narrow) setDrawerOpen(false)
+        setSide((s) => (s === "browser" ? null : "browser"))
+      }}
     />
   )
 
@@ -528,6 +535,19 @@ function App() {
             onMoved={(source, from, to) => active && followCanvas(active.id, source, from, to)}
           />
         </div>
+
+        {side === "browser" && (
+          <div className="side-column">
+            <Suspense fallback={null}>
+              <Browser
+                narrow={narrow}
+                maximized={maximized}
+                onToggleMaximized={toggleFull}
+                onClose={() => setSide(null)}
+              />
+            </Suspense>
+          </div>
+        )}
 
         {/* Kept mounted once opened: unmounting would drop the channel and
             xterm's scrollback, and the shell itself keeps running server-side

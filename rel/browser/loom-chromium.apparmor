@@ -1,0 +1,13 @@
+# Lets Playwright's Chromium create the user namespaces its sandbox needs, which
+# Ubuntu 23.10+ denies to unconfined programs by default. The alternative,
+# --no-sandbox, is not one for a browser that stays logged in and opens
+# arbitrary sites. Install:
+#   sudo cp rel/browser/loom-chromium.apparmor /etc/apparmor.d/loom-chromium
+#   sudo apparmor_parser -r /etc/apparmor.d/loom-chromium
+abi <abi/4.0>,
+include <tunables/global>
+
+profile loom-chromium /home/ubuntu/.cache/ms-playwright/chromium-*/chrome-linux*/chrome flags=(unconfined) {
+  userns,
+  include if exists <local/loom-chromium>
+}

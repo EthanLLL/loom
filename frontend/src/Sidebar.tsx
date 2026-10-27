@@ -1,4 +1,4 @@
-import { Bell, BellOff, Keyboard, KeyboardOff, MonitorSmartphone, PanelLeftClose, Plus, X } from "lucide-react"
+import { Bell, BellOff, Globe, Keyboard, KeyboardOff, MonitorSmartphone, PanelLeftClose, Plus, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { RenameInput } from "./Confirm"
@@ -24,6 +24,8 @@ type Props = {
   onCreate: (backend: AgentBackend) => void
   onDelete: (id: string) => void
   onCollapse: () => void
+  browserOpen: boolean
+  onToggleBrowser: () => void
 }
 
 export function Sidebar({
@@ -40,6 +42,8 @@ export function Sidebar({
   onCreate,
   onDelete,
   onCollapse,
+  browserOpen,
+  onToggleBrowser,
 }: Props) {
   // Ages are relative, so they go stale without any new data. A local clock,
   // not a poll: nothing is fetched.
@@ -127,6 +131,18 @@ export function Sidebar({
         )}
 
         <PushButton push={push} />
+
+        {/* Loom's own browser, the one agents drive: taking it over is how a
+            site gets logged in to once and stays logged in. */}
+        <button
+          className={"devices-btn push-btn" + (browserOpen ? " on" : "")}
+          onClick={onToggleBrowser}
+          title="Loom's browser: log in to a site, or get past a check for the agents"
+        >
+          <Globe />
+          <span>Browser</span>
+          <span className="devices-count">{browserOpen ? "open" : ""}</span>
+        </button>
 
         {/* The user's own machines, reachable by agents through loom-node. */}
         <button

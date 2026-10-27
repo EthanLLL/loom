@@ -82,6 +82,14 @@ that machine as you:
   device runs is logged on that device.
 - The sidebar shows which devices are online, live.
 
+### Browser
+
+An optional Chromium that stays running on the host, on a virtual display
+(`rel/browser/`). Agents drive it over CDP, so the pages they read are the
+ones a logged-in desktop Chrome would see; the user takes it over from
+**Browser** in the sidebar (noVNC, through loom's own login) to sign in to a
+site once or get past a captcha. The `browser` skill tells agents how.
+
 ### App
 
 - Installable as a PWA, with the title bar hidden on desktop.

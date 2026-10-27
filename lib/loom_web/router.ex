@@ -80,6 +80,12 @@ defmodule LoomWeb.Router do
     get "/download/:target", NodeInstallController, :download
   end
 
+  # The user taking over loom's browser; see `LoomWeb.VncSocket`. Checks the
+  # token itself, as a WebSocket can't carry the header `RequireAuth` reads.
+  scope "/browser", LoomWeb do
+    get "/vnc", BrowserController, :vnc
+  end
+
   # The UI itself. Last so it can never shadow an API route, and only `/` —
   # see `LoomWeb.SpaController`. Unauthenticated on purpose: the app shell is
   # a login form until the password is entered, and every route that touches a
