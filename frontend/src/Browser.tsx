@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import RFB from "@novnc/novnc"
-import { ArrowRightToLine, ChevronLeft, CornerDownLeft, Delete, Keyboard, Maximize, Minimize, RefreshCw, Scan, Send, X } from "lucide-react"
+import { ArrowRightToLine, ChevronLeft, CornerDownLeft, Delete, Keyboard, Maximize, Minimize, RefreshCw, Send, X, ZoomIn, ZoomOut } from "lucide-react"
 import { getToken } from "./api"
 
 /**
@@ -99,7 +99,7 @@ export function Browser({
             onClick={() => setFit((f) => !f)}
             title={fit ? "Actual size; drag to pan on a touch screen" : "Fit the screen in the pane"}
           >
-            <Scan />
+            {fit ? <ZoomIn /> : <ZoomOut />}
           </button>
           {!narrow && (
             <button
