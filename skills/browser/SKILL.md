@@ -11,7 +11,8 @@ normal desktop Chrome, so Google answers it, unlike headless Playwright.
 Check it is there: `curl -s 127.0.0.1:9222/json/version`. If not, this host
 has none; launch Playwright as usual.
 
-Drive it from Python, in **your own tab**, and close only that tab: other
+Drive it from Python (if `playwright` won't import, run the script with
+`uv run --with playwright python script.py`), in **your own tab**, and close only that tab: other
 sessions use the same browser, and the user may be looking at it.
 
 ```python
