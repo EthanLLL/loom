@@ -26,8 +26,14 @@ with sync_playwright() as p:
         page.close()   # never ctx.close() / browser.close()
 ```
 
-Read text (`inner_text`) rather than screenshots where you can. Google result
-links are redirects; open them in the same page to read the target.
+Read text (`inner_text`) rather than screenshots where you can.
+
+**Navigate like a person: click, don't jump to hrefs.** Sites tie a link to
+the page it was shown on (Xiaohongshu's `xsec_token`, Google's redirects), and
+a bare URL often gives an empty shell or a login wall. Search from the site's
+own search page, scroll, click the card's visible link (`card.locator("a.cover")`,
+not the first `<a>`, which may be hidden), read the overlay, Escape back. Keep a
+pause of a second or two between pages.
 
 **When a site wants a human** (a login wall, "unusual traffic", "confirm
 you're not a bot"): leave that page open on the site, and ask the user to
