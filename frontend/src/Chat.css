@@ -560,7 +560,7 @@ pre.code {
 }
 
 .command-menu li.on {
-  background: var(--bg-raised);
+  background: var(--bg-card);
 }
 
 .command-menu .name {
