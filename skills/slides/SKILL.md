@@ -135,5 +135,9 @@ nothing is rendered on the server. One page per slide, fragments shown
 (`pdfSeparateFragments: false`). Tell them: margins "None", "Background
 graphics" on. On a dark theme, restyle the button so it stays visible.
 
-If they want a real .pptx, say that this deck is a web page and a .pptx is a
-separate job.
+Only when they explicitly ask for a .pptx: convert the finished deck into a
+native, editable one — load each slide with Playwright, measure every element's
+box and style, and rebuild it with python-pptx (1 CSS px = 9525 EMU on a
+1280×720 page). If `~/annual-review/scripts/to_pptx.py` exists, start from it.
+Check the result with `soffice --headless --convert-to pdf` and `pdftoppm`; for
+layout only, since the fonts differ from PowerPoint's.
