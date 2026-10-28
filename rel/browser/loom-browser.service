@@ -1,5 +1,7 @@
 # The persistent browser (see loom-browser.sh). Install:
 #   sudo apt-get install -y xvfb x11vnc x11-utils
+#   curl -LO https://dl.google.com/linux/direct/google-chrome-stable_current_arm64.deb
+#   sudo apt-get install -y ./google-chrome-stable_current_arm64.deb   (optional)
 #   sudo cp rel/browser/loom-browser.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now loom-browser
 [Unit]

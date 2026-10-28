@@ -13,10 +13,12 @@ SIZE=${LOOM_BROWSER_SIZE:-1280x800}
 PROFILE=${LOOM_BROWSER_PROFILE:-$HOME/.local/share/loom-browser/profile}
 export DISPLAY=:$DISPLAY_NUM
 
-# Playwright's own Chromium: the newest one installed, so an upgrade that
-# removes the old build doesn't break this.
-chrome=$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | sort -V | tail -1)
-[ -x "$chrome" ] || { echo "no Playwright Chromium under ~/.cache/ms-playwright" >&2; exit 1; }
+# Google Chrome if installed: it updates with apt, plays H.264, and doesn't look
+# like a test browser to the sites. Otherwise Playwright's own Chromium, the
+# newest one installed, so an upgrade that removes the old build doesn't break this.
+chrome=$(command -v google-chrome-stable)
+[ -x "$chrome" ] || chrome=$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | sort -V | tail -1)
+[ -x "$chrome" ] || { echo "no Google Chrome, nor a Playwright Chromium under ~/.cache/ms-playwright" >&2; exit 1; }
 
 Xvfb "$DISPLAY" -screen 0 "${SIZE}x24" -nolisten tcp &
 xvfb=$!
