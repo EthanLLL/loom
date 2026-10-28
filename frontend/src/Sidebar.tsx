@@ -1,10 +1,11 @@
-import { Bell, BellOff, Globe, Keyboard, KeyboardOff, MonitorSmartphone, PanelLeftClose, Plus, X } from "lucide-react"
+import { Globe, MonitorSmartphone, PanelLeftClose, Plus, Settings, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { RenameInput } from "./Confirm"
 import { DevicesDialog } from "./Devices"
 import { backendShort } from "./format"
 import type { Push } from "./push"
+import { SettingsDialog } from "./Settings"
 import { lastActive } from "./useLobby"
 
 type Props = {
@@ -53,12 +54,13 @@ export function Sidebar({
     return () => clearInterval(timer)
   }, [])
   const [devicesOpen, setDevicesOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const online = devices.filter((d) => d.online).length
 
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
-        <span className="brand">loom</span>
+        <span className="brand">Loom</span>
         <span className="sidebar-actions">
           <NewSessionButton onCreate={onCreate} />
           <button className="icon-btn" onClick={onCollapse} title="Hide sidebar">
@@ -118,20 +120,6 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-foot">
-        {vim && (
-          <button
-            className={"devices-btn push-btn" + (vim.on ? " on" : "")}
-            onClick={vim.toggle}
-            title={vim.on ? "Vim mode is on; ? lists the keys. Click to turn it off." : "Turn on Vim mode: keys for the panes, ? lists them"}
-          >
-            {vim.on ? <Keyboard /> : <KeyboardOff />}
-            <span>Vim mode</span>
-            <span className="devices-count">{vim.on ? "on" : "off"}</span>
-          </button>
-        )}
-
-        <PushButton push={push} />
-
         {/* Loom's own browser, the one agents drive: taking it over is how a
             site gets logged in to once and stays logged in. */}
         <button
@@ -150,7 +138,7 @@ export function Sidebar({
           onClick={() => setDevicesOpen(true)}
           title="Devices"
         >
-          {/* An icon like the two above, so the labels line up; lit while any is online. */}
+          {/* An icon like the rows beside it, so the labels line up; lit while any is online. */}
           <MonitorSmartphone />
           <span>Devices</span>
           <span className="devices-count">
@@ -164,35 +152,17 @@ export function Sidebar({
             onClose={() => setDevicesOpen(false)}
           />
         )}
+
+        {/* Theme, Vim keys and notifications: this device's preferences. */}
+        <button className="devices-btn push-btn" onClick={() => setSettingsOpen(true)} title="Settings">
+          <Settings />
+          <span>Settings</span>
+        </button>
+        {settingsOpen && (
+          <SettingsDialog push={push} vim={vim} onClose={() => setSettingsOpen(false)} />
+        )}
       </div>
     </aside>
-  )
-}
-
-const PUSH_HINT: Record<Push["state"], string> = {
-  on: "This device is notified when a turn ends. Click to stop.",
-  off: "Get a notification on this device when a turn ends",
-  denied: "Notifications are blocked for this site in the browser's settings",
-  unsupported: "On an iPhone, add Loom to the Home Screen and open it from there to get notifications",
-}
-
-/** Notifications for this device, on or off; see `usePush`. */
-function PushButton({ push }: { push: Push }) {
-  const on = push.state === "on"
-  const Icon = on ? Bell : BellOff
-  return (
-    <button
-      className={"devices-btn push-btn" + (on ? " on" : "")}
-      onClick={push.toggle}
-      disabled={push.busy || push.state === "denied" || push.state === "unsupported"}
-      title={push.error ?? PUSH_HINT[push.state]}
-    >
-      <Icon />
-      <span>Notifications</span>
-      <span className="devices-count">
-        {push.error ? "failed" : push.busy ? "…" : on ? "on" : push.state === "off" ? "off" : "n/a"}
-      </span>
-    </button>
   )
 }
 

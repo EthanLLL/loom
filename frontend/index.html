@@ -12,9 +12,19 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#010c18" />
-    <meta name="apple-mobile-web-app-title" content="loom" />
-    <title>loom</title>
+    <meta name="theme-color" content="#131314" />
+    <!-- The theme before the first paint, so a light device doesn't flash
+         dark; theme.ts takes over from here. -->
+    <script>
+      try {
+        var t = localStorage.getItem("loom_theme")
+        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+        document.documentElement.dataset.theme = t
+        if (t === "light") document.querySelector('meta[name="theme-color"]').content = "#faf9f9"
+      } catch (e) {}
+    </script>
+    <meta name="apple-mobile-web-app-title" content="Loom" />
+    <title>Loom</title>
   </head>
   <body>
     <div id="root"></div>

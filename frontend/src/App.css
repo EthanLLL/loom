@@ -1,21 +1,62 @@
 :root {
-  --bg: #010c18;
-  --bg-raised: #04101f;
+  /* Surfaces after Gemini's: --bg is the conversation, --bg-raised the
+     sidebar, the composer and dialogs, --bg-card chips, bubbles and hovers.
+     No borders between them; the tones do the separating. */
+  --bg: #131314;
+  --bg-raised: #1e1f20;
   /* The top bars' shared height; see .sidebar-head below. */
   --head-h: 2.8rem;
-  --bg-card: #0b1f33;
-  --line: #16314f;
-  --fg: #ecdef4;
-  --fg-dim: #7f93a8;
-  --accent: #38ff9d;
-  --blue: #388eff;
-  --red: #ff54b0;
+  --bg-card: #2a2b2d;
+  /* Gemini's filled button (send): deep in dark, pale in light. */
+  --send-bg: #1f3b9b;
+  --send-fg: #e6e6e6;
+  --line: #3a3b3d;
+  --fg: #e3e3e3;
+  --fg-dim: #9a9b9d;
+  /* The strong neutral: what is selected, on or live. Colour is kept for the
+     two theme hues, blue and pink. */
+  --accent: #f5f5f5;
+  /* Subaru blue (#004890) and STI cherry red (Pantone 207C, #A50034) are the
+     light theme's own; dark keeps their hues, lifted to read on navy. */
+  --blue: #3d9eff;
+  /* STI pink: Claude Code, warnings and errors. */
+  --red: #ff4785;
   --mono: "MesloLGL Nerd Font Mono", Menlo, Monaco, monospace;
   /* One column width for everything in a conversation — prose, tool cards and
      turn lines. Exact in characters because the whole UI is monospace: 100
      columns is a comfortable line of text and still wide enough for shell
      output, where the old prose measure (78) was cramped. */
   --measure: 100ch;
+  /* Washes behind error, warning and success boxes, and what dims the app
+     under a dialog. */
+  --red-wash: #2a1a20;
+  --red-banner: #3a2028;
+  --accent-wash: #1e1f20;
+  --scrim: rgb(0 0 0 / 55%);
+  --shadow: rgb(0 0 0 / 50%);
+  color-scheme: dark;
+}
+
+/* Light, set on <html> by theme.ts. The same roles: --accent turns black,
+   and blue and pink are darkened enough to read on white. */
+:root[data-theme="light"] {
+  --bg: #faf9f9;
+  --bg-raised: #ffffff;
+  --bg-card: #f2f0f0;
+  --send-bg: #9dd2ff;
+  --send-fg: #000000;
+  --line: #e3e1e1;
+  --fg: #1f1f1f;
+  --fg-dim: #5f6368;
+  --accent: #111418;
+  --blue: #004890;
+  --red: #a50034;
+  --red-wash: #fdf0f5;
+  --red-banner: #fbe3ed;
+  --accent-wash: #ffffff;
+  --scrim: rgb(0 0 0 / 30%);
+  --shadow: rgb(0 0 0 / 15%);
+  color-scheme: light;
 }
 
 @media (max-width: 640px) {
@@ -55,7 +96,6 @@
   flex-direction: column;
   min-width: 0;
   background: var(--bg-raised);
-  border-right: 1px solid var(--line);
 }
 
 /* One height for the top bar of every column — the sidebar's, the chat's, and
@@ -69,7 +109,6 @@
 .terminal-pane:first-child > .pane-head {
   box-sizing: border-box;
   height: var(--head-h);
-  border-bottom: 1px solid var(--line);
 }
 
 .sidebar-head {
@@ -77,7 +116,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--line);
 }
 
 .brand {
@@ -98,7 +136,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-card);
+  background: transparent;
   color: var(--fg-dim);
   border: none;
   border-radius: 6px;
@@ -109,8 +147,7 @@
 }
 
 .icon-btn:hover {
-  background: var(--blue);
-  color: var(--bg);
+  color: var(--fg);
 }
 
 .session-list {
@@ -192,8 +229,7 @@
 }
 
 .session-del:hover {
-  background: var(--red);
-  color: var(--bg);
+  color: var(--fg);
 }
 
 /* A session's state at a glance; the sidebar is the only place you see all of
@@ -242,7 +278,6 @@
   display: flex;
   flex-direction: column;
   padding: 4px 0;
-  border-top: 1px solid var(--line);
 }
 
 .devices-btn {
@@ -298,7 +333,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgb(0 0 0 / 55%);
+  background: var(--scrim);
 }
 
 .modal {
@@ -306,12 +341,11 @@
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--bg-raised);
   color: var(--fg);
   font-family: var(--mono);
-  box-shadow: 0 12px 40px rgb(0 0 0 / 50%);
+  box-shadow: 0 12px 40px var(--shadow);
 }
 
 .modal-head {
@@ -383,7 +417,6 @@
 .device-action {
   flex: 0 0 auto;
   padding: 3px 8px;
-  border: 1px solid var(--line);
   border-radius: 6px;
   background: transparent;
   color: var(--fg-dim);
@@ -404,7 +437,6 @@
 .install-box {
   margin: 2px 8px 10px 25px;
   padding: 10px;
-  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg);
 }
@@ -499,7 +531,6 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--line);
   background: var(--bg);
   /* Deliberately NOT `overflow-y: auto`. A scrollbar here would narrow the
      column when it appeared, which re-fits every terminal, which reflows
@@ -739,11 +770,11 @@
 
 /* Not red on hover: in a row, the last button is a download, not a close. */
 .tree-actions .pane-btn:last-child:hover {
-  background: var(--blue);
+  color: var(--fg);
 }
 
 .pane-btn.on {
-  color: var(--blue);
+  color: var(--fg);
 }
 
 .pane-btn.tree-toggle {
@@ -752,7 +783,7 @@
 
 /* Not the red the last button in a pane head gets: downloading is not closing. */
 .pane-btn.download:hover {
-  background: var(--blue);
+  color: var(--fg);
 }
 
 .pane-btn.busy {
@@ -806,12 +837,7 @@
 }
 
 .pane-btn:hover {
-  background: var(--blue);
-  color: var(--bg);
-}
-
-.pane-btn:last-child:hover {
-  background: var(--red);
+  color: var(--fg);
 }
 
 /* The Terminal component positions itself absolutely, so its parent has to be
@@ -854,10 +880,9 @@
   min-width: 132px;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg-raised);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+  box-shadow: 0 6px 20px var(--shadow);
   overflow: hidden;
 }
 
@@ -898,25 +923,15 @@
   color: var(--bg);
 }
 
-/* Which engine, per row. Short because the sidebar is narrow and the colour
-   carries most of it. */
+/* Which engine, per row. Short because the sidebar is narrow. */
 .session-backend {
   flex: 0 0 auto;
   padding: 1px 4px;
   border-radius: 3px;
-  background: var(--line);
   color: var(--fg-dim);
   font-size: 0.692rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.session-backend.claude_code {
-  color: var(--accent);
-}
-
-.session-backend.codex {
-  color: var(--blue);
 }
 
 .session-queued {
@@ -951,7 +966,7 @@
 .drawer-scrim {
   position: absolute;
   inset: 0;
-  background: rgb(0 0 0 / 55%);
+  background: var(--scrim);
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -980,7 +995,7 @@
    edge, which shows over a white canvas page. */
 .drawer.open .sidebar {
   transform: none;
-  box-shadow: 4px 0 24px rgb(0 0 0 / 50%);
+  box-shadow: 4px 0 24px var(--shadow);
 }
 
 .pane-title {
@@ -1130,10 +1145,9 @@
   z-index: 50;
   min-width: 14rem;
   padding: 8px 12px;
-  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg-raised);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+  box-shadow: 0 8px 24px var(--shadow);
   font-size: 0.9rem;
 }
 
@@ -1227,3 +1241,47 @@
 .browser-type { display: flex; gap: 4px; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .browser-type input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .browser-screen { flex: 1; min-height: 0; background: #1a1a1a; }
+
+/* Settings: the same rows as the sidebar foot, in a dialog. */
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+
+.settings-theme,
+.settings-theme:hover {
+  cursor: default;
+  background: transparent;
+  color: var(--fg-dim);
+}
+
+.seg {
+  margin-left: auto;
+  display: inline-flex;
+  background: var(--bg);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.seg button {
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 0.846rem;
+  cursor: pointer;
+}
+
+.seg button + button {
+}
+
+.seg button:hover {
+  color: var(--fg);
+}
+
+.seg button.on {
+  background: var(--bg-card);
+  color: var(--fg);
+}

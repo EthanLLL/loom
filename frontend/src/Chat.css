@@ -15,7 +15,6 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px 14px;
-  border-bottom: 1px solid var(--line);
   background: var(--bg-raised);
 }
 
@@ -77,24 +76,22 @@
   color: var(--bg);
 }
 
-/* Terminal green, the shells' own cursor colour, so it reads as "the shell"
-   at a glance; filled while the column is showing. */
-.chip.button.terminal-toggle {
+/* Bare icons: no fill, dim until hovered, full colour while the column shows. */
+.chip.button.terminal-toggle,
+.chip.button.canvas-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 9px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+  padding: 3px 6px;
+  background: transparent;
+  color: var(--fg-dim);
 }
 
-.chip.button.terminal-toggle:hover {
-  background: color-mix(in srgb, var(--accent) 22%, var(--bg-card));
-}
-
-.chip.button.terminal-toggle.on {
-  background: var(--accent);
-  color: var(--bg);
+.chip.button.terminal-toggle:hover,
+.chip.button.canvas-toggle:hover,
+.chip.button.terminal-toggle.on,
+.chip.button.canvas-toggle.on {
+  color: var(--fg);
 }
 
 .chip.button.terminal-toggle svg,
@@ -105,25 +102,6 @@
 .chip.button.terminal-toggle .count {
   font-weight: 600;
   line-height: 1;
-}
-
-/* The canvas, in blue beside the terminal's green: the two take turns in the
-   same column, so they want to look like a pair and not the same button. */
-.chip.button.canvas-toggle {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 9px;
-  color: var(--blue);
-  background: color-mix(in srgb, var(--blue) 12%, var(--bg-card));
-}
-
-.chip.button.canvas-toggle:hover {
-  background: color-mix(in srgb, var(--blue) 22%, var(--bg-card));
-}
-
-.chip.button.canvas-toggle.on {
-  background: var(--blue);
-  color: var(--bg);
 }
 
 /* The backend booting. Seconds for Claude Code on a session's first turn (or
@@ -143,7 +121,7 @@
 .chat-banner {
   flex: 0 0 auto;
   padding: 6px 14px;
-  background: #3a1030;
+  background: var(--red-banner);
   color: var(--red);
   font-size: 0.923rem;
 }
@@ -171,18 +149,17 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: none;
   border-radius: 50%;
-  background: var(--bg-card);
+  background: var(--bg-raised);
   color: var(--fg);
   font-size: 1.2rem;
-  box-shadow: 0 4px 14px rgb(0 0 0 / 45%);
+  box-shadow: 0 4px 14px var(--shadow);
   cursor: pointer;
 }
 
 .to-bottom:hover {
-  border-color: var(--blue);
-  color: var(--blue);
+  background: var(--bg-card);
 }
 
 .timeline {
@@ -235,7 +212,6 @@
 .bubble.user {
   align-self: flex-end;
   background: var(--bg-card);
-  border: 1px solid var(--line);
 }
 
 /* Optimistic: shown the instant you hit enter, replaced by the authoritative
@@ -304,7 +280,7 @@
 .error {
   padding: 7px 10px;
   border-left: 2px solid var(--red);
-  background: #230a1c;
+  background: var(--red-wash);
   color: var(--red);
   white-space: pre-wrap;
 }
@@ -324,7 +300,6 @@ code {
 pre.code {
   margin: 8px 0;
   padding: 9px 11px;
-  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg-raised);
   overflow-x: auto;
@@ -335,7 +310,6 @@ pre.code {
 
 .tool {
   align-self: stretch;
-  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg-raised);
   overflow: hidden;
@@ -425,9 +399,8 @@ pre.code {
 .question {
   align-self: stretch;
   padding: 10px 12px;
-  border: 1px solid var(--accent);
   border-radius: 8px;
-  background: #04221a;
+  background: var(--accent-wash);
   line-height: 1.5;
 }
 
@@ -440,9 +413,8 @@ pre.code {
 
 .option {
   padding: 4px 10px;
-  border: 1px solid var(--accent);
   border-radius: 12px;
-  background: transparent;
+  background: var(--bg-card);
   color: var(--accent);
   font-family: var(--mono);
   font-size: 0.923rem;
@@ -554,9 +526,8 @@ pre.code {
   align-items: end;
   column-gap: 4px;
   padding: 5px;
-  border: 1px solid var(--line);
   border-radius: 1.4rem;
-  background: var(--bg-card);
+  background: var(--bg-raised);
 }
 
 /* Slash commands, offered while the first word starting with / is typed. */
@@ -572,9 +543,9 @@ pre.code {
   margin: 0;
   padding: 4px;
   list-style: none;
-  border: 1px solid var(--line);
   border-radius: 0.9rem;
-  background: var(--bg-card);
+  background: var(--bg-raised);
+  box-shadow: 0 6px 20px var(--shadow);
   z-index: 2;
 }
 
@@ -605,9 +576,6 @@ pre.code {
   text-overflow: ellipsis;
 }
 
-.composer-box:focus-within {
-  border-color: var(--blue);
-}
 
 .composer-box.multiline {
   grid-template-areas:
@@ -671,26 +639,23 @@ pre.code {
 }
 
 .composer-btn.send {
-  background: var(--blue);
-  color: var(--bg);
+  background: var(--send-bg);
+  color: var(--send-fg);
 }
 
 .composer-btn.send:disabled {
-  background: var(--line);
+  background: transparent;
   color: var(--fg-dim);
-  opacity: 0.6;
   cursor: default;
 }
 
 .composer-btn.stop {
   font-size: 0.9rem;
-  background: var(--line);
   color: var(--fg);
 }
 
 .composer-btn.stop:hover {
-  background: var(--red);
-  color: var(--bg);
+  color: var(--red);
 }
 
 /* ── Attachments ─────────────────────────────────────────────────────────
@@ -706,7 +671,6 @@ pre.code {
 }
 
 .composer-btn.attach:hover {
-  background: var(--line);
   color: var(--fg);
 }
 
@@ -740,7 +704,6 @@ pre.code {
   height: 56px;
   box-sizing: border-box;
   padding: 6px;
-  border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--bg-card);
   overflow: hidden;
@@ -846,8 +809,7 @@ pre.code {
 }
 
 .file-drop:hover {
-  background: var(--red);
-  color: var(--bg);
+  color: var(--fg);
 }
 
 /* A download link inside prose reads as a link, so it does not break the line. */

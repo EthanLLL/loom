@@ -1,12 +1,12 @@
 {
-  "name": "loom",
-  "short_name": "loom",
+  "name": "Loom",
+  "short_name": "Loom",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay"],
-  "background_color": "#010c18",
-  "theme_color": "#010c18",
+  "background_color": "#131314",
+  "theme_color": "#131314",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

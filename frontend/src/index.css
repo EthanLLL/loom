@@ -8,7 +8,7 @@ body,
   /* Set while an iOS keyboard is up; see viewport.ts. */
   height: var(--app-height, 100dvh);
   margin: 0;
-  background: #010c18;
+  background: var(--bg);
   overflow: hidden;
 }
 
