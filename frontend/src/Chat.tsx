@@ -1121,6 +1121,24 @@ function Composer({
     setText("")
   }
 
+  // On a touch keyboard, Enter waits for the text to settle. WeChat's
+  // hold-to-talk presses Enter on release and only then writes the rest of
+  // what was said, so sending at once sent half of it and left the rest in
+  // the box. Every change restarts the wait; the timer calls the latest
+  // `send`, which sees the text as it is by then.
+  const sendRef = useRef(send)
+  sendRef.current = send
+  const settle = useRef<number | undefined>(undefined)
+  const sendSettled = () => {
+    window.clearTimeout(settle.current)
+    settle.current = window.setTimeout(() => {
+      settle.current = undefined
+      if (composingRef.current) sendSettled()
+      else sendRef.current()
+    }, SETTLE_MS)
+  }
+  useEffect(() => () => window.clearTimeout(settle.current), [])
+
   return (
     <div className="composer">
       {attachments.items.length > 0 && (
@@ -1195,6 +1213,7 @@ function Composer({
             setText(e.target.value)
             setPick(0)
             setDismissed(null)
+            if (settle.current !== undefined) sendSettled()
           }}
           // A pasted screenshot is the commonest attachment there is, and it
           // never exists as a file on disk to pick.
@@ -1247,7 +1266,8 @@ function Composer({
             if (e.nativeEvent.isComposing || composingRef.current) return
 
             e.preventDefault()
-            send()
+            if (matchMedia("(pointer: coarse)").matches) sendSettled()
+            else send()
           }}
         />
 
@@ -1289,6 +1309,9 @@ function Composer({
 
 // Past this the box scrolls instead of eating the conversation.
 const MAX_LINES = 6
+
+// How long a touch keyboard's Enter waits for text still arriving.
+const SETTLE_MS = 400
 
 /**
  * One pending attachment: uploading, failed, or ready to go. Once the server
