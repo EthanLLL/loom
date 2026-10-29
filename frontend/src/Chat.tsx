@@ -1181,6 +1181,9 @@ function Composer({
           className="composer-input"
           value={text}
           rows={1}
+          // Enter sends, so the phone keyboard should say so. WeChat's
+          // keyboard also only sends after hold-to-talk when the key is "send".
+          enterKeyHint="send"
           placeholder={
             busy
               ? "Steer the agent mid-turn…"
