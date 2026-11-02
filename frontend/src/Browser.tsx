@@ -22,6 +22,7 @@ export function Browser({
   onClose: () => void
 }) {
   const screen = useRef<HTMLDivElement>(null)
+  const catcher = useRef<HTMLTextAreaElement>(null)
   const rfb = useRef<RFB | null>(null)
   const [state, setState] = useState<"connecting" | "connected" | "closed">("connecting")
   const [attempt, setAttempt] = useState(0)
@@ -68,6 +69,38 @@ export function Browser({
     }
   }
   const key = (keysym: number) => rfb.current?.sendKey(keysym, null)
+
+  // Paste from this device's clipboard into the page. noVNC swallows every key
+  // on its canvas, ⌘V and Ctrl+V included, so no paste event would fire: catch
+  // the shortcut first and move focus to a hidden field, where the browser's
+  // own paste lands, and type the text in. Not through the remote clipboard:
+  // the remote Chromium reads x11vnc's clipboard once and pastes that from
+  // then on. The ⌘ or Ctrl already went through and is held on the remote
+  // end; noVNC lets go of every key it holds when the window loses focus, so
+  // tell it the window did.
+  useEffect(() => {
+    const el = screen.current
+    if (!el) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "KeyV" || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return
+      e.stopPropagation()
+      window.dispatchEvent(new Event("blur"))
+      catcher.current?.focus()
+      // The paste, if there is one, has landed by now; give the keys back.
+      setTimeout(() => rfb.current?.focus())
+    }
+    el.addEventListener("keydown", onKey, true)
+    return () => el.removeEventListener("keydown", onKey, true)
+  }, [])
+
+  const paste = (e: React.ClipboardEvent) => {
+    e.preventDefault()
+    const lines = e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n").split("\n")
+    lines.forEach((line, i) => {
+      if (i > 0) key(0xff0d)
+      send(line.replaceAll("\t", " "))
+    })
+  }
 
   return (
     <div className="browser-pane">
@@ -149,7 +182,8 @@ export function Browser({
           </button>
         </form>
       )}
-      <div className="browser-screen" ref={screen} />
+      <div className="browser-screen" ref={screen} onPaste={paste} />
+      <textarea ref={catcher} className="browser-paste" onPaste={paste} tabIndex={-1} aria-hidden="true" />
     </div>
   )
 }

@@ -1315,6 +1315,9 @@
 .browser-type input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .browser-screen { flex: 1; min-height: 0; background: #1a1a1a; }
 
+/* Where a paste lands on its way to the remote clipboard; see Browser.tsx. */
+.browser-paste { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
 /* Settings: the same rows as the sidebar foot, in a dialog. */
 .settings-list {
   display: flex;
