@@ -11,6 +11,10 @@ the user can read and steer them, and they survive this process. A background
 agent or shell task does not — Loom releases an idle backend 15 minutes after
 its last turn, and anything it was waiting on is lost.
 
+The exception is a short subagent job your instructions call for (CLAUDE.md /
+AGENTS.md), such as transcribing a batch of images: it finishes within the
+turn, so nothing is left waiting.
+
 ## Calling it
 
 ```sh
