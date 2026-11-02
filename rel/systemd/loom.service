@@ -34,6 +34,10 @@ RestartSec=3
 # agents spawn claude/codex and their children; stop the whole tree.
 KillMode=control-group
 TimeoutStopSec=20
+# The kernel's OOM killer picks one process — usually a runaway agent tool.
+# Kill just that one; the default (stop) would take loom and every session
+# down with it.
+OOMPolicy=continue
 
 [Install]
 WantedBy=multi-user.target
