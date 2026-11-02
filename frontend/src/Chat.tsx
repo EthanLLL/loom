@@ -219,6 +219,7 @@ export function Chat({
         )}
 
         <Composer
+          sessionId={session.id}
           busy={busy}
           interrupted={transcript.status === "interrupted"}
           attachments={attachments}
@@ -1040,19 +1041,28 @@ function commandMatches(text: string) {
 }
 
 function Composer({
+  sessionId,
   busy,
   interrupted,
   attachments,
   onSubmit,
   onInterrupt,
 }: {
+  sessionId: string
   busy: boolean
   interrupted: boolean
   attachments: Attachments
   onSubmit: (text: string) => void
   onInterrupt: () => void
 }) {
-  const [text, setText] = useState("")
+  // The draft outlives the component: switching sessions rebuilds the chat,
+  // and a half-written message should be there on the way back.
+  const draftKey = `loom_draft:${sessionId}`
+  const [text, setText] = useState(() => localStorage.getItem(draftKey) ?? "")
+  useEffect(() => {
+    if (text === "") localStorage.removeItem(draftKey)
+    else localStorage.setItem(draftKey, text)
+  }, [draftKey, text])
   const ref = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   // True between compositionstart and compositionend. Needed in addition to
