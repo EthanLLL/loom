@@ -47,6 +47,9 @@ defmodule Loom.Agent.Output do
 
   Names the absolute path, says it is the one place the user can download from,
   and asks for links in the `output/<name>` form the UI turns into downloads.
+  Also the session's id and lifetime: the backend process is released when
+  idle, so work meant to outlive the turn goes through Loom (the `sessions`
+  and `cron` skills), not the engine's own background tasks.
   """
   def instructions(session_id) do
     dir = Store.output_dir(session_id)
@@ -71,6 +74,13 @@ defmodule Loom.Agent.Output do
     index.html opens as a page, any other is offered as a zip). The page runs \
     sandboxed with no access to Loom itself; it may load libraries from public \
     CDNs. Don't build a page when a plain file is what the user asked for.
+
+    This session's id is #{session_id}. Loom stops this backend process when \
+    the session sits idle and whenever Loom restarts, so nothing started in \
+    the background — shell jobs, subagents, timers — outlives the turn it was \
+    started in. For parallel work, start Loom sessions (the `sessions` skill); \
+    for scheduled prompts and check-ins on long-running work, use Loom's cron \
+    (the `cron` skill). A subagent that finishes within the turn is fine.
     """
   end
 

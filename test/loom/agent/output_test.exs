@@ -161,4 +161,11 @@ defmodule Loom.Agent.OutputTest do
     assert text =~ "(output/"
     assert text =~ "#{dir}/<name>/index.html"
   end
+
+  test "the instructions give the session id and send lasting work through Loom", %{id: id} do
+    text = Output.instructions(id)
+    assert text =~ "This session's id is #{id}."
+    assert text =~ "`sessions` skill"
+    assert text =~ "`cron` skill"
+  end
 end
