@@ -24,7 +24,8 @@ The task, written to stand on its own.
 EOF
 )"
 $B rpc 'IO.inspect(Loom.Agent.info("a_xxx").status)'       # :running, :idle, :interrupted…
-$B rpc 'IO.inspect(Loom.Agent.attach("a_xxx").events |> Enum.filter(&(&1.kind == :assistant_text)) |> Enum.map(& &1.payload.text) |> List.last())'
+$B rpc '{:ok, %{events: ev}} = Loom.Agent.attach("a_xxx")
+IO.puts(ev |> Enum.filter(&(&1.kind == :assistant_text)) |> List.last() |> then(& &1.payload.text))'   # last reply
 ```
 
 - `backend:` is `:claude_code` or `:codex`, fixed for the session's life.

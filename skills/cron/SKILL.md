@@ -64,9 +64,8 @@ in their own zone so they can check it.
 For work that runs for hours outside this conversation (a benchmark, a batch
 job, a remote build), don't rely on background-task notifications: they die
 with the backend process, which Loom releases when idle or restarts. Add a job
-targeting your own session (its id is the `a_…` in your output directory
-path, `~/.loom/sessions/<id>/output`)
-whose prompt says it is a cron check-in, how to check progress, what to do
-when done (report, clean up), and to delete this job (give its id) once
-finished. Keep a hard failsafe on the resources themselves too, e.g.
-`shutdown -h +N` on a temporary instance.
+targeting your own session (the `a_…` id in your output directory path,
+`~/.loom/sessions/<id>/output`) whose prompt says it is a cron check-in, how
+to check progress, what to do when done (report, clean up), and to delete this
+job (give its id) once finished. Keep a hard failsafe on the resources
+themselves too, e.g. `shutdown -h +N` on a temporary instance.
