@@ -57,6 +57,7 @@ const THEMES: { value: ThemePref; label: string }[] = [
   { value: "system", label: "System" },
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
+  { value: "coolnight", label: "Cool Night" },
 ]
 
 function ThemeRow() {

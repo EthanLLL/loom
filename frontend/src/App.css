@@ -59,6 +59,78 @@
   color-scheme: light;
 }
 
+/* Cool Night, the iTerm2 scheme the terminal pane already uses (see
+   Terminal.tsx): navy surfaces, mint for what is on, and send. */
+:root[data-theme="coolnight"] {
+  --bg: #010c18;
+  --bg-raised: #04101f;
+  --bg-card: #0b1f33;
+  --send-bg: #38ff9d;
+  --send-fg: #010c18;
+  --line: #16314f;
+  --fg: #ecdef4;
+  --fg-dim: #7f93a8;
+  --accent: #38ff9d;
+  --blue: #388eff;
+  --red: #ff54b0;
+  --red-wash: #1c0a22;
+  --red-banner: #2a0e2e;
+  --accent-wash: #04101f;
+  --scrim: rgb(0 0 0 / 55%);
+  --shadow: rgb(0 0 0 / 50%);
+  color-scheme: dark;
+}
+
+/* Cool Night also brings back the thin rules the other themes dropped for
+   tone-on-tone surfaces: hairlines between panes, outlines on boxes. Kept
+   here, scoped to the theme, so the shared rules stay borderless. */
+:root[data-theme="coolnight"] .sidebar {
+  border-right: 1px solid var(--line);
+}
+
+:root[data-theme="coolnight"] .side-column {
+  border-left: 1px solid var(--line);
+}
+
+:root[data-theme="coolnight"] .sidebar-head,
+:root[data-theme="coolnight"] .chat-header,
+:root[data-theme="coolnight"] canvas > .pane-head,
+:root[data-theme="coolnight"] .terminal-pane:first-child > .pane-head {
+  border-bottom: 1px solid var(--line);
+}
+
+:root[data-theme="coolnight"] .sidebar-foot {
+  border-top: 1px solid var(--line);
+}
+
+:root[data-theme="coolnight"] .modal,
+:root[data-theme="coolnight"] .install-box,
+:root[data-theme="coolnight"] .backend-menu,
+:root[data-theme="coolnight"] .which-key,
+:root[data-theme="coolnight"] .command-menu,
+:root[data-theme="coolnight"] .bubble.user,
+:root[data-theme="coolnight"] pre.code,
+:root[data-theme="coolnight"] .tool,
+:root[data-theme="coolnight"] .file-card,
+:root[data-theme="coolnight"] .device-action,
+:root[data-theme="coolnight"] .to-bottom,
+:root[data-theme="coolnight"] .composer-box,
+:root[data-theme="coolnight"] .login-input {
+  border: 1px solid var(--line);
+}
+
+:root[data-theme="coolnight"] .question,
+:root[data-theme="coolnight"] .option {
+  border: 1px solid var(--accent);
+}
+
+:root[data-theme="coolnight"] .device-action:hover,
+:root[data-theme="coolnight"] .to-bottom:hover,
+:root[data-theme="coolnight"] .composer-box:focus-within,
+:root[data-theme="coolnight"] .login-input:focus {
+  border-color: var(--blue);
+}
+
 @media (max-width: 640px) {
   :root {
     --head-h: 3.933rem;
@@ -417,8 +489,9 @@
 .device-action {
   flex: 0 0 auto;
   padding: 3px 8px;
+  border: none;
   border-radius: 6px;
-  background: transparent;
+  background: var(--bg-card);
   color: var(--fg-dim);
   font: inherit;
   font-size: 0.846rem;
@@ -426,8 +499,8 @@
 }
 
 .device-action:hover {
-  border-color: var(--blue);
-  color: var(--fg);
+  background: var(--blue);
+  color: var(--bg);
 }
 
 .device:hover .device-del {

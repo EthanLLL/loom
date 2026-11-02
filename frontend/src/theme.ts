@@ -2,12 +2,12 @@ import { useSyncExternalStore } from "react"
 
 /**
  * Light or dark, per device. "system" follows the OS (and changes with it, as
- * a phone does at dusk); the other two pin it. The choice is put on <html> as
+ * a phone does at dusk); the others pin it — Cool Night is a second dark. The choice is put on <html> as
  * `data-theme`, where App.css swaps its variables, and in the browser's
  * theme-color so the status bar matches.
  */
-export type ThemePref = "system" | "light" | "dark"
-export type Theme = "light" | "dark"
+export type Theme = "light" | "dark" | "coolnight"
+export type ThemePref = "system" | Theme
 
 const KEY = "loom_theme"
 const dark = window.matchMedia("(prefers-color-scheme: dark)")
@@ -15,7 +15,7 @@ const listeners = new Set<() => void>()
 
 function pref(): ThemePref {
   const v = localStorage.getItem(KEY)
-  return v === "light" || v === "dark" ? v : "system"
+  return v === "light" || v === "dark" || v === "coolnight" ? v : "system"
 }
 
 function resolve(p: ThemePref): Theme {

@@ -18,9 +18,10 @@
     <script>
       try {
         var t = localStorage.getItem("loom_theme")
-        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+        if (t !== "light" && t !== "dark" && t !== "coolnight") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
         document.documentElement.dataset.theme = t
         if (t === "light") document.querySelector('meta[name="theme-color"]').content = "#faf9f9"
+        if (t === "coolnight") document.querySelector('meta[name="theme-color"]').content = "#010c18"
       } catch (e) {}
     </script>
     <meta name="apple-mobile-web-app-title" content="Loom" />
