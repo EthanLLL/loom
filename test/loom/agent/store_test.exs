@@ -84,4 +84,35 @@ defmodule Loom.Agent.StoreTest do
     assert Store.migrate_legacy() == :ok
     assert File.stat!(Path.join(Store.session_dir(id), "meta.json")).mtime == stat.mtime
   end
+
+  describe "delete_session/1" do
+    test "moves the session into the trash rather than removing it" do
+      id = "a_gone"
+      Store.write_meta(id, %{id: id, title: "t"})
+      File.write!(Path.join(Store.session_dir(id), "events.jsonl"), ~s({"seq":1}\n))
+
+      assert Store.delete_session(id) == :ok
+
+      refute File.exists?(Store.session_dir(id))
+      assert [kept] = File.ls!(Store.trash_dir())
+      assert kept =~ ~r/^a_gone\.\d+$/
+      assert File.read!(Path.join([Store.trash_dir(), kept, "events.jsonl"])) =~ ~s("seq":1)
+      # The trash is not a session.
+      assert Store.list_metas() == []
+    end
+
+    test "refuses an id that would name the data directory or step out of it" do
+      Store.write_meta("a_kept", %{id: "a_kept"})
+
+      for id <- ["", ".", "..", ".trash", "../x", "a/b", "/"] do
+        assert Store.delete_session(id) == {:error, :invalid_id}
+      end
+
+      assert {:ok, _} = Store.read_meta("a_kept")
+    end
+
+    test "an id with nothing on disk is fine" do
+      assert Store.delete_session("a_never") == :ok
+    end
+  end
 end

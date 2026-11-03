@@ -13,6 +13,7 @@ defmodule Loom.Agent.Store do
       ~/.loom/sessions/<id>/events.jsonl  normalized transcript events, append-only
       ~/.loom/sessions/<id>/files/…        what the user attached to the session
       ~/.loom/sessions/<id>/output/…       what the agent made for the user
+      ~/.loom/sessions/.trash/<id>.<ms>/   a deleted session, kept whole
 
   Under the user's home rather than the release, because `priv/` is replaced
   wholesale by a deploy and none of this should be.
@@ -212,10 +213,38 @@ defmodule Loom.Agent.Store do
     end
   end
 
-  @doc "Remove a session's directory and everything in it."
+  @doc """
+  Where deleted sessions go — `.trash` inside `data_dir/0`. The dot keeps it
+  out of `list_metas/0` (no header) and out of anyone's `a_*` glob.
+  """
+  def trash_dir, do: Path.join(data_dir(), ".trash")
+
+  @doc """
+  Move a session's directory into `trash_dir/0`, as `<id>.<unix ms>` so the
+  same id can be deleted twice. Nothing is ever removed: getting a session back
+  is a `mv` away, and emptying the trash is left to a human.
+
+  Refuses anything that is not a single plain path segment. `Path.join(dir, "")`
+  is `dir`, so an empty id once took every session down with it.
+  """
   def delete_session(id) do
-    File.rm_rf!(session_dir(id))
-    :ok
+    if valid_id?(id) do
+      trash = trash_dir()
+      File.mkdir_p!(trash)
+      target = Path.join(trash, "#{id}.#{System.system_time(:millisecond)}")
+
+      case File.rename(session_dir(id), target) do
+        :ok -> :ok
+        {:error, :enoent} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, :invalid_id}
+    end
+  end
+
+  defp valid_id?(id) do
+    is_binary(id) and id != "" and not String.starts_with?(id, ".") and Path.basename(id) == id
   end
 
   # ── Append-only logs ──────────────────────────────────────────────────────
