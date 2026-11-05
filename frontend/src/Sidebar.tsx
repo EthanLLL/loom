@@ -84,14 +84,15 @@ export function Sidebar({
 
       <div className="session-list">
         <NewChat onCreate={onCreate} />
-        {/* Always there, so where everything else went is never a mystery. */}
-        <div className="session more" onClick={onMore}>
-          <Folder />
-          <span className="session-label">More…</span>
-          {sessions.length > root.length && (
+        {/* Only once something is filed away: the first directory is made
+            from a session's "Move to…", not from here. */}
+        {sessions.length > root.length && (
+          <div className="session more" onClick={onMore}>
+            <Folder />
+            <span className="session-label">More…</span>
             <span className="session-when">{sessions.length - root.length}</span>
-          )}
-        </div>
+          </div>
+        )}
 
         {root.map((s) => (
           <div
