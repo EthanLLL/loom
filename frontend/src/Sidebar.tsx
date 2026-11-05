@@ -1,10 +1,12 @@
-import { Globe, MonitorSmartphone, PanelLeftClose, Plus, Settings, X } from "lucide-react"
+import { Folder, Globe, MonitorSmartphone, PanelLeftClose, Plus, Search, Settings } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { RenameInput } from "./Confirm"
 import { DevicesDialog } from "./Devices"
-import { backendShort } from "./format"
+import { ROOT } from "./directories"
+import { ago, backendShort } from "./format"
 import type { Push } from "./push"
+import { RowMenu } from "./RowMenu"
 import { SettingsDialog } from "./Settings"
 import { lastActive } from "./useLobby"
 
@@ -24,6 +26,10 @@ type Props = {
   onSelect: (id: string) => void
   onCreate: (backend: AgentBackend) => void
   onDelete: (id: string) => void
+  onMove: (id: string) => void
+  // Search, and every directory: both open over the chat.
+  onSearch: () => void
+  onMore: () => void
   onCollapse: () => void
   browserOpen: boolean
   onToggleBrowser: () => void
@@ -42,6 +48,9 @@ export function Sidebar({
   onSelect,
   onCreate,
   onDelete,
+  onMove,
+  onSearch,
+  onMore,
   onCollapse,
   browserOpen,
   onToggleBrowser,
@@ -56,13 +65,17 @@ export function Sidebar({
   const [devicesOpen, setDevicesOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const online = devices.filter((d) => d.online).length
+  // Only the root's sessions; the rest are a directory away, under "More…".
+  const root = sessions.filter((s) => (s.directory ?? ROOT) === ROOT)
 
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
         <span className="brand">Loom</span>
         <span className="sidebar-actions">
-          <NewSessionButton onCreate={onCreate} />
+          <button className="icon-btn" onClick={onSearch} title={vim?.on ? "Search (␣␣)" : "Search"}>
+            <Search />
+          </button>
           <button className="icon-btn" onClick={onCollapse} title="Hide sidebar">
             <PanelLeftClose />
           </button>
@@ -70,11 +83,9 @@ export function Sidebar({
       </div>
 
       <div className="session-list">
-        {sessions.length === 0 && (
-          <div className="session-empty">No sessions yet.</div>
-        )}
+        <NewChat onCreate={onCreate} />
 
-        {sessions.map((s) => (
+        {root.map((s) => (
           <div
             key={s.id}
             ref={s.id === cursorId ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
@@ -98,25 +109,30 @@ export function Sidebar({
               className="session-when"
               title={"last active " + new Date(lastActive(s)).toLocaleString()}
             >
-              {when(lastActive(s))}
+              {ago(lastActive(s))}
             </span>
             {/* Which engine is running it is not a detail: the two behave
                 differently and the binding is permanent. */}
             <span className={"session-backend " + s.backend}>
               {backendShort(s.backend)}
             </span>
-            <button
-              className="session-del"
-              title="Delete session and its history"
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete(s.id)
-              }}
-            >
-              <X />
-            </button>
+            <RowMenu
+              items={[
+                { label: "Move to…", run: () => onMove(s.id) },
+                { label: "Delete", danger: true, run: () => onDelete(s.id) },
+              ]}
+            />
           </div>
         ))}
+
+        {/* Always there, so where everything else went is never a mystery. */}
+        <div className="session more" onClick={onMore}>
+          <Folder />
+          <span className="session-label">More…</span>
+          {sessions.length > root.length && (
+            <span className="session-when">{sessions.length - root.length}</span>
+          )}
+        </div>
       </div>
 
       <div className="sidebar-foot">
@@ -167,18 +183,15 @@ export function Sidebar({
 }
 
 /**
- * Creating a session means choosing an engine, so there is no plain "+".
+ * Creating a session means choosing an engine, so "New chat" asks which.
  *
  * The choice cannot be changed later — the conversation lives in that engine's
- * own store — so it is made explicitly rather than defaulted.
+ * own store — so it is made explicitly rather than defaulted. New sessions
+ * start at the root; "Move to…" files them.
  */
-function NewSessionButton({
-  onCreate,
-}: {
-  onCreate: (backend: AgentBackend) => void
-}) {
+function NewChat({ onCreate }: { onCreate: (backend: AgentBackend) => void }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
@@ -195,29 +208,17 @@ function NewSessionButton({
   }
 
   return (
-    <span className="new-session" ref={ref}>
-      <button
-        className="icon-btn"
-        onClick={() => setOpen((v) => !v)}
-        title="New session"
-      >
+    <div className="new-session" ref={ref}>
+      <div className="session new-chat" onClick={() => setOpen((v) => !v)}>
         <Plus />
-      </button>
+        <span className="session-label">New chat</span>
+      </div>
       {open && (
         <div className="backend-menu">
           <button onClick={() => choose("claude_code")}>Claude Code</button>
           <button onClick={() => choose("codex")}>Codex</button>
         </div>
       )}
-    </span>
+    </div>
   )
-}
-
-function when(ms: number): string {
-  const mins = Math.floor((Date.now() - ms) / 60000)
-  if (mins < 1) return "now"
-  if (mins < 60) return `${mins}m`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h`
-  return `${Math.floor(hours / 24)}d`
 }

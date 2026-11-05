@@ -382,7 +382,10 @@ tied to an agent session.
 ```
 App.tsx           layout: sidebar | chat | terminals or canvas (drawer + overlay on phones)
 Canvas.tsx        the canvas pane; canvasItems.ts decides what opens there
-Sidebar.tsx       session list, new-session menu
+Sidebar.tsx       the root's sessions, "New chat", "More…"
+Directories.tsx   every directory as columns; directories.ts derives them from the sessions' prefixes
+MovePicker.tsx    "Move to…" for a session or a directory
+Search.tsx        ␣␣: titles filtered here (fuzzy.ts), what was said searched by rg on the server
 Chat.tsx          timeline, tool cards, queue, composer
 agent.ts          pure reducers: applySnapshot / applyEvent / applyDelta / buildTimeline / foldFinished
 markdown.tsx      markdown for assistant messages only
@@ -392,6 +395,16 @@ keys.tsx          vim-style keys, desktop only (docs/keys.md)
 useAgent.ts       one agent channel's lifecycle
 ```
 
+- **Directories are S3 prefixes.** A session's header carries `directory`
+  (`"work/aws"`, `""` for the root); a directory exists while some session is
+  in or under it, and nothing else records it. Moving or renaming one rewrites
+  the prefix on each session under it (`Loom.Agent.move_directory/2`). The
+  session's id and its directory on disk never change.
+- **Search is two searches.** Titles are already in the browser and are matched
+  fuzzily on every keystroke, IME composition included. Transcripts are
+  searched by ripgrep (`Loom.Search`, over the lobby channel), 200 ms after the
+  last keystroke and never mid-composition; only user messages and replies
+  count, and a newer search kills the one still running.
 - **All transcript rules live in `agent.ts`**, as pure functions. When a turn
   is finished, `foldFinished` collapses its consecutive tool calls into one
   "used N tools" card.

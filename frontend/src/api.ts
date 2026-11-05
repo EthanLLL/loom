@@ -138,6 +138,9 @@ export type AgentStatus = "idle" | "starting" | "running" | "interrupted"
 export type AgentInfo = {
   id: string
   title: string | null
+  // Where the session list files it, S3-style: a path like "work/aws", or ""
+  // for the root. Directories are only these prefixes; see `directories.ts`.
+  directory: string
   backend: AgentBackend
   backend_label: string
   created_at: number
@@ -193,6 +196,41 @@ export async function renameAgent(
   if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`renameAgent failed: ${res.status}`)
   return res.json()
+}
+
+// Only the header changes: the session keeps its id, URL and files.
+export async function moveAgent(id: string, directory: string): Promise<AgentInfo> {
+  const res = await fetch(`/api/agents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ directory }),
+  })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`moveAgent failed: ${res.status}`)
+  return res.json()
+}
+
+// Renames a directory, or moves it with everything under it: whole paths both.
+// The sessions it touches arrive over the lobby as they change.
+export async function moveDirectory(from: string, to: string): Promise<void> {
+  const res = await fetch("/api/directories/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ from, to }),
+  })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`moveDirectory failed: ${res.status}`)
+}
+
+/** One message that matched a content search; see `Loom.Search`. */
+export type SearchHit = {
+  id: string
+  seq: number
+  at: number
+  kind: "user" | "assistant_text"
+  before: string
+  match: string
+  after: string
 }
 
 // Permanent: the server discards the session's history too, otherwise it would

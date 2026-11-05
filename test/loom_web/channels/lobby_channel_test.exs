@@ -79,6 +79,22 @@ defmodule LoomWeb.LobbyChannelTest do
     assert seq > before
   end
 
+  test "a move is pushed like any header change", %{id: id} do
+    {:ok, _reply, _socket} = join_lobby()
+
+    :ok = Agent.move(id, "family/体重")
+
+    assert_push "session", %{id: ^id, directory: "family/体重"}
+  end
+
+  test "search is answered by ref, and finds what was typed", %{id: id} do
+    {:ok, _reply, socket} = join_lobby()
+    {:ok, :started} = Agent.submit(id, "find the lobby needle")
+
+    ref = push(socket, "search", %{"q" => "needle"})
+    assert_reply ref, :ok, %{hits: [%{id: ^id, kind: "user", match: "needle"}]}
+  end
+
   test "status changes through a turn are pushed", %{id: id} do
     {:ok, _reply, _socket} = join_lobby()
 

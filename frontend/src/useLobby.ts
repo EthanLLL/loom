@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Channel } from "phoenix"
 import { getSocket } from "./socket"
-import type { AgentInfo, Device } from "./api"
+import type { AgentInfo, Device, SearchHit } from "./api"
 
 export type Watching = { endpoint: string; session: string | null }
 
@@ -16,6 +16,9 @@ type Lobby = {
   // push. The push still arrives and is merged by `seq`.
   upsert: (session: AgentInfo) => void
   drop: (id: string) => void
+  // Full-text search of every transcript, over this channel. A newer call makes
+  // the server kill the one before it, which then never answers.
+  search: (q: string) => Promise<SearchHit[]>
 }
 
 /**
@@ -121,6 +124,20 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
     if (endpoint) joinedChannel.current?.push("watching", { endpoint, session })
   }, [endpoint, session])
 
+  const search = useCallback(
+    (q: string) =>
+      new Promise<SearchHit[]>((resolve, reject) => {
+        const channel = joinedChannel.current
+        if (!channel) return reject(new Error("not connected"))
+        channel
+          .push("search", { q })
+          .receive("ok", ({ hits }: { hits: SearchHit[] }) => resolve(hits))
+          .receive("error", ({ reason }: { reason: string }) => reject(new Error(reason)))
+          .receive("timeout", () => reject(new Error("timeout")))
+      }),
+    [],
+  )
+
   // Most recently active first, so the conversation you are in stays on top.
   const sessions = useMemo(
     () => [...byId.values()].sort((a, b) => lastActive(b) - lastActive(a)),
@@ -130,7 +147,7 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
     () => [...devices.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [devices],
   )
-  return { sessions, devices: deviceList, upsertDevice, loaded, upsert, drop }
+  return { sessions, devices: deviceList, upsertDevice, loaded, upsert, drop, search }
 }
 
 export const lastActive = (s: AgentInfo) => s.last_active_at ?? s.created_at

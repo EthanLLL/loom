@@ -106,6 +106,54 @@ defmodule LoomWeb.AgentSessionControllerTest do
     end
   end
 
+  describe "directories" do
+    test "PATCH with a directory files the session there, and it survives a restore", %{
+      conn: conn
+    } do
+      %{"id" => id} = post(conn, ~p"/api/agents", %{backend: "codex"}) |> json_response(201)
+
+      conn = patch(conn, ~p"/api/agents/#{id}", %{directory: " work / aws "})
+      assert %{"directory" => "work/aws"} = json_response(conn, 200)
+
+      Agent.stop_session(id)
+      {:ok, _pid} = Agent.restore_session(id)
+      assert %{directory: "work/aws"} = Agent.info(id)
+    end
+
+    test "a bad directory is refused", %{conn: conn} do
+      %{"id" => id} = post(conn, ~p"/api/agents", %{backend: "codex"}) |> json_response(201)
+      assert conn |> patch(~p"/api/agents/#{id}", %{directory: "a/../b"}) |> json_response(422)
+    end
+
+    test "moving a directory takes everything under it, and only that", %{conn: conn} do
+      ids =
+        for dir <- ["work", "work/aws", "workshop", ""] do
+          %{"id" => id} = post(conn, ~p"/api/agents", %{backend: "codex"}) |> json_response(201)
+          :ok = Agent.move(id, dir)
+          id
+        end
+
+      assert conn
+             |> post(~p"/api/directories/move", %{from: "work", to: "job/2026"})
+             |> response(204)
+
+      assert Enum.map(ids, &Agent.info(&1).directory) == [
+               "job/2026",
+               "job/2026/aws",
+               "workshop",
+               ""
+             ]
+    end
+
+    test "a directory cannot go inside itself, and the root does not move", %{conn: conn} do
+      assert conn
+             |> post(~p"/api/directories/move", %{from: "a", to: "a/b"})
+             |> json_response(422)
+
+      assert conn |> post(~p"/api/directories/move", %{from: "", to: "b"}) |> json_response(422)
+    end
+  end
+
   describe "GET /api/agents" do
     test "lists live sessions with their backends", %{conn: conn} do
       post(conn, ~p"/api/agents", %{backend: "claude_code"})

@@ -59,6 +59,37 @@ defmodule Loom.Agent do
     Loom.Agent.Store.delete_session(id)
   end
 
+  @doc """
+  Move or rename a directory of the session list: every session whose path is
+  `from` or under it gets `from` swapped for `to`. Into a directory that already
+  exists is a merge, as with S3 prefixes. See `Loom.Agent.Directory`.
+
+  Not atomic across sessions — each header is its own file — but a move that
+  stops halfway leaves every session somewhere real, and running it again
+  finishes it.
+  """
+  def move_directory(from, to) do
+    alias Loom.Agent.Directory
+
+    with {:ok, from} <- Directory.normalize(from),
+         {:ok, to} <- Directory.normalize(to),
+         :ok <- movable(from, to) do
+      for %{id: id, directory: dir} <- list_sessions(),
+          {:ok, new} <- [Directory.rebase(dir, from, to)],
+          do: Session.move(id, new)
+
+      :ok
+    end
+  end
+
+  defp movable("", _to), do: {:error, :root}
+
+  defp movable(from, to) do
+    if Loom.Agent.Directory.within?(to, from) and to != from,
+      do: {:error, :into_itself},
+      else: :ok
+  end
+
   @doc "List metadata for all live sessions, oldest first."
   def list_sessions do
     Loom.Agent.Registry
@@ -97,6 +128,7 @@ defmodule Loom.Agent do
   defdelegate interrupt(id), to: Session
   defdelegate drop_queued(id, index), to: Session
   defdelegate rename(id, title), to: Session
+  defdelegate move(id, directory), to: Session
   defdelegate attach(id, since_seq \\ 0), to: Session
   defdelegate info(id), to: Session
   defdelegate topic(id), to: Session

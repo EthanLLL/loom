@@ -31,6 +31,7 @@ defmodule LoomWeb.Router do
     post "/agents", AgentSessionController, :create
     patch "/agents/:id", AgentSessionController, :update
     delete "/agents/:id", AgentSessionController, :delete
+    post "/directories/move", AgentSessionController, :move_directory
 
     post "/agents/:id/files", AgentFileController, :create
     get "/agents/:id/files/:name", AgentFileController, :show

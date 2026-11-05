@@ -149,6 +149,12 @@ defmodule Loom.Agent.Session do
   def rename(id, title), do: GenServer.call(via(id), {:rename, title})
 
   @doc """
+  Put the session in a directory of the session list (`""` is the root). A
+  label like the title: only the header changes. See `Loom.Agent.Directory`.
+  """
+  def move(id, directory), do: GenServer.call(via(id), {:move, directory})
+
+  @doc """
   Attach for replay. Returns the session's metadata plus every event after
   `since_seq` (pass 0 for the whole retained transcript).
   """
@@ -259,6 +265,7 @@ defmodule Loom.Agent.Session do
         | backend: backend,
           handle: handle,
           title: meta[:title],
+          directory: restore_directory(meta[:directory]),
           created_at: meta[:created_at],
           last_active_at: last_active(transcript) || meta[:created_at],
           transcript: transcript,
@@ -312,6 +319,15 @@ defmodule Loom.Agent.Session do
   defp restore_status("interrupted"), do: :interrupted
   defp restore_status(_other), do: :idle
 
+  # A header written before directories existed, or edited by hand into
+  # something that is not a path, is at the root.
+  defp restore_directory(directory) do
+    case Loom.Agent.Directory.normalize(directory) do
+      {:ok, directory} -> directory
+      {:error, _} -> ""
+    end
+  end
+
   defp restore_queue(queue) when is_list(queue), do: Enum.filter(queue, &is_binary/1)
   defp restore_queue(_other), do: []
 
@@ -322,6 +338,8 @@ defmodule Loom.Agent.Session do
       # Backend-private. Only `Backend.persist/1` knows what of it to keep.
       handle: nil,
       title: nil,
+      # Where the session list files it; `""` is the root.
+      directory: "",
       created_at: nil,
       # When the last message went either way; orders the sidebar. Derived from
       # the transcript on restore rather than stored.
@@ -416,6 +434,20 @@ defmodule Loom.Agent.Session do
       state = emit(%{state | title: title}, :renamed, %{title: title})
       persist_meta(state)
       {:reply, :ok, state}
+    end
+  end
+
+  # No transcript event, unlike a rename: where the session is filed says
+  # nothing about the conversation. The header broadcast is what moves it.
+  def handle_call({:move, directory}, _from, state) do
+    case Loom.Agent.Directory.normalize(directory) do
+      {:ok, directory} ->
+        state = %{state | directory: directory}
+        persist_meta(state)
+        {:reply, :ok, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -831,6 +863,7 @@ defmodule Loom.Agent.Session do
       id: state.id,
       backend: state.backend,
       title: state.title,
+      directory: state.directory,
       created_at: state.created_at,
       status: state.status,
       seq: state.seq,
@@ -873,6 +906,7 @@ defmodule Loom.Agent.Session do
       backend: state.backend,
       backend_label: Backend.label(state.backend),
       title: state.title,
+      directory: state.directory,
       created_at: state.created_at,
       last_active_at: state.last_active_at,
       status: state.status,

@@ -4,10 +4,14 @@ import { Canvas } from "./Canvas"
 import { moved, touches, type CanvasItem } from "./canvasItems"
 import { Confirm } from "./Confirm"
 import { Chat } from "./Chat"
+import { Directories } from "./Directories"
+import { allDirectories, basename, join, parent, ROOT, within } from "./directories"
 import type { TreeNav } from "./FileBrowser"
 import { KeyHelp, useGlobalKey, useKeys, WhichKey, type Keymap } from "./keys"
 import { Login } from "./Login"
+import { MovePicker } from "./MovePicker"
 import { usePush, useVisible } from "./push"
+import { Search } from "./Search"
 import { Sidebar } from "./Sidebar"
 import { Terminal } from "./Terminal"
 // noVNC is only for the browser pane, so it loads when that is first opened.
@@ -24,6 +28,8 @@ import {
   renameAgent,
   getToken,
   listSessions,
+  moveAgent,
+  moveDirectory,
   onUnauthorized,
   type AgentBackend,
 } from "./api"
@@ -64,7 +70,7 @@ function App() {
   // Opened from a notification: `?session=` names the session to show, and
   // goes from the address bar once read.
   const [activeId, setActiveId] = useState<string | null>(takeSessionParam)
-  const { sessions, devices, upsertDevice, loaded, upsert, drop } = useLobby(
+  const { sessions, devices, upsertDevice, loaded, upsert, drop, search } = useLobby(
     authed,
     push.endpoint ? { endpoint: push.endpoint, session: visible ? activeId : null } : null,
   )
@@ -218,6 +224,18 @@ function App() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const remove = (id: string) => setDeleting(id)
   const [renaming, setRenaming] = useState<string | null>(null)
+
+  // ── Directories and search ───────────────────────────────────────────────
+  //
+  // Directories are prefixes on the sessions (see directories.ts); moving
+  // something only rewrites them, and the lobby pushes the result.
+  const [searching, setSearching] = useState(false)
+  const [browsing, setBrowsing] = useState(false)
+  const [moving, setMoving] = useState<{ session: string } | { dir: string } | null>(null)
+  const openOver = (open: (on: boolean) => void) => {
+    setDrawerOpen(false)
+    open(true)
+  }
   const renamed = async (id: string, title: string | null) => {
     if (title !== null) upsert(await renameAgent(id, title))
     setRenaming(null)
@@ -333,7 +351,8 @@ function App() {
     const at = from === null ? -1 : ids.indexOf(from)
     return ids[at === -1 ? 0 : Math.min(ids.length - 1, Math.max(0, at + by))]
   }
-  const ids = sessions.map((s) => s.id)
+  // What j/k, J/K walk: the list as the sidebar shows it, the root's sessions.
+  const ids = sessions.filter((s) => (s.directory ?? ROOT) === ROOT).map((s) => s.id)
 
   // Into the columns either side of the chat, opening them as needed: `h` and
   // `␣b` to the session list, `l` and `␣e` to the file tree.
@@ -351,6 +370,7 @@ function App() {
   }
 
   const leader: Keymap = {
+    "Space Space": { desc: "search titles and what was said", run: () => openOver(setSearching) },
     "Space e": {
       desc: "file tree (j/k, h/l, Enter)",
       run: () => {
@@ -446,6 +466,9 @@ function App() {
       onSelect={select}
       onCreate={create}
       onDelete={remove}
+      onMove={(id) => setMoving({ session: id })}
+      onSearch={() => openOver(setSearching)}
+      onMore={() => openOver(setBrowsing)}
       onCollapse={() => (narrow ? setDrawerOpen(false) : setSidebarOpen(false))}
       browserOpen={side === "browser"}
       onToggleBrowser={() => {
@@ -611,6 +634,44 @@ function App() {
         )}
       </main>
 
+      {browsing && (
+        <Directories
+          sessions={sessions}
+          activeId={activeId}
+          narrow={narrow}
+          onSelect={select}
+          onMoveSession={(id) => setMoving({ session: id })}
+          onDeleteSession={remove}
+          onMoveDirectory={(dir) => setMoving({ dir })}
+          onRenameDirectory={moveDirectory}
+          onClose={() => setBrowsing(false)}
+        />
+      )}
+      {searching && (
+        <Search sessions={sessions} search={search} onOpen={select} onClose={() => setSearching(false)} />
+      )}
+      {moving && (
+        <MovePicker
+          title={
+            "session" in moving
+              ? `Move ${sessions.find((s) => s.id === moving.session)?.title ?? moving.session} to…`
+              : `Move ${moving.dir} to…`
+          }
+          dirs={allDirectories(sessions)}
+          current={
+            "session" in moving
+              ? (sessions.find((s) => s.id === moving.session)?.directory ?? ROOT)
+              : parent(moving.dir)
+          }
+          // A directory cannot go into itself or anything under it.
+          allowed={"dir" in moving ? (d) => !within(d, moving.dir) : undefined}
+          onPick={async (dir) => {
+            if ("session" in moving) upsert(await moveAgent(moving.session, dir))
+            else await moveDirectory(moving.dir, join(dir, basename(moving.dir)))
+          }}
+          onClose={() => setMoving(null)}
+        />
+      )}
       {deleting && (
         <Confirm
           title={`Delete ${sessions.find((s) => s.id === deleting)?.title ?? deleting}?`}

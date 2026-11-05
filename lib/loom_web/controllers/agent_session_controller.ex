@@ -48,7 +48,17 @@ defmodule LoomWeb.AgentSessionController do
     })
   end
 
-  # PATCH /api/agents/:id — rename. Local to loom; never pushed to the backend.
+  # PATCH /api/agents/:id with `directory` — file it elsewhere in the session
+  # list (`""` is the root). See `Loom.Agent.Directory`.
+  def update(conn, %{"id" => id, "directory" => directory}) do
+    case Agent.move(id, directory) do
+      :ok -> json(conn, view(Agent.info(id)))
+      {:error, reason} -> conn |> put_status(:unprocessable_entity) |> json(%{error: reason})
+    end
+  end
+
+  # PATCH /api/agents/:id with `title` — rename. Local to loom; never pushed to
+  # the backend.
   def update(conn, %{"id" => id, "title" => title}) do
     case Agent.rename(id, title) do
       :ok -> json(conn, view(Agent.info(id)))
@@ -66,6 +76,15 @@ defmodule LoomWeb.AgentSessionController do
     send_resp(conn, :no_content, "")
   end
 
+  # POST /api/directories/move — rename a directory, or move it with everything
+  # under it: `from` and `to` are whole paths.
+  def move_directory(conn, %{"from" => from, "to" => to}) do
+    case Agent.move_directory(from, to) do
+      :ok -> send_resp(conn, :no_content, "")
+      {:error, reason} -> conn |> put_status(:unprocessable_entity) |> json(%{error: reason})
+    end
+  end
+
   defp build_opts(params), do: maybe_put([], :title, params["title"])
 
   defp maybe_put(opts, _key, nil), do: opts
@@ -79,6 +98,7 @@ defmodule LoomWeb.AgentSessionController do
     %{
       id: info.id,
       title: info.title,
+      directory: info.directory,
       backend: info.backend,
       backend_label: info.backend_label,
       created_at: info.created_at,

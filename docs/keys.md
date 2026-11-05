@@ -27,7 +27,7 @@ in Vim.
 | `Ctrl-d` / `Ctrl-u` | Half a page down / up |
 | `gg` / `G` | Top / bottom (at the bottom, new output is followed again) |
 | `h` / `l` | Into the session list / the file tree, as `␣b` / `␣e` do |
-| `J` / `K` | Next / previous session, in the sidebar's order |
+| `J` / `K` | Next / previous session, in the sidebar's order (the root's sessions; the rest are under "More…") |
 | `?` | All keys; `Esc` or `?` closes it |
 
 ## Leader (Space)
@@ -36,6 +36,7 @@ After Space, a box in the bottom right lists what can follow. `Esc` gives up.
 
 | Key | Does |
 |---|---|
+| `␣␣` | Search: titles as you type, and what was said (rg, a pause after typing — never while an IME is composing). Arrows or `Ctrl-n` / `Ctrl-p` choose, `Enter` opens, `Esc` closes |
 | `␣e` | The canvas's file tree; see below |
 | `␣b` | The session list; see below |
 | `␣t` | Terminals, shown or hidden. Showing them focuses the shell |

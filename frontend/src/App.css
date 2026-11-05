@@ -106,6 +106,7 @@
 :root[data-theme="coolnight"] .modal,
 :root[data-theme="coolnight"] .install-box,
 :root[data-theme="coolnight"] .backend-menu,
+:root[data-theme="coolnight"] .row-menu,
 :root[data-theme="coolnight"] .which-key,
 :root[data-theme="coolnight"] .command-menu,
 :root[data-theme="coolnight"] .bubble.user,
@@ -278,7 +279,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.session-del {
+.session-del,
+.row-more {
   flex: 0 0 auto;
   width: 1.467rem;
   height: 1.467rem;
@@ -296,12 +298,234 @@
   visibility: hidden;
 }
 
-.session:hover .session-del {
+.session:hover .session-del,
+.session:hover .row-more {
   visibility: visible;
 }
 
-.session-del:hover {
+.session-del:hover,
+.row-more:hover {
   color: var(--fg);
+}
+
+/* What "…" opens; on the body, at the button (see RowMenu.tsx). */
+.row-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  background: var(--bg-raised);
+  box-shadow: 0 6px 20px var(--shadow);
+  overflow: hidden;
+  font-family: var(--mono);
+}
+
+.row-menu button {
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.923rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-menu button:hover {
+  background: var(--line);
+}
+
+.row-menu button.danger {
+  color: var(--red);
+}
+
+/* The first and last rows of the list: making a session, and everything filed
+   away in directories. */
+.session.new-chat,
+.session.more {
+  color: var(--fg-dim);
+}
+
+.session.new-chat .session-label,
+.session.more .session-label {
+  color: var(--fg-dim);
+}
+
+.session.new-chat:hover .session-label,
+.session.more:hover .session-label {
+  color: var(--fg);
+}
+
+.new-session .backend-menu {
+  left: 8px;
+  right: auto;
+}
+
+/* ── Directories, "Move to", search: dialogs over the chat ─────────────── */
+
+.modal.directories {
+  width: min(64rem, 100%);
+  height: min(36rem, 100%);
+}
+
+.directories-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-columns {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow-x: auto;
+}
+
+.directory-column {
+  flex: 0 0 18rem;
+  overflow-y: auto;
+  padding: 6px;
+  border-right: 1px solid var(--line);
+}
+
+.directory-column:last-child {
+  border-right: 0;
+}
+
+.session.directory .directory-chevron {
+  color: var(--fg-dim);
+}
+
+.modal.picker {
+  width: min(32rem, 100%);
+  height: min(28rem, 100%);
+}
+
+.picker-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+
+.picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.picker-row.selected,
+.search-row.selected {
+  background: var(--bg-card);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.picker-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-note,
+.search-dir {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: 0.846rem;
+}
+
+.picker-error {
+  padding: 6px 12px;
+  color: var(--red);
+  font-size: 0.923rem;
+}
+
+.picker-empty,
+.search-empty {
+  padding: 12px;
+  color: var(--fg-dim);
+}
+
+.modal.search {
+  width: min(52rem, 100%);
+  height: min(40rem, 100%);
+}
+
+/* Reversed: the best match sits right above the prompt, as in telescope. */
+.search-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.search-row {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.search-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.search-row-head .dot {
+  margin-left: 0;
+}
+
+.search-snippet {
+  margin: 2px 0 0 18px;
+  color: var(--fg-dim);
+  font-size: 0.923rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-snippet mark {
+  background: none;
+  color: var(--blue);
+  font-weight: bold;
+}
+
+.search-prompt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--fg-dim);
+}
+
+.search-prompt .picker-input {
+  border-bottom: 0;
+  padding-left: 0;
 }
 
 /* A session's state at a glance; the sidebar is the only place you see all of
@@ -1120,7 +1344,8 @@
 /* No hover on a touch screen, so the delete button would never appear. It is
    shown, and deleting asks first; see `remove` in App.tsx. */
 @media (hover: none) {
-  .session-del {
+  .session-del,
+  .row-more {
     visibility: visible;
   }
 }
@@ -1129,8 +1354,15 @@
    input under 16px). */
 @media (max-width: 640px) {
   .device-add input,
-  .device-name-input {
+  .device-name-input,
+  .picker-input {
     font-size: 16px;
+  }
+
+  /* One column at a time on a phone; a back button goes up. */
+  .directory-column {
+    flex: 1 1 auto;
+    border-right: 0;
   }
 }
 

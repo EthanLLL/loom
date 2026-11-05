@@ -15,6 +15,9 @@ defmodule LoomWeb.LobbyChannel do
                    showing (`nil` when none, or the app is hidden), so its
                    notifications for that session are held back; see
                    `Loom.Push`
+    - "search"   : `%{q:}`, full-text search of every transcript; replied to
+                   with `%{hits: [...]}` (`Loom.Search.content/1`) or
+                   `%{reason:}`. A new one cancels the one still running.
 
   A summary is what `GET /api/agents` returns for one session, plus `seq`. The
   client keeps whichever copy of a session has the higher `seq`: the channel is
@@ -41,6 +44,24 @@ defmodule LoomWeb.LobbyChannel do
       when is_binary(endpoint) do
     Loom.Push.watching(endpoint, params["session"], self())
     {:noreply, socket}
+  end
+
+  # Off the channel process, so a slow search never holds up the list's own
+  # pushes; replied to from there by ref. Typing sends one per pause, and only
+  # the newest is wanted, so the one before it is killed (its rg goes with it).
+  def handle_in("search", %{"q" => q}, socket) when is_binary(q) do
+    if pid = socket.assigns[:search], do: Process.exit(pid, :kill)
+    ref = socket_ref(socket)
+
+    pid =
+      spawn(fn ->
+        case Loom.Search.content(q) do
+          {:ok, hits} -> reply(ref, {:ok, %{hits: hits}})
+          {:error, reason} -> reply(ref, {:error, %{reason: inspect(reason)}})
+        end
+      end)
+
+    {:noreply, assign(socket, :search, pid)}
   end
 
   @impl true
