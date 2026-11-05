@@ -84,6 +84,14 @@ export function Sidebar({
 
       <div className="session-list">
         <NewChat onCreate={onCreate} />
+        {/* Always there, so where everything else went is never a mystery. */}
+        <div className="session more" onClick={onMore}>
+          <Folder />
+          <span className="session-label">More…</span>
+          {sessions.length > root.length && (
+            <span className="session-when">{sessions.length - root.length}</span>
+          )}
+        </div>
 
         {root.map((s) => (
           <div
@@ -125,14 +133,6 @@ export function Sidebar({
           </div>
         ))}
 
-        {/* Always there, so where everything else went is never a mystery. */}
-        <div className="session more" onClick={onMore}>
-          <Folder />
-          <span className="session-label">More…</span>
-          {sessions.length > root.length && (
-            <span className="session-when">{sessions.length - root.length}</span>
-          )}
-        </div>
       </div>
 
       <div className="sidebar-foot">

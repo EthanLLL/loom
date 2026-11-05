@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { attachmentUrl, isThumbnail, seedBlobUrl, uploadAgentFiles, type AgentFile } from "./api"
+import { useCallback, useRef, useState, useSyncExternalStore } from "react"
+import { attachmentUrl, blobUrl, isThumbnail, seedBlobUrl, uploadAgentFiles, type AgentFile } from "./api"
 import { shrinkImage } from "./shrink"
 
 /**
@@ -33,27 +33,81 @@ export type Attachments = {
   clear: () => void
 }
 
+// ── The trays, one per session, outside any component ───────────────────
+//
+// Switching sessions rebuilds the chat, and what was attached but not sent
+// has to be there on the way back, like the draft text is. So the trays live
+// here, and an upload still running when the chat goes away lands in its
+// tray all the same. Per session, too, because the files live under the
+// session that owns them and the server refuses a path from anywhere else.
+//
+// The uploaded ones are also kept in localStorage, so a reload keeps them;
+// their thumbnails are read back from the server.
+
+const EMPTY: Attachment[] = []
+const trays = new Map<string, Attachment[]>()
+const listeners = new Set<() => void>()
+const storeKey = (sessionId: string) => `loom_attach:${sessionId}`
+let nextKey = 0
+
+type Kept = { name: string; size: number; type: string; file: AgentFile }
+
+function tray(sessionId: string): Attachment[] {
+  let items = trays.get(sessionId)
+  if (items === undefined) {
+    items = restore(sessionId)
+    trays.set(sessionId, items)
+  }
+  return items
+}
+
+function update(sessionId: string, change: (items: Attachment[]) => Attachment[]) {
+  const items = change(tray(sessionId))
+  trays.set(sessionId, items)
+  const kept: Kept[] = items.flatMap((i) =>
+    i.file && !i.error ? [{ name: i.name, size: i.size, type: i.type, file: i.file }] : [],
+  )
+  if (kept.length === 0) localStorage.removeItem(storeKey(sessionId))
+  else localStorage.setItem(storeKey(sessionId), JSON.stringify(kept))
+  listeners.forEach((listener) => listener())
+}
+
+function restore(sessionId: string): Attachment[] {
+  let kept: Kept[] = []
+  try {
+    kept = JSON.parse(localStorage.getItem(storeKey(sessionId)) ?? "[]")
+  } catch {
+    return []
+  }
+  return kept.map((k) => {
+    const key = `a${nextKey++}`
+    if (isThumbnail(k.type)) {
+      blobUrl(attachmentUrl(sessionId, k.file.path))
+        .then((preview) => patch(sessionId, key, { preview }))
+        .catch(() => {})
+    }
+    return { key, name: k.name, size: k.size, type: k.type, preview: null, file: k.file, error: null }
+  })
+}
+
+function patch(sessionId: string, key: string, change: Partial<Attachment>) {
+  update(sessionId, (items) => items.map((item) => (item.key === key ? { ...item, ...change } : item)))
+}
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
 export function useAttachments(sessionId: string | null): Attachments {
-  const [items, setItems] = useState<Attachment[]>([])
-  const nextKey = useRef(0)
-
-  // Switching session must not carry one conversation's attachments into
-  // another: the files live under the session that owns them, and the server
-  // refuses a path from anywhere else.
-  useEffect(() => setItems([]), [sessionId])
-
-  const patch = useCallback((key: string, change: Partial<Attachment>) => {
-    setItems((prev) =>
-      prev.map((item) => (item.key === key ? { ...item, ...change } : item)),
-    )
-  }, [])
+  const items = useSyncExternalStore(subscribe, () => (sessionId ? tray(sessionId) : EMPTY))
 
   const add = useCallback(
     (files: File[]) => {
       if (!sessionId || files.length === 0) return
 
       const rows: Attachment[] = files.map((file) => ({
-        key: `a${nextKey.current++}`,
+        key: `a${nextKey++}`,
         name: file.name,
         size: file.size,
         type: file.type,
@@ -61,7 +115,7 @@ export function useAttachments(sessionId: string | null): Attachments {
         file: null,
         error: null,
       }))
-      setItems((prev) => [...prev, ...rows])
+      update(sessionId, (prev) => [...prev, ...rows])
 
       // One request per file: the server stores a request all-or-nothing, so
       // batching would let an oversized fourth file void three good ones.
@@ -69,7 +123,7 @@ export function useAttachments(sessionId: string | null): Attachments {
       files.forEach((file, i) => {
         shrinkImage(file)
           .then((small) => {
-            if (small !== file) patch(rows[i].key, { name: small.name, size: small.size })
+            if (small !== file) patch(sessionId, rows[i].key, { name: small.name, size: small.size })
             return uploadAgentFiles(sessionId, [small])
           })
           .then(([stored]) => {
@@ -77,27 +131,32 @@ export function useAttachments(sessionId: string | null): Attachments {
             // have the local copy instead. Never revoked for the same reason.
             const preview = rows[i].preview
             if (stored && preview) seedBlobUrl(attachmentUrl(sessionId, stored.path), preview)
-            patch(rows[i].key, stored ? { file: stored } : { error: "not stored" })
+            patch(sessionId, rows[i].key, stored ? { file: stored } : { error: "not stored" })
           })
           .catch((e: unknown) =>
-            patch(rows[i].key, {
+            patch(sessionId, rows[i].key, {
               error: e instanceof Error ? e.message : "upload failed",
             }),
           )
       })
     },
-    [sessionId, patch],
+    [sessionId],
   )
 
-  const remove = useCallback((key: string) => {
-    // Only dropped from the tray. The file stays on disk under the session,
-    // which is harmless — nothing reads it unless a message names it — and
-    // deleting it would need a path from the client, which is exactly the
-    // input we refuse to trust elsewhere.
-    setItems((prev) => prev.filter((item) => item.key !== key))
-  }, [])
+  const remove = useCallback(
+    (key: string) => {
+      // Only dropped from the tray. The file stays on disk under the session,
+      // which is harmless — nothing reads it unless a message names it — and
+      // deleting it would need a path from the client, which is exactly the
+      // input we refuse to trust elsewhere.
+      if (sessionId) update(sessionId, (prev) => prev.filter((item) => item.key !== key))
+    },
+    [sessionId],
+  )
 
-  const clear = useCallback(() => setItems([]), [])
+  const clear = useCallback(() => {
+    if (sessionId) update(sessionId, () => [])
+  }, [sessionId])
 
   return {
     items,

@@ -341,21 +341,15 @@
   color: var(--red);
 }
 
-/* The first and last rows of the list: making a session, and everything filed
-   away in directories. */
-.session.new-chat,
-.session.more {
-  color: var(--fg-dim);
+/* The two rows above the sessions: making one, and everything filed away in
+   directories. Rows like the sessions, hover included; only the icon is dim. */
+.session-list .new-session {
+  display: block;
 }
 
-.session.new-chat .session-label,
-.session.more .session-label {
+.session.new-chat svg,
+.session.more svg {
   color: var(--fg-dim);
-}
-
-.session.new-chat:hover .session-label,
-.session.more:hover .session-label {
-  color: var(--fg);
 }
 
 .new-session .backend-menu {
