@@ -401,7 +401,9 @@ useAgent.ts       one agent channel's lifecycle
   the prefix on each session under it (`Loom.Agent.move_directory/2`). The
   session's id and its directory on disk never change.
 - **Search is two searches.** Titles are already in the browser and are matched
-  fuzzily on every keystroke, IME composition included. Transcripts are
+  fuzzily on every keystroke, IME composition included, as the whole key
+  (`aws/billing`), so a query can name the directory too; a title that matches
+  on its own ranks above one matched only by its directory. Transcripts are
   searched by ripgrep (`Loom.Search`, over the lobby channel), 200 ms after the
   last keystroke and never mid-composition; only user messages and replies
   count, and a newer search kills the one still running.

@@ -36,7 +36,7 @@ After Space, a box in the bottom right lists what can follow. `Esc` gives up.
 
 | Key | Does |
 |---|---|
-| `␣␣` | Search: titles as you type, and what was said (rg, a pause after typing — never while an IME is composing). Arrows or `Ctrl-n` / `Ctrl-p` choose, `Enter` opens, `Esc` closes |
+| `␣␣` | Search: titles (with their directory, e.g. `aws/bill`) as you type, and what was said (rg, a pause after typing — never while an IME is composing). Arrows or `Ctrl-n` / `Ctrl-p` choose, `Enter` opens, `Esc` closes |
 | `␣e` | The canvas's file tree; see below |
 | `␣b` | The session list; see below |
 | `␣t` | Terminals, shown or hidden. Showing them focuses the shell |

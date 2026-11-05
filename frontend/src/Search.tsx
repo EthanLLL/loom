@@ -1,8 +1,9 @@
 import { Search as SearchIcon } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { AgentInfo, SearchHit } from "./api"
+import { join } from "./directories"
 import { ago } from "./format"
-import { fuzzyFilter } from "./fuzzy"
+import { fuzzyScore } from "./fuzzy"
 import { isComposing } from "./ime"
 import { lastActive } from "./useLobby"
 
@@ -15,14 +16,32 @@ type Row = { kind: "title"; session: AgentInfo } | { kind: "hit"; session: Agent
 /**
  * Telescope's layout: the prompt at the bottom, the best match right above it.
  *
- * Two kinds of result. Titles are filtered here on every keystroke, fuzzily
- * (`fuzzy.ts`) — including while an IME is composing, since a Chinese IME is
+ * Two kinds of result. Titles, with their directory, are filtered here on
+ * every keystroke, fuzzily (`fuzzy.ts`) — including while an IME is composing, since a Chinese IME is
  * also how English gets typed. What was said is searched on the server by rg
  * (`Loom.Search`), a pause after the last keystroke and never mid-composition:
  * the half-typed pinyin is not what is being looked for.
  *
  * Arrows or C-n / C-p choose, Enter opens, Esc closes.
  */
+/**
+ * Titles matched as the whole key, S3-style — `aws/billing` for "billing" in
+ * the directory `aws` — so a query can name the directory as well, the way
+ * telescope matches a file's path. A session whose own title matches comes
+ * before one that only matched by its directory, so typing a directory's name
+ * does not bury the titles that have it in them.
+ */
+function byKey(q: string, sessions: AgentInfo[]): AgentInfo[] {
+  return sessions
+    .flatMap((s, index) => {
+      const title = s.title ?? s.id
+      const score = fuzzyScore(q, join(s.directory ?? "", title))
+      return score === null ? [] : [{ s, index, score, own: fuzzyScore(q, title) !== null }]
+    })
+    .sort((a, b) => Number(b.own) - Number(a.own) || b.score - a.score || a.index - b.index)
+    .map((r) => r.s)
+}
+
 export function Search({
   sessions,
   search,
@@ -71,7 +90,7 @@ export function Search({
     const titled =
       q.trim() === ""
         ? [...sessions].sort((a, b) => lastActive(b) - lastActive(a))
-        : fuzzyFilter(q, sessions, (s) => s.title ?? s.id)
+        : byKey(q, sessions)
     const found = hits.flatMap((hit): Row[] => {
       const session = byId.get(hit.id)
       return session ? [{ kind: "hit", session, hit }] : []
