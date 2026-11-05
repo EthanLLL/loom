@@ -8,6 +8,10 @@ defmodule Loom.SearchTest do
 
   alias Loom.Search
 
+  # The searches themselves need ripgrep; a machine without it skips them
+  # rather than failing, since rg is an optional dependency.
+  @needs_rg if System.find_executable("rg"), do: [], else: [skip: "needs ripgrep (rg)"]
+
   setup do
     data_dir = Path.join(System.tmp_dir!(), "loom-search-#{System.unique_integer([:positive])}")
     previous = Application.get_env(:loom, Loom.Agent, [])
@@ -30,6 +34,19 @@ defmodule Loom.SearchTest do
 
   defp event(seq, kind, payload), do: %{seq: seq, at: 1000 + seq, kind: kind, payload: payload}
 
+  test "without rg on PATH it says so, and still answers an empty query" do
+    path = System.get_env("PATH")
+    System.put_env("PATH", "/nonexistent")
+
+    try do
+      assert Search.content("needle") == {:error, :no_rg}
+      assert Search.content("  ") == {:ok, []}
+    after
+      System.put_env("PATH", path)
+    end
+  end
+
+  @tag @needs_rg
   test "finds what was said, newest first, with a little either side", %{write: write} do
     write.("a_one", [
       event(1, "user", %{text: "帮我做一个体重表格"}),
@@ -47,6 +64,7 @@ defmodule Loom.SearchTest do
     assert %{before: "Here is the ", match: "体重表格", after: " you asked for."} = hd(hits)
   end
 
+  @tag @needs_rg
   test "case is ignored, and a JSON key is not a hit", %{write: write} do
     write.("a_one", [event(1, "user", %{text: "Open the Canvas"})])
 
@@ -55,6 +73,7 @@ defmodule Loom.SearchTest do
     assert {:ok, []} = Search.content("   ")
   end
 
+  @tag @needs_rg
   test "a quote or backslash is looked for as it is stored", %{write: write} do
     write.("a_one", [event(1, "user", %{text: ~S(say "hi" to C:\loom)})])
 
@@ -62,6 +81,7 @@ defmodule Loom.SearchTest do
     assert {:ok, [_]} = Search.content(~S(C:\loom))
   end
 
+  @tag @needs_rg
   test "deleted sessions are not searched", %{data_dir: data_dir, write: write} do
     write.(".trash/a_gone.1", [event(1, "user", %{text: "needle"})])
     assert File.exists?(Path.join(data_dir, ".trash/a_gone.1/events.jsonl"))

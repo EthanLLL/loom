@@ -17,7 +17,8 @@ defmodule LoomWeb.LobbyChannel do
                    `Loom.Push`
     - "search"   : `%{q:}`, full-text search of every transcript; replied to
                    with `%{hits: [...]}` (`Loom.Search.content/1`) or
-                   `%{reason:}`. A new one cancels the one still running.
+                   `%{reason:}` — `"no_rg"` when ripgrep is not installed. A new one
+                   cancels the one still running.
 
   A summary is what `GET /api/agents` returns for one session, plus `seq`. The
   client keeps whichever copy of a session has the higher `seq`: the channel is
@@ -57,6 +58,9 @@ defmodule LoomWeb.LobbyChannel do
       spawn(fn ->
         case Loom.Search.content(q) do
           {:ok, hits} -> reply(ref, {:ok, %{hits: hits}})
+          # A plain word the browser can tell apart: "no_rg" means content
+          # search is not available here, not that it failed.
+          {:error, :no_rg} -> reply(ref, {:error, %{reason: "no_rg"}})
           {:error, reason} -> reply(ref, {:error, %{reason: inspect(reason)}})
         end
       end)

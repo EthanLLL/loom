@@ -46,8 +46,12 @@ Loom makes no model requests itself. Before starting it, log in on the server:
 - `claude`, or set `CLAUDE_CODE_USE_BEDROCK=1` and provide AWS credentials
 - `codex login`, or set a provider in `~/.codex/config.toml`
 
-Both must be on the service's `PATH`. Loom passes that `PATH` on to agents and
-terminal shells.
+Optional: `rg` (ripgrep, e.g. `apt install ripgrep`), which searches what was
+said in every session (`␣␣`). Without it search still finds sessions by title,
+and says that it is titles only.
+
+All of these must be on the service's `PATH`. Loom passes that `PATH` on to
+agents and terminal shells.
 
 ## 4. Build
 

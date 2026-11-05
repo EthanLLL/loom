@@ -455,6 +455,12 @@
   font-size: 0.923rem;
 }
 
+.search-note {
+  padding: 6px 12px;
+  color: var(--fg-dim);
+  font-size: 0.923rem;
+}
+
 .picker-empty,
 .search-empty {
   padding: 12px;

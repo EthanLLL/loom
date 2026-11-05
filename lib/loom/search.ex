@@ -5,7 +5,9 @@ defmodule Loom.Search do
   The transcripts are plain files (`Loom.Agent.Store`), so the fastest thing
   that can search them is a tool built for searching files, not a loop here:
   rg reads a family machine's 18 MB of `events.jsonl` in a few milliseconds.
-  It is found on `PATH` and not bundled; without it, search says so.
+  It is found on `PATH` and not bundled, an optional dependency (docs/deploy.md):
+  without it this returns `{:error, :no_rg}` and the browser searches titles
+  only, saying so.
 
   What rg sees is JSON, so the query is matched in the form it is stored in —
   a `"` in it is looked for as `\\"`. A line rg returns is then decoded, and only

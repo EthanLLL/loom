@@ -139,7 +139,13 @@ export function Search({
           ))}
           {rows.length === 0 && <div className="search-empty">Nothing found.</div>}
         </div>
-        {error && <div className="picker-error">Search failed: {error}</div>}
+        {/* Without ripgrep on the server only titles can be searched: said
+            plainly, as a note rather than an error. */}
+        {error === "no_rg" ? (
+          <div className="search-note">Titles only: searching what was said needs ripgrep (rg) on the server.</div>
+        ) : (
+          error && <div className="picker-error">Search failed: {error}</div>
+        )}
         <label className="search-prompt">
           <SearchIcon />
           <input
