@@ -25,6 +25,8 @@ import {
   type ReactNode,
 } from "react"
 import { buildTimeline, foldFinished, isBusy, type CronJob, type TimelineItem } from "./agent"
+import type { AgentBackend } from "./api"
+import { BackendIcon } from "./BackendIcon"
 import { itemForAttachment, itemForOutput, itemForPath, type CanvasItem } from "./canvasItems"
 import { formatBytes } from "./format"
 import { isComposing } from "./ime"
@@ -151,6 +153,7 @@ export function Chat({
 
         <Title
           title={session.title ?? session.id}
+          backend={session.backend}
           onRename={rename}
         />
 
@@ -532,9 +535,11 @@ function CronJobs({ jobs }: { jobs: CronJob[] }) {
  */
 function Title({
   title,
+  backend,
   onRename,
 }: {
   title: string
+  backend: AgentBackend
   onRename: (title: string) => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -548,6 +553,7 @@ function Title({
 
   return (
     <div className="chat-title">
+      <BackendIcon backend={backend} />
       {editing ? (
         <input
           className="chat-name-input"

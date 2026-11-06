@@ -4,11 +4,6 @@ export function formatBytes(n: number): string {
   return `${n} B`
 }
 
-/** Which engine, in the two letters the sidebar and the chat's header show. */
-export function backendShort(backend: string): string {
-  return ({ claude_code: "cc", codex: "cx" } as Record<string, string>)[backend] ?? backend
-}
-
 /** How long ago, as short as the session list needs: "now", "5m", "3h", "2d". */
 export function ago(ms: number): string {
   const mins = Math.floor((Date.now() - ms) / 60000)

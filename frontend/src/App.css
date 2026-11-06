@@ -1220,17 +1220,6 @@
   color: var(--bg);
 }
 
-/* Which engine, per row. Short because the sidebar is narrow. */
-.session-backend {
-  flex: 0 0 auto;
-  padding: 1px 4px;
-  border-radius: 3px;
-  color: var(--fg-dim);
-  font-size: 0.692rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 .session-queued {
   flex: 0 0 auto;
   min-width: 14px;

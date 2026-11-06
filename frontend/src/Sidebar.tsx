@@ -4,7 +4,7 @@ import type { AgentBackend, AgentInfo, Device } from "./api"
 import { RenameInput } from "./Confirm"
 import { DevicesDialog } from "./Devices"
 import { ROOT } from "./directories"
-import { ago, backendShort } from "./format"
+import { ago } from "./format"
 import type { Push } from "./push"
 import { RowMenu } from "./RowMenu"
 import { SettingsDialog } from "./Settings"
@@ -119,11 +119,6 @@ export function Sidebar({
               title={"last active " + new Date(lastActive(s)).toLocaleString()}
             >
               {ago(lastActive(s))}
-            </span>
-            {/* Which engine is running it is not a detail: the two behave
-                differently and the binding is permanent. */}
-            <span className={"session-backend " + s.backend}>
-              {backendShort(s.backend)}
             </span>
             <RowMenu
               items={[
