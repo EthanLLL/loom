@@ -142,4 +142,31 @@ defmodule Loom.AppsTest do
     assert Apps.valid_token?("x", token)
     refute Apps.valid_token?("y", token)
   end
+
+  test "a key: kept as its hash, shown once, revoked by the next", %{name: s, path: path} do
+    a = page(uniq("a"))
+    {:ok, %{auth: "private", key: false}} = Apps.put(a, %{}, s)
+    assert {:error, "auth: private or public"} = Apps.put(a, %{auth: "open"}, s)
+
+    {:ok, k1} = Apps.key(a, :new, s)
+    assert Apps.valid_key?(a, k1, s)
+    refute File.read!(path) =~ k1
+    assert [%{key: true} = app] = Apps.list(s)
+    refute Map.has_key?(app, :key_hash)
+
+    {:ok, k2} = Apps.key(a, :new, s)
+    refute Apps.valid_key?(a, k1, s)
+    assert Apps.valid_key?(a, k2, s)
+    refute Apps.valid_key?(uniq("b"), k2, s)
+
+    assert :ok = Apps.key(a, nil, s)
+    refute Apps.valid_key?(a, k2, s)
+    assert {:error, :not_found} = Apps.key(uniq("b"), :new, s)
+  end
+
+  test "a public app opens unsigned", %{name: s} do
+    a = page(uniq("a"))
+    assert {:ok, %{auth: "public", url: url}} = Apps.put(a, %{auth: "public"}, s)
+    assert url == "/apps/#{a}/"
+  end
 end

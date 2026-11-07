@@ -73,4 +73,63 @@ defmodule LoomWeb.AppsTest do
   test "a 502 when nothing listens", %{conn: conn, base: base} do
     assert get(conn, base <> "api/todos").status == 502
   end
+
+  defp listen(root) do
+    sock = Path.join([root, ".run", "http.sock"])
+
+    {:ok, listen} =
+      :gen_tcp.listen(0, [:binary, ifaddr: {:local, sock}, active: false, packet: :raw])
+
+    test = self()
+
+    spawn_link(fn ->
+      {:ok, c} = :gen_tcp.accept(listen)
+      {:ok, req} = :gen_tcp.recv(c, 0, 1_000)
+      send(test, {:request, req})
+      :gen_tcp.send(c, "HTTP/1.0 200 OK\r\n\r\nok")
+      :gen_tcp.close(c)
+    end)
+  end
+
+  test "a key opens a private app without the signed path, and stays in loom",
+       %{name: name, root: root} do
+    {:ok, key} = Loom.Apps.key(name)
+    listen(root)
+
+    conn =
+      build_conn()
+      |> put_req_header("authorization", "Bearer " <> key)
+      |> post("/apps/#{name}/api/ingest", %{})
+
+    assert conn.status == 200
+    assert_received {:request, req}
+    refute req =~ ~r/authorization/i
+
+    for auth <- ["Bearer nope", "Bearer " <> key <> "x"] do
+      conn = build_conn() |> put_req_header("authorization", auth)
+      assert post(conn, "/apps/#{name}/api/ingest", %{}).status == 404
+    end
+
+    assert get(build_conn(), "/apps/#{name}/").status == 404
+    Loom.Apps.key(name, nil)
+    conn = build_conn() |> put_req_header("authorization", "Bearer " <> key)
+    assert post(conn, "/apps/#{name}/api/ingest", %{}).status == 404
+  end
+
+  test "a public app is open, and its authorization is its own", %{name: name, root: root} do
+    {:ok, _} = Loom.Apps.put(name, %{auth: "public"})
+    assert get(build_conn(), "/apps/#{name}/").resp_body == "<h1>demo</h1>"
+    assert get(build_conn(), "/apps/#{name}").status == 301
+    listen(root)
+
+    conn =
+      build_conn()
+      |> put_req_header("authorization", "Bearer mine")
+      |> get("/apps/#{name}/api/me")
+
+    assert conn.status == 200
+    assert_received {:request, "GET /api/me HTTP/1.0\r\n" <> rest}
+    assert rest =~ "authorization: Bearer mine\r\n"
+    assert [_] = get_resp_header(conn, "content-security-policy")
+  end
 end

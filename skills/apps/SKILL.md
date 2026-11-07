@@ -45,11 +45,12 @@ $B rpc 'IO.inspect(Loom.Apps.put("todo", %{title: "Todo", server: "node server.t
 $B rpc 'IO.inspect(Loom.Apps.run("aws-bill"))'      # the job, now, in the background
 $B rpc 'IO.inspect(Loom.Apps.move("todo", 1))'       # 1 is first
 $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory to apps/.trash/
+$B rpc 'IO.inspect(Loom.Apps.key("token-billing"))'  # {:ok, key} for a program; see below
 ```
 
 - Wrap every call in `IO.inspect`: rpc prints nothing otherwise.
 - Write `web/index.html` **before** the first `put`; it is refused without one.
-- `put` creates or changes. Keys: `title` (default: the name), `server`,
+- `put` creates or changes. Keys: `title` (default: the name), `auth`, `server`,
   `idle` (how long the server may sit unused before it is stopped, default
   `"10min"`), `job`, `schedule`. A key left out keeps its value; `nil` clears
   it. A new app goes last in the grid.
@@ -57,6 +58,25 @@ $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory t
   values: that restarts it on the new code.
 - Returns `{:ok, app}` — with `url`, the signed path its page opens under — or
   `{:error, reason}`.
+
+## Who can reach it
+
+`auth` is `"private"` unless the user says otherwise:
+
+- **private** — the user, through their Loom's Apps grid (the signed `url`,
+  30 days), and programs holding the app's key. For a program that pushes to
+  or pulls from the app for good — another machine's job, a script — mint one
+  with `Loom.Apps.key(name)`: it returns `{:ok, key}` once and keeps only a
+  hash. The program sends `Authorization: Bearer <key>` to
+  `https://<this Loom's host>/apps/<name>/api/…`, with no token in the path.
+  Calling `key` again replaces it; `Loom.Apps.key(name, nil)` revokes it.
+  Hand the key to the program as a file with mode 600 or a secret store,
+  never in `web/`, a page, or chat output beyond what the user needs.
+- **public** — anyone on the internet, no login. **Only when the user
+  explicitly asks for this app to be public**; never on your own. Loom then
+  checks nothing and passes `Authorization` through, so the app does its own
+  checking if it needs any — by header or query, as the sandbox allows no
+  cookies.
 
 ## The page
 
@@ -93,8 +113,9 @@ http.createServer(handler).listen(process.env.APP_SOCKET)
 - It receives exactly what the page sent under `api/`: the page's
   `fetch("api/todos?x=1")` arrives as `GET /api/todos?x=1`. Only `api/*`
   reaches it; everything else is a file from `web/`.
-- Forwarded: method, query, body, `content-type`, `accept`. No cookies, no auth
-  — Loom has checked the token already. Back: status, headers, body.
+- Forwarded: method, query, body, `content-type`, `accept`, and for a public
+  app `authorization`. No cookies; a private app gets no auth at all — Loom
+  has checked the token or key already. Back: status, headers, body.
 - HTTP/1.0, one request per connection, buffered, 30 s at most: plain JSON
   request/response only — **no SSE, no WebSocket, no streaming**.
 - It is started on the first request (~0.1 s) and stopped after `idle`, so keep

@@ -1,7 +1,8 @@
 defmodule LoomWeb.Apps do
   @moduledoc """
   The web side of `Loom.Apps`: an app's page and its API, under
-  `/apps/<name>/<token>/`.
+  `/apps/<name>/<token>/` — or `/apps/<name>/` with the app's key in
+  `Authorization: Bearer`, or for anyone when the app is public (`auth`).
 
     * `api/*` is forwarded to the unix socket `.run/http.sock` in the app's
       directory, which systemd holds and starts the server behind on the first
@@ -9,6 +10,8 @@ defmodule LoomWeb.Apps do
     * anything else is a file in its `web/`
 
   Only a registered app is served: a directory nobody `put` is not an app.
+  A private app's `authorization` stops here; a public app gets it, to check
+  its own way.
 
   ## Before `Plug.Parsers`
 
@@ -35,23 +38,42 @@ defmodule LoomWeb.Apps do
 
   def init(opts), do: opts
 
-  def call(%Plug.Conn{path_info: ["apps", name, token | rest]} = conn, _opts) do
-    with true <- Loom.Apps.valid_token?(name, token),
-         %{} <- Loom.Apps.get(name) do
-      conn |> sandboxed() |> handle(name, rest) |> halt()
-    else
-      _ -> conn |> sandboxed() |> send_resp(404, "not found") |> halt()
+  def call(%Plug.Conn{path_info: ["apps", name | rest]} = conn, _opts) do
+    conn = sandboxed(conn)
+
+    case authorize(conn, Loom.Apps.get(name), rest) do
+      {:ok, conn, rest} -> conn |> handle(name, rest) |> halt()
+      :error -> conn |> send_resp(404, "not found") |> halt()
     end
   end
 
   def call(conn, _opts), do: conn
+
+  defp authorize(conn, %{auth: "public"}, rest), do: {:ok, conn, rest}
+
+  defp authorize(conn, %{name: name}, rest) do
+    case {get_req_header(conn, "authorization"), rest} do
+      {["Bearer " <> key], _} ->
+        if Loom.Apps.valid_key?(name, key),
+          do: {:ok, delete_req_header(conn, "authorization"), rest},
+          else: :error
+
+      {[], [token | rest]} ->
+        if Loom.Apps.valid_token?(name, token), do: {:ok, conn, rest}, else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp authorize(_conn, nil, _rest), do: :error
 
   # A page fetching from an opaque origin sends a preflight for JSON; it is
   # answered here, not by the app.
   defp handle(%Plug.Conn{method: "OPTIONS"} = conn, _name, ["api" | _]) do
     conn
     |> put_resp_header("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE")
-    |> put_resp_header("access-control-allow-headers", "content-type")
+    |> put_resp_header("access-control-allow-headers", "content-type, authorization")
     |> put_resp_header("access-control-max-age", "86400")
     |> send_resp(204, "")
   end
@@ -87,7 +109,11 @@ defmodule LoomWeb.Apps do
     request = [
       "#{conn.method} /#{Enum.join(rest, "/")}#{query} HTTP/1.0\r\n",
       "host: #{name}\r\n",
-      for(h <- ~w(content-type accept), v <- get_req_header(conn, h), do: "#{h}: #{v}\r\n"),
+      for(
+        h <- ~w(content-type accept authorization),
+        v <- get_req_header(conn, h),
+        do: "#{h}: #{v}\r\n"
+      ),
       "content-length: #{byte_size(body)}\r\n\r\n",
       body
     ]

@@ -29,6 +29,17 @@ defmodule Loom.Apps do
   At boot every app's units are rewritten and any other `app-*` unit removed:
   the registry, not what happens to be installed, says what runs.
 
+  ## Who may reach it
+
+  `auth` says, and `LoomWeb.Apps` enforces:
+
+    * `"private"` (the default) — the signed path from `url/1`, which is how
+      the user's own Loom opens it, or `Authorization: Bearer <key>` with the
+      app's key (`key/1`), for a program that pushes or pulls for good
+    * `"public"` — anyone, and the app does any checking itself
+
+  A key is kept as its hash only; minting a new one revokes the old.
+
   There is no HTTP API. Apps are made by an agent on the node itself, over
   `bin/loom rpc` — see the `apps` skill.
   """
@@ -37,8 +48,9 @@ defmodule Loom.Apps do
   require Logger
 
   @name __MODULE__
-  @persisted ~w(name title order server idle job schedule created_at)a
-  @settable ~w(title server idle job schedule)a
+  @persisted ~w(name title order auth key_hash server idle job schedule created_at)a
+  @settable ~w(title auth server idle job schedule)a
+  @auths ~w(private public)
   @salt "app"
   @max_age 60 * 60 * 24 * 30
 
@@ -47,8 +59,8 @@ defmodule Loom.Apps do
   end
 
   @doc """
-  Create or change an app. `attrs` takes `:title`, `:server`, `:idle`, `:job`
-  and `:schedule`, atom or string keys; a key given as `nil` clears it, one not
+  Create or change an app. `attrs` takes `:title`, `:auth`, `:server`, `:idle`,
+  `:job` and `:schedule`, atom or string keys; a key given as `nil` clears it, one not
   given is left as it was. A new app goes last. Its directory must already
   hold `web/index.html`. Returns `{:ok, app}` or `{:error, reason}`.
   """
@@ -69,6 +81,16 @@ defmodule Loom.Apps do
 
   @doc "Run an app's job now, without waiting for its schedule; it runs in the background."
   def run(name, server \\ @name), do: GenServer.call(server, {:run, name}, 30_000)
+
+  @doc """
+  Mint a new key for a private app's `Authorization: Bearer`, revoking any
+  before it: `{:ok, key}`, the only time it is seen. `key(name, nil)` revokes
+  it and mints none.
+  """
+  def key(name, op \\ :new, server \\ @name), do: GenServer.call(server, {:key, name, op})
+
+  @doc "Whether `key` is the one `key/1` last minted for `name`."
+  def valid_key?(name, key, server \\ @name), do: GenServer.call(server, {:valid_key?, name, key})
 
   @doc "The path an app's page opens under: signed, so an iframe or a bookmark needs no header."
   def url(name), do: "/apps/#{name}/#{Phoenix.Token.sign(LoomWeb.Endpoint, @salt, name)}/"
@@ -155,6 +177,38 @@ defmodule Loom.Apps do
     end
   end
 
+  def handle_call({:key, name, op}, _from, state) do
+    case state.apps do
+      %{^name => app} ->
+        {key, hash} =
+          if op == nil do
+            {nil, nil}
+          else
+            key = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+            {key, hash(key)}
+          end
+
+        state = save(put_in(state.apps[name], %{app | key_hash: hash}))
+        {:reply, if(key, do: {:ok, key}, else: :ok), state}
+
+      _ ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  def handle_call({:valid_key?, name, key}, _from, state) do
+    valid =
+      case state.apps do
+        %{^name => %{key_hash: hash}} when is_binary(hash) and is_binary(key) ->
+          Plug.Crypto.secure_compare(hash(key), hash)
+
+        _ ->
+          false
+      end
+
+    {:reply, valid, state}
+  end
+
   def handle_call({:run, name}, _from, state) do
     case state.apps do
       %{^name => %{job: job}} when is_binary(job) ->
@@ -193,6 +247,8 @@ defmodule Loom.Apps do
           %{
             name: name,
             title: name,
+            auth: "private",
+            key_hash: nil,
             order:
               (state.apps |> Map.values() |> Enum.map(& &1.order) |> Enum.max(fn -> 0 end)) + 1,
             server: nil,
@@ -203,9 +259,12 @@ defmodule Loom.Apps do
           }
 
       app = Enum.reduce(@settable, base, &take(&2, &1, attrs))
-      app = %{app | title: app.title || name}
+      app = %{app | title: app.title || name, auth: app.auth || "private"}
 
       cond do
+        app.auth not in @auths ->
+          {:error, "auth: private or public"}
+
         app.job != nil and app.schedule == nil ->
           {:error, "a job needs a schedule"}
 
@@ -243,10 +302,15 @@ defmodule Loom.Apps do
   end
 
   defp public(app) do
-    url = url(app.name)
+    url = if app.auth == "public", do: "/apps/#{app.name}/", else: url(app.name)
     icon = icon(app.name)
-    Map.merge(app, %{url: url, icon: icon && url <> icon})
+
+    app
+    |> Map.delete(:key_hash)
+    |> Map.merge(%{url: url, icon: icon && url <> icon, key: app.key_hash != nil})
   end
+
+  defp hash(key), do: :crypto.hash(:sha256, key) |> Base.encode16(case: :lower)
 
   # The page's own favicon, so one file is both: the `<link rel="icon">` in
   # `web/index.html` when it points at a file in `web/`, else a `favicon.*` there.
@@ -477,7 +541,8 @@ defmodule Loom.Apps do
     with {:ok, body} <- File.read(path),
          {:ok, %{"apps" => apps}} <- Jason.decode(body) do
       for a <- apps, is_map(a), is_binary(a["name"]) do
-        Map.new(@persisted, &{&1, a[to_string(&1)]})
+        app = Map.new(@persisted, &{&1, a[to_string(&1)]})
+        %{app | auth: app.auth || "private"}
       end
     else
       {:error, :enoent} ->
