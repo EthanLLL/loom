@@ -4,6 +4,7 @@ import { Canvas } from "./Canvas"
 import { moved, touches, type CanvasItem } from "./canvasItems"
 import { Confirm } from "./Confirm"
 import { Chat } from "./Chat"
+import { Apps } from "./Apps"
 import { Directories } from "./Directories"
 import { allDirectories, basename, join, parent, ROOT, within } from "./directories"
 import type { TreeNav } from "./FileBrowser"
@@ -70,7 +71,7 @@ function App() {
   // Opened from a notification: `?session=` names the session to show, and
   // goes from the address bar once read.
   const [activeId, setActiveId] = useState<string | null>(takeSessionParam)
-  const { sessions, devices, upsertDevice, loaded, upsert, drop, search } = useLobby(
+  const { sessions, devices, apps, upsertDevice, loaded, upsert, drop, search } = useLobby(
     authed,
     push.endpoint ? { endpoint: push.endpoint, session: visible ? activeId : null } : null,
   )
@@ -95,6 +96,8 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const [side, setSide] = useState<Side>(null)
+  // The Apps grid in place of the chat; picking a session goes back.
+  const [appsOpen, setAppsOpen] = useState(false)
   const terminalOpen = side === "terminal"
 
   // The right-hand column across the whole window, chat and sidebar hidden —
@@ -199,11 +202,13 @@ function App() {
     const session = await createAgent(backend)
     upsert(session)
     setActiveId(session.id)
+    setAppsOpen(false)
     setDrawerOpen(false)
   }
 
   const select = (id: string) => {
     setActiveId(id)
+    setAppsOpen(false)
     setDrawerOpen(false)
   }
 
@@ -475,6 +480,11 @@ function App() {
         if (narrow) setDrawerOpen(false)
         setSide((s) => (s === "browser" ? null : "browser"))
       }}
+      appsOpen={appsOpen}
+      onToggleApps={() => {
+        if (narrow) setDrawerOpen(false)
+        setAppsOpen((open) => !open)
+      }}
     />
   )
 
@@ -497,7 +507,15 @@ function App() {
 
       <main className="main">
         <div className="main-chat" ref={chatRef}>
-          {active ? (
+          {appsOpen ? (
+            <Apps
+              apps={apps}
+              sidebarOpen={!narrow && sidebarOpen}
+              onToggleSidebar={() =>
+                narrow ? setDrawerOpen(true) : setSidebarOpen((open) => !open)
+              }
+            />
+          ) : active ? (
             // Keyed by id so switching sessions rebuilds the channel and the
             // transcript rather than mixing two conversations.
             <Chat

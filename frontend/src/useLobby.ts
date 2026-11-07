@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Channel } from "phoenix"
 import { getSocket } from "./socket"
-import type { AgentInfo, Device, SearchHit } from "./api"
+import type { AgentInfo, AppInfo, Device, SearchHit } from "./api"
 
 export type Watching = { endpoint: string; session: string | null }
 
@@ -10,6 +10,8 @@ type Lobby = {
   // The user's machines, in the order they were added. Online state is pushed
   // as they connect and drop.
   devices: Device[]
+  // `Loom.Apps`, in the order the user keeps them.
+  apps: AppInfo[]
   upsertDevice: (device: Device) => void
   loaded: boolean
   // For the caller's own create/delete, so the sidebar does not wait for the
@@ -41,6 +43,8 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
   const [byId, setById] = useState<Map<string, AgentInfo>>(new Map())
   const [loaded, setLoaded] = useState(false)
   const [devices, setDevices] = useState<Map<string, Device>>(new Map())
+  // Always the whole list, in order: `Loom.Apps` sends it on every change.
+  const [apps, setApps] = useState<AppInfo[]>([])
   const joinedChannel = useRef<Channel | null>(null)
   const watchingRef = useRef(watching)
   watchingRef.current = watching
@@ -93,10 +97,11 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
     channel.on("removed", ({ id }: { id: string }) => drop(id))
     channel.on("node", upsertDevice)
     channel.on("node_removed", ({ id }: { id: string }) => dropDevice(id))
+    channel.on("apps", ({ apps }: { apps: AppInfo[] }) => setApps(apps))
 
     channel
       .join()
-      .receive("ok", ({ sessions, nodes }: { sessions: AgentInfo[]; nodes: Device[] }) => {
+      .receive("ok", ({ sessions, nodes, apps }: { sessions: AgentInfo[]; nodes: Device[]; apps: AppInfo[] }) => {
         joined = true
         if (leaveWhenJoined) {
           channel.leave()
@@ -106,6 +111,7 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
         if (watchingRef.current) channel.push("watching", watchingRef.current)
         setById(new Map(sessions.map((s) => [s.id, s])))
         setDevices(new Map((nodes ?? []).map((d) => [d.id, d])))
+        setApps(apps ?? [])
         setLoaded(true)
       })
       // Nothing to show either way; an empty list beats "connecting…" forever.
@@ -147,7 +153,7 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
     () => [...devices.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [devices],
   )
-  return { sessions, devices: deviceList, upsertDevice, loaded, upsert, drop, search }
+  return { sessions, devices: deviceList, apps, upsertDevice, loaded, upsert, drop, search }
 }
 
 export const lastActive = (s: AgentInfo) => s.last_active_at ?? s.created_at

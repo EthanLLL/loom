@@ -9,6 +9,8 @@ defmodule LoomWeb.LobbyChannel do
     - "node"     : one device (`Loom.Nodes`), when it is added, renamed, or
                    comes online or goes offline
     - "node_removed" : `%{id: _}`, when a device is removed
+    - "apps"     : `%{apps: [app]}`, the whole list (`Loom.Apps.list/0`) on any
+                   change; also in the join reply
 
   Client → server:
     - "watching" : `%{endpoint:, session:}`, which session this device is
@@ -37,7 +39,8 @@ defmodule LoomWeb.LobbyChannel do
     # Already subscribed to "agents" by `Phoenix.Channel.Server` — the session
     # broadcasts on exactly this topic, so no extra subscribe (it would deliver
     # everything twice; see `LoomWeb.AgentChannel`).
-    {:ok, %{sessions: Agent.list_sessions(), nodes: Loom.Nodes.list()}, socket}
+    {:ok, %{sessions: Agent.list_sessions(), nodes: Loom.Nodes.list(), apps: Loom.Apps.list()},
+     socket}
   end
 
   @impl true
@@ -81,6 +84,11 @@ defmodule LoomWeb.LobbyChannel do
 
   def handle_info({:node_summary, node}, socket) do
     push(socket, "node", node)
+    {:noreply, socket}
+  end
+
+  def handle_info({:apps, apps}, socket) do
+    push(socket, "apps", %{apps: apps})
     {:noreply, socket}
   end
 

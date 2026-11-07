@@ -181,7 +181,9 @@ defmodule LoomWeb.CanvasController do
     |> put_resp_header("x-content-type-options", "nosniff")
     |> put_resp_header("referrer-policy", "no-referrer")
     # Pages are rewritten in place turn after turn.
-    |> put_resp_header("cache-control", "no-cache")
+    # `no-transform` keeps Cloudflare from injecting its analytics beacon,
+    # which on an opaque origin fails CORS on every report and fills the console.
+    |> put_resp_header("cache-control", "no-cache, no-transform")
   end
 
   defp type_of(path) do

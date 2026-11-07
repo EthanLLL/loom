@@ -47,6 +47,8 @@ defmodule Loom.Application do
       Loom.Cron,
       # The user's own machines that agents can run commands on.
       Loom.Nodes,
+      # The apps registry; rewrites their systemd units at boot.
+      Loom.Apps,
       # Notifications on the user's devices when a turn ends.
       Loom.Push,
       # Restarts the node once every session is idle, on request. See its doc.

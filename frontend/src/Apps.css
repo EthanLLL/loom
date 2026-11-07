@@ -1,0 +1,107 @@
+.apps {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.apps-head {
+  flex: 0 0 auto;
+  padding: 8px 14px 0;
+}
+
+/* A home screen: fixed-size tiles, as many to a row as fit, and the rest
+   further down. */
+.apps-grid {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 112px);
+  grid-auto-rows: max-content;
+  gap: 28px 20px;
+  padding: 40px 48px;
+  align-content: start;
+}
+
+.app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px var(--shadow);
+  transition: transform 0.12s ease;
+}
+
+.app-tile:hover .app-icon,
+.app-tile:focus-visible .app-icon {
+  transform: scale(1.06);
+}
+
+.app-tile:active .app-icon {
+  transform: scale(0.96);
+}
+
+.app-icon-letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  color: var(--fg);
+  font-size: 30px;
+}
+
+.app-label {
+  max-width: 100%;
+  font-size: 0.85rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apps-note {
+  grid-column: 1 / -1;
+  color: var(--fg-dim);
+}
+
+.app-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+}
+
+/* A phone: four to a row, as on its own home screen. */
+@media (max-width: 640px) {
+  .apps-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 24px 8px;
+    padding: 24px 12px;
+  }
+
+  .app-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 15px;
+  }
+
+  .app-label {
+    font-size: 0.75rem;
+  }
+}

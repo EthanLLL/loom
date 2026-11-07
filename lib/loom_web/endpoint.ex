@@ -73,6 +73,9 @@ defmodule LoomWeb.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  # `/apps/…`, ahead of the parsers so a request body reaches the app intact.
+  plug LoomWeb.Apps
+
   plug Plug.Parsers,
     # The multipart limit is per request and covers a whole drop of files;
     # `Loom.Agent.Files` enforces the real per-file cap and reports it properly,

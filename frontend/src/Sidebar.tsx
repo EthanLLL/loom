@@ -1,4 +1,4 @@
-import { Folder, Globe, MonitorSmartphone, PanelLeftClose, Plus, Search, Settings } from "lucide-react"
+import { Folder, Globe, LayoutGrid, MonitorSmartphone, PanelLeftClose, Plus, Search, Settings } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { RenameInput } from "./Confirm"
@@ -33,6 +33,8 @@ type Props = {
   onCollapse: () => void
   browserOpen: boolean
   onToggleBrowser: () => void
+  appsOpen: boolean
+  onToggleApps: () => void
 }
 
 export function Sidebar({
@@ -54,6 +56,8 @@ export function Sidebar({
   onCollapse,
   browserOpen,
   onToggleBrowser,
+  appsOpen,
+  onToggleApps,
 }: Props) {
   // Ages are relative, so they go stale without any new data. A local clock,
   // not a poll: nothing is fetched.
@@ -132,6 +136,17 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-foot">
+        {/* What the agents distilled into programs, in ~/apps/: no model runs
+            when one is opened. */}
+        <button
+          className={"devices-btn push-btn" + (appsOpen ? " on" : "")}
+          onClick={onToggleApps}
+          title="Apps"
+        >
+          <LayoutGrid />
+          <span>Apps</span>
+        </button>
+
         {/* Loom's own browser, the one agents drive: taking it over is how a
             site gets logged in to once and stays logged in. */}
         <button

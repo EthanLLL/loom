@@ -471,6 +471,15 @@ export async function putLayout(layout: Layout): Promise<Layout> {
   return res.json()
 }
 
+/** An app, as `Loom.Apps.list/0` describes it; pushed by the lobby. */
+export type AppInfo = {
+  name: string
+  title: string
+  order: number
+  url: string // signed, so the iframe needs no header
+  icon: string | null
+}
+
 /** One of the user's machines, as `Loom.Nodes` describes it. */
 export type Device = {
   id: string
