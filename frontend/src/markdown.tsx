@@ -260,8 +260,7 @@ function safeHref(href: string): string | null {
 
 /**
  * Copies a fenced block whole. On a phone, selecting a command by hand fights
- * the sidebar's edge swipe and the block's own horizontal scroll, so this is
- * the way to take one away.
+ * the block's own horizontal scroll, so this is the way to take one away.
  */
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)

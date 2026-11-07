@@ -19,7 +19,6 @@ import { Terminal } from "./Terminal"
 const Browser = lazy(() => import("./Browser").then((m) => ({ default: m.Browser })))
 import { useLobby } from "./useLobby"
 import { useNarrow } from "./useNarrow"
-import { useSwipe } from "./useSwipe"
 import {
   createAgent,
   createSession,
@@ -170,16 +169,6 @@ function App() {
   // PTY session ids, top to bottom in the right-hand column.
   const [ptyIds, setPtyIds] = useState<string[]>([])
   const openingTerminal = useRef(false)
-
-  // On a phone, swiping right over the chat pulls the drawer out and swiping
-  // left over the drawer puts it back. Not over the terminals: a shell has its
-  // own uses for a drag, and they are opened and closed by tapping.
-  const chatRef = useRef<HTMLDivElement>(null)
-  const drawerRef = useRef<HTMLDivElement>(null)
-  useSwipe(chatRef, "right", narrow && loaded && !drawerOpen && side === null, () =>
-    setDrawerOpen(true),
-  )
-  useSwipe(drawerRef, "left", narrow && drawerOpen, () => setDrawerOpen(false))
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "1" : "0")
@@ -494,7 +483,6 @@ function App() {
         // Always mounted so it can slide rather than pop. Over the chat, not
         // beside it: a phone has no width to give a second column.
         <div
-          ref={drawerRef}
           className={"drawer" + (drawerOpen ? " open" : "")}
           inert={!drawerOpen}
         >
@@ -506,7 +494,7 @@ function App() {
       )}
 
       <main className="main">
-        <div className="main-chat" ref={chatRef}>
+        <div className="main-chat">
           {appsOpen ? (
             <Apps
               apps={apps}
