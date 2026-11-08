@@ -61,30 +61,62 @@ $B rpc 'IO.inspect(Loom.Apps.key("token-billing"))'  # {:ok, key} for a program;
 
 ## Who can reach it
 
-`auth` is `"private"` unless the user says otherwise:
+Settle this before writing any code — it decides whether the app needs
+accounts. Ask the user who will use it, if they have not said:
 
-- **private** — the user, through their Loom's Apps grid (the signed `url`,
-  30 days), and programs holding the app's key. For a program that pushes to
-  or pulls from the app for good — another machine's job, a script — mint one
-  with `Loom.Apps.key(name)`: it returns `{:ok, key}` once and keeps only a
-  hash. The program sends `Authorization: Bearer <key>` to
-  `https://<this Loom's host>/apps/<name>/api/…`, with no token in the path.
-  Calling `key` again replaces it; `Loom.Apps.key(name, nil)` revokes it.
-  Hand the key to the program as a file with mode 600 or a secret store,
-  never in `web/`, a page, or chat output beyond what the user needs.
-- **public** — anyone on the internet, no login. **Only when the user
-  explicitly asks for this app to be public**; never on your own. Loom then
-  checks nothing and passes `Authorization` through, so the app does its own
-  checking if it needs any — by header or query, as the sandbox allows no
-  cookies.
+- **Only the user** — a tool or dashboard for themselves: **private**, the
+  default. They open it from their Apps grid (the signed `url`, 30 days; on
+  an apps origin it turns into a cookie for the app, renewed on every visit,
+  so a bookmark or an installed app keeps working).
+- **A few others, for a while**, all the same to the app — a dashboard to
+  show family for a month: still **private**; the user sends them the `url`.
+  Anyone holding it is the user as far as the app knows, it expires after 30
+  days and is re-sent then, and no one person can be shut out.
+- **Other people the app must tell apart** — a group, colleagues, customers:
+  who said what, who may do what, staying for good: **public**, with accounts
+  built in from the start. Loom checks nothing for a public app, so the server
+  owns login: a users table in sqlite, passwords hashed (`crypto.scrypt`), a
+  random session token returned at login and sent back as
+  `Authorization: Bearer`, rate-limited attempts. The sandbox has no cookies
+  or storage, so the page keeps the token in memory and in the URL fragment
+  (`#s=…`), which a bookmark keeps. Designing as private and discovering
+  later that people must log in means rewriting the app.
+
+**Public only with the user's explicit yes** — say that anyone on the internet
+can reach it, and that its own login is then its only guard. Never on your
+own.
+
+Programs are separate from people. For one that pushes to or pulls from a
+private app for good — another machine's job, a script — mint a key with
+`Loom.Apps.key(name)`: it returns `{:ok, key}` once and keeps only a hash. The
+program sends `Authorization: Bearer <key>` to
+`https://<this Loom's host>/apps/<name>/api/…`, with no token in the path.
+Calling `key` again replaces it; `Loom.Apps.key(name, nil)` revokes it. Hand
+the key over as a file with mode 600 or a secret store, never in `web/`, a
+page, or chat output beyond what the user needs.
 
 ## The page
 
 - Plain HTML + JS is the default. A React/Vite build works too: build into
   `web/`, with `base: "./"` so asset URLs are relative.
-- It runs sandboxed on an opaque origin, like the canvas: **no cookies, no
-  localStorage, no sessionStorage**. Everything that must survive a reload goes
-  to the server or into the data a job writes.
+- Where it runs depends on this Loom; the `url` from `put` tells:
+  - **absolute** (`https://…-apps.…/apps/<name>/…`): the apps have an origin of
+    their own. Cookies, localStorage and PWA install work like on any site. All
+    apps of this Loom share that origin, so prefix storage keys with the app's
+    name, and keep nothing there another app must not read.
+  - **a path** (`/apps/<name>/…`): sandboxed on an opaque origin, like the
+    canvas: **no cookies, no localStorage, no sessionStorage**, no install.
+  Either way, what must survive a reload for good goes to the server or the
+  data a job writes.
+- **Installable** (own origin only): `web/manifest.webmanifest` with `name`,
+  `short_name`, `"id": "./"`, `"start_url": "./"`, `"scope": "./"`,
+  `"display": "standalone"` and `icons` (`favicon.svg` with `"sizes": "any"`,
+  plus a 512×512 PNG), linked as `<link rel="manifest" href="manifest.webmanifest">`,
+  and for iPhone `<link rel="apple-touch-icon" href="icon-180.png">` (a
+  180×180 PNG; iOS ignores the manifest's icons and draws a letter instead).
+  A browser fetches these without the app's cookie, so Loom serves the
+  manifest, the icons it lists and the favicon to anyone; keep them to name
+  and looks.
 - Use **relative** URLs only — `fetch("api/todos")`, `fetch("data.json")`. The
   page lives under `/apps/<name>/<token>/` and relative URLs carry the token;
   an absolute `/api/...` hits Loom and fails.
@@ -113,11 +145,19 @@ http.createServer(handler).listen(process.env.APP_SOCKET)
 - It receives exactly what the page sent under `api/`: the page's
   `fetch("api/todos?x=1")` arrives as `GET /api/todos?x=1`. Only `api/*`
   reaches it; everything else is a file from `web/`.
-- Forwarded: method, query, body, `content-type`, `accept`, and for a public
-  app `authorization`. No cookies; a private app gets no auth at all — Loom
-  has checked the token or key already. Back: status, headers, body.
+- Forwarded: method, query, body, `content-type`, `accept`, for a public app
+  `authorization`, and on an apps origin the app's own cookies (`set-cookie`
+  them with `Path=/apps/<name>/`). A private app gets no auth at all — Loom has
+  checked the link, cookie or key already. Back: status, headers, body.
 - HTTP/1.0, one request per connection, buffered, 30 s at most: plain JSON
   request/response only — **no SSE, no WebSocket, no streaming**.
+- **Files are not read and returned.** For a photo, a video, a download —
+  anything not small — check what you must, then answer with only a header:
+  `res.writeHead(200, {"x-loom-file": "media/12/orig.mov"}); res.end()`. The
+  path is relative to the app's directory and must stay inside it. Loom sends
+  the file from disk, with `Range` (a phone plays no video without it) and the
+  content type from the extension unless you set one; other headers you set,
+  such as `content-disposition`, go along.
 - It is started on the first request (~0.1 s) and stopped after `idle`, so keep
   no state in memory that sqlite does not also have. 256 MB memory cap.
 
@@ -136,6 +176,17 @@ pandas, boto3, requests…) is the default; anything on the PATH works.
   it (e.g. `"error"`, `"error_at"` in `data.json`), and exit non-zero. The page
   shows that error; the user then asks an agent to look. Nothing wakes a model
   by itself.
+- **Run now, not at the next tick**: the server can start the job when the page
+  hands it work, `systemctl --user start --no-block app-<name>-job.service`
+  (as `Loom.Apps.run` does). A start while the job is running is dropped, so
+  such a job loops until nothing is left.
+- **Handing work to an agent** — only when the user designed the app to (a
+  finished batch to be filed by a Loom session, say): write
+  `{"title": "…", "prompt": "…"}` to a JSON file and run
+  `loom rpc 'IO.inspect(Loom.Agent.new_session_file("/abs/path/req.json"))'`
+  (`loom` is on the job's and server's PATH). It starts a session in the
+  sidebar and returns `{:ok, id}`. Never splice text into rpc code: any
+  `#{…}` in a title someone typed runs as Elixir.
 
 ## Checking your work
 
@@ -149,8 +200,9 @@ journalctl --user -u app-<name>-server -n 20 --no-pager   # a server's
 curl -s --unix-socket ~/.loom/apps/<name>/.run/http.sock http://x/api/…   # the server, as Loom calls it
 ```
 
-Then open the page itself with Playwright at `http://localhost:4000<url>`
-(`url` from `put`/`list`), light and dark, and look at a screenshot.
+Then open the page itself with Playwright — at `url` (from `put`/`list`) when
+it is absolute, else at `http://localhost:4000<url>` — light and dark, and
+look at a screenshot.
 
 Tell the user it is in the sidebar's **Apps**. Do not hand out the URL unless
 asked: it is a credential (30 days, this app only), and Loom opens apps itself.

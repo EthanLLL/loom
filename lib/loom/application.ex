@@ -54,7 +54,9 @@ defmodule Loom.Application do
       # Restarts the node once every session is idle, on request. See its doc.
       Loom.Restarter,
       # Start to serve requests, typically the last entry
-      LoomWeb.Endpoint
+      LoomWeb.Endpoint,
+      # The apps on their own origin; listens only when LOOM_APPS_URL is set.
+      LoomWeb.AppsEndpoint
     ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html

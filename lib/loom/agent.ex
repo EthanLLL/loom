@@ -20,6 +20,40 @@ defmodule Loom.Agent do
     end
   end
 
+  @doc """
+  Start a fresh session titled `title` and submit `prompt` to it, as a person
+  starting a new chat would; returns `{:ok, id}`. `:backend` defaults to
+  `:claude_code`.
+  """
+  def new_session(title, prompt, opts \\ []) do
+    id = "a_" <> Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
+    backend = Keyword.get(opts, :backend, :claude_code)
+
+    with {:ok, _} <- start_session(id, backend: backend, title: title),
+         {:ok, _} <- submit(id, prompt, Keyword.take(opts, [:origin])) do
+      {:ok, id}
+    end
+  end
+
+  @doc """
+  `new_session/3` with its arguments in a JSON file — `{"title", "prompt"}`,
+  optionally `"backend": "codex"` — for programs: an app's job hands work to
+  an agent with `bin/loom rpc 'Loom.Agent.new_session_file("…")'`. Text spliced
+  into rpc code instead would run any `\#{…}` in it as Elixir.
+  """
+  def new_session_file(path) do
+    with {:ok, body} <- File.read(path),
+         {:ok, %{"title" => title, "prompt" => prompt} = req}
+         when is_binary(title) and is_binary(prompt) <- Jason.decode(body) do
+      backend = if req["backend"] == "codex", do: :codex, else: :claude_code
+      new_session(title, prompt, backend: backend, origin: "app")
+    else
+      {:error, %Jason.DecodeError{} = e} -> {:error, Exception.message(e)}
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, ~s(want {"title": "…", "prompt": "…"})}
+    end
+  end
+
   @doc "Whether a session with `id` is currently alive."
   def exists?(id) do
     case Registry.lookup(Loom.Agent.Registry, id) do

@@ -18,6 +18,10 @@ config :loom, LoomWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk"
 
+config :loom, LoomWeb.AppsEndpoint,
+  http: [ip: {127, 0, 0, 1}, port: 5000],
+  secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk"
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed

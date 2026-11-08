@@ -1,4 +1,4 @@
-import { PanelLeftOpen, X } from "lucide-react"
+import { ExternalLink, PanelLeftOpen, X } from "lucide-react"
 import { useState } from "react"
 import type { AppInfo } from "./api"
 import "./Apps.css"
@@ -8,8 +8,18 @@ import "./Apps.css"
  * order that scrolls down when there are many, and one picked opens full size
  * in the main pane. The list is the lobby's, so an app an agent just made
  * appears without a reload. Each page runs sandboxed on its own signed path;
- * see `LoomWeb.Apps`.
+ * see `LoomWeb.Apps`. When the apps have an origin of their own
+ * (`LoomWeb.AppsEndpoint`), that origin is the isolation, so the frame keeps
+ * it — the page gets its cookie and storage — and the page can be opened in
+ * a tab of its own, which is where a browser offers to install it.
  */
+
+const SANDBOX = "allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+
+// Same-origin is what a page on loom's own origin must never have.
+function ownOrigin(url: string) {
+  return new URL(url, location.href).origin !== location.origin
+}
 export function Apps({
   apps,
   sidebarOpen,
@@ -35,15 +45,28 @@ export function Apps({
             {sidebarButton}
             <span className="chat-name">{open.title}</span>
           </div>
-          <button className="pane-btn" onClick={() => setOpen(null)} title="Back to apps">
-            <X />
-          </button>
+          <div className="app-actions">
+            {ownOrigin(open.url) && (
+              <a
+                className="pane-btn"
+                href={open.url}
+                target="_blank"
+                rel="noopener"
+                title="Open in its own tab"
+              >
+                <ExternalLink />
+              </a>
+            )}
+            <button className="pane-btn" onClick={() => setOpen(null)} title="Back to apps">
+              <X />
+            </button>
+          </div>
         </header>
         <iframe
           className="app-frame"
           src={open.url}
           title={open.title}
-          sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+          sandbox={ownOrigin(open.url) ? SANDBOX + " allow-same-origin" : SANDBOX}
         />
       </div>
     )

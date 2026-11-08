@@ -53,6 +53,7 @@ defmodule Loom.Apps do
   @auths ~w(private public)
   @salt "app"
   @max_age 60 * 60 * 24 * 30
+  @cookie_salt "app cookie"
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, @name))
@@ -98,6 +99,47 @@ defmodule Loom.Apps do
   @doc "Whether `token` is one `url/1` signed for `name`, in the last 30 days."
   def valid_token?(name, token) do
     Phoenix.Token.verify(LoomWeb.Endpoint, @salt, token, max_age: @max_age) == {:ok, name}
+  end
+
+  @doc """
+  The apps' own origin (`LOOM_APPS_URL`), when they have one: their URLs are
+  absolute there, and served by `LoomWeb.AppsEndpoint`. `nil` keeps them on
+  loom's origin.
+  """
+  def origin, do: config(:origin)
+
+  @doc """
+  The value of the cookie a signed link sets on the apps' own origin, scoped
+  to the app's path; good for 30 days from when it was last renewed.
+  """
+  def cookie(name), do: Phoenix.Token.sign(LoomWeb.Endpoint, @cookie_salt, name)
+
+  @doc "Whether `value` is one `cookie/1` made for `name`, in the last 30 days."
+  def valid_cookie?(name, value) do
+    Phoenix.Token.verify(LoomWeb.Endpoint, @cookie_salt, value, max_age: @max_age) == {:ok, name}
+  end
+
+  def max_age, do: @max_age
+
+  @doc """
+  The files in an app's `web/` a browser fetches without its cookie to install
+  it: `manifest.webmanifest`, the icons that lists, and the page's icons.
+  They say what the app is called and how it looks, nothing more, so they are
+  open to anyone on the apps' own origin.
+  """
+  def install_files(name) do
+    manifest =
+      with {:ok, body} <- File.read(Path.join([dir(name), "web", "manifest.webmanifest"])),
+           {:ok, %{"icons" => icons}} when is_list(icons) <- Jason.decode(body) do
+        for %{"src" => src} when is_binary(src) <- icons,
+            rel = src |> String.trim_leading("./"),
+            not String.contains?(rel, ":") and not String.starts_with?(rel, "/"),
+            do: rel
+      else
+        _ -> []
+      end
+
+    Enum.uniq(["manifest.webmanifest" | manifest] ++ icons(name))
   end
 
   def root, do: config(:root) || Path.join(Loom.Agent.Store.home(), "apps")
@@ -302,7 +344,8 @@ defmodule Loom.Apps do
   end
 
   defp public(app) do
-    url = if app.auth == "public", do: "/apps/#{app.name}/", else: url(app.name)
+    path = if app.auth == "public", do: "/apps/#{app.name}/", else: url(app.name)
+    url = (origin() || "") <> path
     icon = icon(app.name)
 
     app
@@ -312,10 +355,13 @@ defmodule Loom.Apps do
 
   defp hash(key), do: :crypto.hash(:sha256, key) |> Base.encode16(case: :lower)
 
-  # The page's own favicon, so one file is both: the `<link rel="icon">` in
-  # `web/index.html` when it points at a file in `web/`, else a `favicon.*` there.
+  # The page's own favicon, so one file is both: the first `<link rel="icon">`
+  # (or `apple-touch-icon`, which iOS puts on the home screen) in
+  # `web/index.html` that points at a file in `web/`, else a `favicon.*` there.
   # Read at each list, as the page is the agent's to rewrite at any time.
-  defp icon(name) do
+  defp icon(name), do: List.first(icons(name))
+
+  defp icons(name) do
     web = Path.join(dir(name), "web")
     html = File.read(Path.join(web, "index.html"))
 
@@ -332,7 +378,7 @@ defmodule Loom.Apps do
         _ -> []
       end
 
-    Enum.find(linked ++ ~w(favicon.svg favicon.png favicon.ico), fn rel ->
+    Enum.filter(Enum.uniq(linked ++ ~w(favicon.svg favicon.png favicon.ico)), fn rel ->
       path = Path.expand(Path.join(web, rel))
       String.starts_with?(path, web <> "/") and File.regular?(path)
     end)

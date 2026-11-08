@@ -74,8 +74,10 @@ defmodule LoomWeb.AppsTest do
     assert get(conn, base <> "api/todos").status == 502
   end
 
-  defp listen(root) do
+  defp listen(root, reply \\ "HTTP/1.0 200 OK\r\n\r\nok") do
     sock = Path.join([root, ".run", "http.sock"])
+
+    File.rm(sock)
 
     {:ok, listen} =
       :gen_tcp.listen(0, [:binary, ifaddr: {:local, sock}, active: false, packet: :raw])
@@ -86,9 +88,50 @@ defmodule LoomWeb.AppsTest do
       {:ok, c} = :gen_tcp.accept(listen)
       {:ok, req} = :gen_tcp.recv(c, 0, 1_000)
       send(test, {:request, req})
-      :gen_tcp.send(c, "HTTP/1.0 200 OK\r\n\r\nok")
+      :gen_tcp.send(c, reply)
       :gen_tcp.close(c)
     end)
+  end
+
+  test "web/ answers a byte range", %{conn: conn, base: base} do
+    conn = conn |> put_req_header("range", "bytes=1-2") |> get(base)
+    assert conn.status == 206
+    assert conn.resp_body == "h1"
+    assert get_resp_header(conn, "content-range") == ["bytes 1-2/13"]
+
+    conn = build_conn() |> put_req_header("range", "bytes=-4") |> get(base)
+    assert conn.resp_body == "/h1>"
+    conn = build_conn() |> put_req_header("range", "bytes=99-") |> get(base)
+    assert conn.status == 416
+    conn = build_conn() |> put_req_header("range", "bytes=0-1,4-5") |> get(base)
+    assert conn.status == 200
+    assert get(build_conn(), base).resp_headers |> List.keyfind("accept-ranges", 0)
+  end
+
+  test "x-loom-file: the app picks the file, loom sends it, ranges and all",
+       %{conn: conn, base: base, root: root} do
+    File.mkdir_p!(Path.join(root, "media"))
+    File.write!(Path.join([root, "media", "clip.mp4"]), "0123456789")
+
+    listen(
+      root,
+      "HTTP/1.0 200 OK\r\nx-loom-file: media/clip.mp4\r\ncontent-disposition: inline\r\n\r\n"
+    )
+
+    conn = conn |> put_req_header("range", "bytes=2-4") |> get(base <> "api/file?id=1")
+    assert conn.status == 206
+    assert conn.resp_body == "234"
+    assert get_resp_header(conn, "content-type") == ["video/mp4"]
+    assert get_resp_header(conn, "content-disposition") == ["inline"]
+    assert get_resp_header(conn, "x-loom-file") == []
+
+    listen(root, "HTTP/1.0 200 OK\r\nx-loom-file: media/clip.mp4\r\n\r\n")
+    assert get(build_conn(), base <> "api/file").resp_body == "0123456789"
+
+    for escape <- ["../../etc/passwd", "/etc/passwd", "media/nope"] do
+      listen(root, "HTTP/1.0 200 OK\r\nx-loom-file: #{escape}\r\n\r\n")
+      assert get(build_conn(), base <> "api/file").status == 404
+    end
   end
 
   test "a key opens a private app without the signed path, and stays in loom",

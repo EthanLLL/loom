@@ -31,42 +31,103 @@ defmodule LoomWeb.Apps do
   HTTP/1.0 over the socket, one request per connection: the reply then has no
   chunking and ends when the app closes, so reading it needs no HTTP client.
   Buffered, not streamed — nothing an app does today needs more.
+
+  Except files: a reply with `x-loom-file: <path in the app's directory>` is
+  answered with that file from disk, like nginx's `X-Accel-Redirect`, so the
+  app decides who gets what and loom moves the bytes — with `Range`, which
+  iOS needs to play a video at all. `web/` is served the same way.
   """
   import Plug.Conn
 
   @hop_by_hop ~w(connection keep-alive transfer-encoding content-length upgrade)
+  @cookie "loom_app"
 
   def init(opts), do: opts
 
-  def call(%Plug.Conn{path_info: ["apps", name | rest]} = conn, _opts) do
-    conn = sandboxed(conn)
+  def call(%Plug.Conn{path_info: ["apps", name | rest]} = conn, opts) do
+    own = Keyword.get(opts, :own_origin, false)
 
-    case authorize(conn, Loom.Apps.get(name), rest) do
-      {:ok, conn, rest} -> conn |> handle(name, rest) |> halt()
-      :error -> conn |> send_resp(404, "not found") |> halt()
+    conn =
+      if own,
+        do: conn |> own_origin() |> put_private(:apps_own_origin, true),
+        else: sandboxed(conn)
+
+    case authorize(conn, Loom.Apps.get(name), rest, own) do
+      :error when own and conn.method in ["GET", "HEAD"] ->
+        if Enum.join(rest, "/") in Loom.Apps.install_files(name),
+          do: conn |> static(name, rest) |> halt(),
+          else: conn |> send_resp(404, "not found") |> halt()
+
+      {:ok, conn, rest} ->
+        conn |> handle(name, rest) |> halt()
+
+      {:redirect, conn, to} ->
+        conn |> put_resp_header("location", to) |> send_resp(302, "") |> halt()
+
+      :error ->
+        conn |> send_resp(404, "not found") |> halt()
     end
   end
 
   def call(conn, _opts), do: conn
 
-  defp authorize(conn, %{auth: "public"}, rest), do: {:ok, conn, rest}
+  defp authorize(_conn, nil, _rest, _own), do: :error
+  defp authorize(conn, %{auth: "public"}, rest, _own), do: {:ok, conn, rest}
 
-  defp authorize(conn, %{name: name}, rest) do
+  defp authorize(conn, %{name: name}, rest, own) do
     case {get_req_header(conn, "authorization"), rest} do
       {["Bearer " <> key], _} ->
         if Loom.Apps.valid_key?(name, key),
           do: {:ok, delete_req_header(conn, "authorization"), rest},
           else: :error
 
-      {[], [token | rest]} ->
-        if Loom.Apps.valid_token?(name, token), do: {:ok, conn, rest}, else: :error
+      {[], [token | after_token]} ->
+        cond do
+          not Loom.Apps.valid_token?(name, token) -> by_cookie(conn, name, rest, own)
+          own and conn.method == "GET" -> trade(conn, name, after_token)
+          true -> {:ok, conn, after_token}
+        end
+
+      {[], []} ->
+        by_cookie(conn, name, rest, own)
 
       _ ->
         :error
     end
   end
 
-  defp authorize(_conn, nil, _rest), do: :error
+  # On the apps' own origin the signed link is traded for a cookie on the
+  # app's path, and the page reloads without the token: its URL then outlives
+  # the link, which is what a PWA's start_url and a bookmark need.
+  defp trade(conn, name, rest) do
+    query = if conn.query_string == "", do: "", else: "?" <> conn.query_string
+    {:redirect, put_cookie(conn, name), "/apps/#{name}/" <> Enum.join(rest, "/") <> query}
+  end
+
+  # Renewed on every page load, so an app in use never logs out.
+  defp by_cookie(conn, name, rest, true) do
+    conn = fetch_cookies(conn)
+
+    with value when is_binary(value) <- conn.req_cookies[@cookie],
+         true <- Loom.Apps.valid_cookie?(name, value) do
+      conn = if match?(["api" | _], rest), do: conn, else: put_cookie(conn, name)
+      {:ok, conn, rest}
+    else
+      _ -> :error
+    end
+  end
+
+  defp by_cookie(_conn, _name, _rest, false), do: :error
+
+  defp put_cookie(conn, name) do
+    put_resp_cookie(conn, @cookie, Loom.Apps.cookie(name),
+      path: "/apps/#{name}/",
+      max_age: Loom.Apps.max_age(),
+      http_only: true,
+      secure: String.starts_with?(Loom.Apps.origin() || "", "https:"),
+      same_site: "Lax"
+    )
+  end
 
   # A page fetching from an opaque origin sends a preflight for JSON; it is
   # answered here, not by the app.
@@ -95,7 +156,7 @@ defmodule LoomWeb.Apps do
     path = if File.dir?(path), do: Path.join(path, "index.html"), else: path
 
     if String.starts_with?(path, root <> "/") and File.regular?(path) do
-      conn |> put_resp_content_type(MIME.from_path(path), nil) |> send_file(200, path)
+      conn |> put_resp_content_type(MIME.from_path(path), nil) |> file(200, path)
     else
       send_resp(conn, 404, "not found")
     end
@@ -114,19 +175,104 @@ defmodule LoomWeb.Apps do
         v <- get_req_header(conn, h),
         do: "#{h}: #{v}\r\n"
       ),
+      app_cookies(conn),
       "content-length: #{byte_size(body)}\r\n\r\n",
       body
     ]
 
     with {:ok, reply} <- exchange(socket, request),
          {:ok, status, headers, resp_body} <- parse(reply) do
-      headers
-      |> Enum.reject(fn {k, _} -> k in @hop_by_hop end)
-      |> Enum.reduce(conn, fn {k, v}, conn -> put_resp_header(conn, k, v) end)
-      |> send_resp(status, resp_body)
+      conn =
+        headers
+        |> Enum.reject(fn {k, _} -> k in @hop_by_hop or k == "x-loom-file" end)
+        |> Enum.reduce(conn, fn {k, v}, conn -> put_resp_header(conn, k, v) end)
+
+      case List.keyfind(headers, "x-loom-file", 0) do
+        nil -> send_resp(conn, status, resp_body)
+        {_, path} -> app_file(conn, name, status, path)
+      end
     else
       _ -> send_resp(conn, 502, ~s({"error":"app #{name} is not running"}))
     end
+  end
+
+  # On its own origin an app has cookies like any site; loom's is not its.
+  defp app_cookies(%Plug.Conn{private: %{apps_own_origin: true}} = conn) do
+    cookies =
+      for header <- get_req_header(conn, "cookie"),
+          pair <- String.split(header, ";"),
+          pair = String.trim(pair),
+          pair != "",
+          not String.starts_with?(pair, @cookie <> "="),
+          do: pair
+
+    if cookies == [], do: [], else: "cookie: #{Enum.join(cookies, "; ")}\r\n"
+  end
+
+  defp app_cookies(_conn), do: []
+
+  # Inside the app's directory only: the path is often built from a request,
+  # and a slip there should be a 404, not someone's ~/.ssh.
+  defp app_file(conn, name, status, path) do
+    root = Path.expand(Loom.Apps.dir(name))
+    full = Path.expand(path, root)
+
+    cond do
+      not String.starts_with?(full, root <> "/") or not File.regular?(full) ->
+        send_resp(conn, 404, ~s({"error":"x-loom-file: no such file in the app"}))
+
+      get_resp_header(conn, "content-type") == [] ->
+        conn |> put_resp_content_type(MIME.from_path(full), nil) |> file(status, full)
+
+      true ->
+        file(conn, status, full)
+    end
+  end
+
+  # One `Range: bytes=` span when asked for; anything fancier gets the whole
+  # file, which a client must accept.
+  defp file(conn, status, path) do
+    size = File.stat!(path).size
+    conn = put_resp_header(conn, "accept-ranges", "bytes")
+
+    case range(get_req_header(conn, "range"), size) do
+      {first, last} when status == 200 ->
+        conn
+        |> put_resp_header("content-range", "bytes #{first}-#{last}/#{size}")
+        |> send_file(206, path, first, last - first + 1)
+
+      :unsatisfiable when status == 200 ->
+        conn |> put_resp_header("content-range", "bytes */#{size}") |> send_resp(416, "")
+
+      _ ->
+        send_file(conn, status, path)
+    end
+  end
+
+  defp range(["bytes=" <> spec], size) do
+    with false <- String.contains?(spec, ","),
+         [from, to] <- String.split(String.trim(spec), "-", parts: 2),
+         {:ok, first, last} <- span(from, to, size) do
+      if first <= last and first < size, do: {first, min(last, size - 1)}, else: :unsatisfiable
+    else
+      _ -> nil
+    end
+  end
+
+  defp range(_, _), do: nil
+
+  defp span("", suffix, size) do
+    with {n, ""} when n > 0 <- Integer.parse(suffix), do: {:ok, max(size - n, 0), size - 1}
+  end
+
+  defp span(from, "", size) do
+    with {first, ""} <- Integer.parse(from), do: {:ok, first, size - 1}
+  end
+
+  defp span(from, to, _size) do
+    with {first, ""} <- Integer.parse(from),
+         {last, ""} <- Integer.parse(to),
+         do: {:ok, first, last}
   end
 
   defp read_all(conn, acc) do
@@ -169,6 +315,14 @@ defmodule LoomWeb.Apps do
     else
       _ -> :error
     end
+  end
+
+  # Its own origin is the isolation: no sandbox, and nothing cross-origin to allow.
+  defp own_origin(conn) do
+    conn
+    |> put_resp_header("x-content-type-options", "nosniff")
+    |> put_resp_header("referrer-policy", "no-referrer")
+    |> put_resp_header("cache-control", "no-cache, no-transform")
   end
 
   defp sandboxed(conn) do
