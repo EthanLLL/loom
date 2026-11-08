@@ -7,9 +7,6 @@ defmodule LoomWeb.AppsEndpointTest do
   @endpoint LoomWeb.AppsEndpoint
 
   setup do
-    previous = Application.get_env(:loom, Loom.Apps, [])
-    Application.put_env(:loom, Loom.Apps, Keyword.put(previous, :origin, "https://apps.test"))
-
     name = "own-#{System.unique_integer([:positive])}"
     root = Loom.Apps.dir(name)
     File.mkdir_p!(Path.join(root, "web"))
@@ -19,7 +16,6 @@ defmodule LoomWeb.AppsEndpointTest do
     on_exit(fn ->
       Loom.Apps.delete(name)
       File.rm_rf!(root)
-      Application.put_env(:loom, Loom.Apps, previous)
     end)
 
     %{name: name, url: app.url}

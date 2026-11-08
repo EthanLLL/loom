@@ -20,12 +20,11 @@ config :loom, LoomWeb.Endpoint,
   ],
   pubsub_server: Loom.PubSub
 
-# Not served unless LOOM_APPS_URL is set (config/runtime.exs).
+# Where the apps run, on an origin of their own (config/runtime.exs).
 config :loom, LoomWeb.AppsEndpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
-  pubsub_server: Loom.PubSub,
-  server: false
+  pubsub_server: Loom.PubSub
 
 # Configure Elixir's Logger
 config :logger, :default_formatter,

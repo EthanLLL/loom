@@ -43,6 +43,7 @@ config :loom, LoomWeb.NodeController, await_ms: 200
 
 # Nor the real apps, and never systemd.
 config :loom, Loom.Apps,
+  origin: "https://apps.test",
   path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/apps.json"),
   root: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/apps"),
   units: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/units"),

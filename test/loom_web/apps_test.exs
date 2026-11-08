@@ -1,5 +1,10 @@
 defmodule LoomWeb.AppsTest do
-  use LoomWeb.ConnCase, async: false
+  use ExUnit.Case, async: false
+
+  import Plug.Conn
+  import Phoenix.ConnTest
+
+  @endpoint LoomWeb.AppsEndpoint
 
   # The application's own registry, over the test root (config/test.exs).
   setup do
@@ -15,15 +20,32 @@ defmodule LoomWeb.AppsTest do
       File.rm_rf!(root)
     end)
 
-    %{name: name, root: root, base: app.url}
+    # What a browser holds once the signed link has been opened.
+    cookie = get(build_conn(), app.url).resp_cookies["loom_app"].value
+
+    %{
+      name: name,
+      root: root,
+      signed: app.url,
+      base: "/apps/#{name}/",
+      cookie: cookie,
+      conn: signed_in(cookie)
+    }
   end
 
-  test "serves web/ sandboxed, under the signed path", %{conn: conn, base: base} do
+  defp signed_in(cookie), do: build_conn() |> put_req_cookie("loom_app", cookie)
+
+  test "serves web/ as a plain site, no sandbox", %{conn: conn, base: base} do
     conn = get(conn, base)
     assert conn.status == 200
     assert conn.resp_body == "<h1>demo</h1>"
-    assert [csp] = get_resp_header(conn, "content-security-policy")
-    refute csp =~ "allow-same-origin"
+    assert get_resp_header(conn, "content-security-policy") == []
+  end
+
+  test "loom's own origin serves no app", %{signed: signed} do
+    path = String.replace_prefix(signed, "https://apps.test", "")
+
+    assert Phoenix.ConnTest.dispatch(build_conn(), LoomWeb.Endpoint, :get, path).status == 404
   end
 
   test "adds the trailing slash relative URLs need", %{conn: conn, base: base} do
@@ -33,9 +55,8 @@ defmodule LoomWeb.AppsTest do
   end
 
   test "rejects a token for another app, an unregistered one, and paths outside web/",
-       %{conn: conn, base: base, name: name} do
-    "/apps/" <> rest = base
-    token = String.replace_prefix(rest, name <> "/", "")
+       %{conn: conn, base: base, name: name, signed: signed} do
+    [token] = Regex.run(~r"/apps/#{name}/([^/]+)/$", signed, capture: :all_but_first)
     assert get(build_conn(), "/apps/other/" <> token).status == 404
     File.mkdir_p!(Path.join([Loom.Apps.root(), "stray", "web"]))
     File.write!(Path.join([Loom.Apps.root(), "stray", "web", "index.html"]), "x")
@@ -93,23 +114,23 @@ defmodule LoomWeb.AppsTest do
     end)
   end
 
-  test "web/ answers a byte range", %{conn: conn, base: base} do
+  test "web/ answers a byte range", %{conn: conn, base: base, cookie: cookie} do
     conn = conn |> put_req_header("range", "bytes=1-2") |> get(base)
     assert conn.status == 206
     assert conn.resp_body == "h1"
     assert get_resp_header(conn, "content-range") == ["bytes 1-2/13"]
 
-    conn = build_conn() |> put_req_header("range", "bytes=-4") |> get(base)
+    conn = signed_in(cookie) |> put_req_header("range", "bytes=-4") |> get(base)
     assert conn.resp_body == "/h1>"
-    conn = build_conn() |> put_req_header("range", "bytes=99-") |> get(base)
+    conn = signed_in(cookie) |> put_req_header("range", "bytes=99-") |> get(base)
     assert conn.status == 416
-    conn = build_conn() |> put_req_header("range", "bytes=0-1,4-5") |> get(base)
+    conn = signed_in(cookie) |> put_req_header("range", "bytes=0-1,4-5") |> get(base)
     assert conn.status == 200
-    assert get(build_conn(), base).resp_headers |> List.keyfind("accept-ranges", 0)
+    assert get(signed_in(cookie), base).resp_headers |> List.keyfind("accept-ranges", 0)
   end
 
   test "x-loom-file: the app picks the file, loom sends it, ranges and all",
-       %{conn: conn, base: base, root: root} do
+       %{conn: conn, base: base, root: root, cookie: cookie} do
     File.mkdir_p!(Path.join(root, "media"))
     File.write!(Path.join([root, "media", "clip.mp4"]), "0123456789")
 
@@ -126,11 +147,11 @@ defmodule LoomWeb.AppsTest do
     assert get_resp_header(conn, "x-loom-file") == []
 
     listen(root, "HTTP/1.0 200 OK\r\nx-loom-file: media/clip.mp4\r\n\r\n")
-    assert get(build_conn(), base <> "api/file").resp_body == "0123456789"
+    assert get(signed_in(cookie), base <> "api/file").resp_body == "0123456789"
 
     for escape <- ["../../etc/passwd", "/etc/passwd", "media/nope"] do
       listen(root, "HTTP/1.0 200 OK\r\nx-loom-file: #{escape}\r\n\r\n")
-      assert get(build_conn(), base <> "api/file").status == 404
+      assert get(signed_in(cookie), base <> "api/file").status == 404
     end
   end
 
@@ -173,6 +194,5 @@ defmodule LoomWeb.AppsTest do
     assert conn.status == 200
     assert_received {:request, "GET /api/me HTTP/1.0\r\n" <> rest}
     assert rest =~ "authorization: Bearer mine\r\n"
-    assert [_] = get_resp_header(conn, "content-security-policy")
   end
 end

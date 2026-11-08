@@ -18,13 +18,14 @@ defmodule LoomWeb.Apps do
   A plug in the endpoint rather than a route: the body has to reach the app as
   it was sent, and the parsers would have consumed it.
 
-  ## Hostile, like the canvas
+  ## On an origin of its own
 
-  The code is model output, so it gets the canvas's treatment: a
-  `sandbox` CSP without `allow-same-origin`, so its script never sees loom's
-  origin and the login token there. The credential is a signed token in the
-  path, scoped to one app (`Loom.Apps.url/1`), so the page's relative URLs
-  (`api/todos`) carry it, and a link to the app can be bookmarked.
+  The code is model output, so it never runs on loom's origin, next to the
+  login there: only `LoomWeb.AppsEndpoint` serves it, on the apps' origin
+  (`Loom.Apps.origin/0`). That origin is the isolation, so the page is a
+  plain site — cookies, storage, installable. The credential is a signed
+  token in the path, scoped to one app (`Loom.Apps.url/1`), which the first
+  load trades for a cookie on the app's path.
 
   ## The forwarding
 
@@ -44,16 +45,12 @@ defmodule LoomWeb.Apps do
 
   def init(opts), do: opts
 
-  def call(%Plug.Conn{path_info: ["apps", name | rest]} = conn, opts) do
-    own = Keyword.get(opts, :own_origin, false)
+  def call(%Plug.Conn{path_info: ["apps", name | rest]} = conn, _opts) do
+    conn = headers(conn)
 
-    conn =
-      if own,
-        do: conn |> own_origin() |> put_private(:apps_own_origin, true),
-        else: sandboxed(conn)
-
-    case authorize(conn, Loom.Apps.get(name), rest, own) do
-      :error when own and conn.method in ["GET", "HEAD"] ->
+    case authorize(conn, Loom.Apps.get(name), rest) do
+      # A browser fetches these without cookies, so installing needs them open.
+      :error when conn.method in ["GET", "HEAD"] ->
         if Enum.join(rest, "/") in Loom.Apps.install_files(name),
           do: conn |> static(name, rest) |> halt(),
           else: conn |> send_resp(404, "not found") |> halt()
@@ -71,10 +68,10 @@ defmodule LoomWeb.Apps do
 
   def call(conn, _opts), do: conn
 
-  defp authorize(_conn, nil, _rest, _own), do: :error
-  defp authorize(conn, %{auth: "public"}, rest, _own), do: {:ok, conn, rest}
+  defp authorize(_conn, nil, _rest), do: :error
+  defp authorize(conn, %{auth: "public"}, rest), do: {:ok, conn, rest}
 
-  defp authorize(conn, %{name: name}, rest, own) do
+  defp authorize(conn, %{name: name}, rest) do
     case {get_req_header(conn, "authorization"), rest} do
       {["Bearer " <> key], _} ->
         if Loom.Apps.valid_key?(name, key),
@@ -83,21 +80,20 @@ defmodule LoomWeb.Apps do
 
       {[], [token | after_token]} ->
         cond do
-          not Loom.Apps.valid_token?(name, token) -> by_cookie(conn, name, rest, own)
-          own and conn.method == "GET" -> trade(conn, name, after_token)
+          not Loom.Apps.valid_token?(name, token) -> by_cookie(conn, name, rest)
+          conn.method == "GET" -> trade(conn, name, after_token)
           true -> {:ok, conn, after_token}
         end
 
       {[], []} ->
-        by_cookie(conn, name, rest, own)
+        by_cookie(conn, name, rest)
 
       _ ->
         :error
     end
   end
 
-  # On the apps' own origin the signed link is traded for a cookie on the
-  # app's path, and the page reloads without the token: its URL then outlives
+  # The signed link is traded for a cookie on the app's path, and the page reloads without the token: its URL then outlives
   # the link, which is what a PWA's start_url and a bookmark need.
   defp trade(conn, name, rest) do
     query = if conn.query_string == "", do: "", else: "?" <> conn.query_string
@@ -105,7 +101,7 @@ defmodule LoomWeb.Apps do
   end
 
   # Renewed on every page load, so an app in use never logs out.
-  defp by_cookie(conn, name, rest, true) do
+  defp by_cookie(conn, name, rest) do
     conn = fetch_cookies(conn)
 
     with value when is_binary(value) <- conn.req_cookies[@cookie],
@@ -117,8 +113,6 @@ defmodule LoomWeb.Apps do
     end
   end
 
-  defp by_cookie(_conn, _name, _rest, false), do: :error
-
   defp put_cookie(conn, name) do
     put_resp_cookie(conn, @cookie, Loom.Apps.cookie(name),
       path: "/apps/#{name}/",
@@ -127,16 +121,6 @@ defmodule LoomWeb.Apps do
       secure: String.starts_with?(Loom.Apps.origin() || "", "https:"),
       same_site: "Lax"
     )
-  end
-
-  # A page fetching from an opaque origin sends a preflight for JSON; it is
-  # answered here, not by the app.
-  defp handle(%Plug.Conn{method: "OPTIONS"} = conn, _name, ["api" | _]) do
-    conn
-    |> put_resp_header("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE")
-    |> put_resp_header("access-control-allow-headers", "content-type, authorization")
-    |> put_resp_header("access-control-max-age", "86400")
-    |> send_resp(204, "")
   end
 
   defp handle(conn, name, ["api" | _] = rest), do: forward(conn, name, rest)
@@ -196,8 +180,8 @@ defmodule LoomWeb.Apps do
     end
   end
 
-  # On its own origin an app has cookies like any site; loom's is not its.
-  defp app_cookies(%Plug.Conn{private: %{apps_own_origin: true}} = conn) do
+  # An app has cookies like any site; loom's is not its.
+  defp app_cookies(conn) do
     cookies =
       for header <- get_req_header(conn, "cookie"),
           pair <- String.split(header, ";"),
@@ -208,8 +192,6 @@ defmodule LoomWeb.Apps do
 
     if cookies == [], do: [], else: "cookie: #{Enum.join(cookies, "; ")}\r\n"
   end
-
-  defp app_cookies(_conn), do: []
 
   # Inside the app's directory only: the path is often built from a request,
   # and a slip there should be a 404, not someone's ~/.ssh.
@@ -317,25 +299,11 @@ defmodule LoomWeb.Apps do
     end
   end
 
-  # Its own origin is the isolation: no sandbox, and nothing cross-origin to allow.
-  defp own_origin(conn) do
+  # `no-transform` keeps Cloudflare from injecting its analytics beacon.
+  defp headers(conn) do
     conn
     |> put_resp_header("x-content-type-options", "nosniff")
     |> put_resp_header("referrer-policy", "no-referrer")
-    |> put_resp_header("cache-control", "no-cache, no-transform")
-  end
-
-  defp sandboxed(conn) do
-    conn
-    |> put_resp_header(
-      "content-security-policy",
-      "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
-    )
-    |> put_resp_header("access-control-allow-origin", "*")
-    |> put_resp_header("x-content-type-options", "nosniff")
-    |> put_resp_header("referrer-policy", "no-referrer")
-    # `no-transform` keeps Cloudflare from injecting its analytics beacon,
-    # which on an opaque origin fails CORS on every report and fills the console.
     |> put_resp_header("cache-control", "no-cache, no-transform")
   end
 end

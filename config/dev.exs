@@ -18,9 +18,13 @@ config :loom, LoomWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk"
 
+apps_port = String.to_integer(System.get_env("LOOM_APPS_PORT", "5000"))
+
 config :loom, LoomWeb.AppsEndpoint,
-  http: [ip: {127, 0, 0, 1}, port: 5000],
+  http: [ip: {127, 0, 0, 1}, port: apps_port],
   secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk"
+
+config :loom, Loom.Apps, origin: "http://localhost:#{apps_port}"
 
 # ## SSL Support
 #

@@ -24,7 +24,7 @@ defmodule LoomWeb.AppsEndpoint do
     cache_control_for_etags: "public, max-age=86400"
 
   plug Plug.RequestId
-  plug LoomWeb.Apps, own_origin: true
+  plug LoomWeb.Apps
   plug :not_found
 
   def not_found(conn, _opts) do

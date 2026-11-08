@@ -102,9 +102,8 @@ defmodule Loom.Apps do
   end
 
   @doc """
-  The apps' own origin (`LOOM_APPS_URL`), when they have one: their URLs are
-  absolute there, and served by `LoomWeb.AppsEndpoint`. `nil` keeps them on
-  loom's origin.
+  The apps' own origin (`LOOM_APPS_URL`), where `LoomWeb.AppsEndpoint`
+  serves them: their URLs are absolute there.
   """
   def origin, do: config(:origin)
 
@@ -345,7 +344,7 @@ defmodule Loom.Apps do
 
   defp public(app) do
     path = if app.auth == "public", do: "/apps/#{app.name}/", else: url(app.name)
-    url = (origin() || "") <> path
+    url = origin() <> path
     icon = icon(app.name)
 
     app

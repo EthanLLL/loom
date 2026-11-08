@@ -28,7 +28,7 @@ defmodule Loom.AppsTest do
     b = page(uniq("b"))
     assert {:ok, %{order: 1, title: ^a}} = Apps.put(a, %{}, s)
     assert {:ok, %{order: 2, title: "B"}} = Apps.put(b, %{title: "B"}, s)
-    assert [%{name: ^a}, %{name: ^b, url: "/apps/" <> _}] = Apps.list(s)
+    assert [%{name: ^a}, %{name: ^b, url: "https://apps.test/apps/" <> _}] = Apps.list(s)
   end
 
   test "refuses what it could not serve or run", %{name: s} do
@@ -167,6 +167,6 @@ defmodule Loom.AppsTest do
   test "a public app opens unsigned", %{name: s} do
     a = page(uniq("a"))
     assert {:ok, %{auth: "public", url: url}} = Apps.put(a, %{auth: "public"}, s)
-    assert url == "/apps/#{a}/"
+    assert url == "https://apps.test/apps/#{a}/"
   end
 end

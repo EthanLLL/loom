@@ -77,9 +77,8 @@ accounts. Ask the user who will use it, if they have not said:
   built in from the start. Loom checks nothing for a public app, so the server
   owns login: a users table in sqlite, passwords hashed (`crypto.scrypt`), a
   random session token returned at login and sent back as
-  `Authorization: Bearer`, rate-limited attempts. The sandbox has no cookies
-  or storage, so the page keeps the token in memory and in the URL fragment
-  (`#s=…`), which a bookmark keeps. Designing as private and discovering
+  `Authorization: Bearer`, rate-limited attempts; the page keeps the token in
+  localStorage. Designing as private and discovering
   later that people must log in means rewriting the app.
 
 **Public only with the user's explicit yes** — say that anyone on the internet
@@ -90,7 +89,8 @@ Programs are separate from people. For one that pushes to or pulls from a
 private app for good — another machine's job, a script — mint a key with
 `Loom.Apps.key(name)`: it returns `{:ok, key}` once and keeps only a hash. The
 program sends `Authorization: Bearer <key>` to
-`https://<this Loom's host>/apps/<name>/api/…`, with no token in the path.
+`<apps origin>/apps/<name>/api/…` (the origin of the `url` from `list`), with
+no token in the path.
 Calling `key` again replaces it; `Loom.Apps.key(name, nil)` revokes it. Hand
 the key over as a file with mode 600 or a secret store, never in `web/`, a
 page, or chat output beyond what the user needs.
@@ -99,16 +99,14 @@ page, or chat output beyond what the user needs.
 
 - Plain HTML + JS is the default. A React/Vite build works too: build into
   `web/`, with `base: "./"` so asset URLs are relative.
-- Where it runs depends on this Loom; the `url` from `put` tells:
-  - **absolute** (`https://…-apps.…/apps/<name>/…`): the apps have an origin of
-    their own. Cookies, localStorage and PWA install work like on any site. All
-    apps of this Loom share that origin, so prefix storage keys with the app's
-    name, and keep nothing there another app must not read.
-  - **a path** (`/apps/<name>/…`): sandboxed on an opaque origin, like the
-    canvas: **no cookies, no localStorage, no sessionStorage**, no install.
-  Either way, what must survive a reload for good goes to the server or the
-  data a job writes.
-- **Installable** (own origin only): `web/manifest.webmanifest` with `name`,
+- It runs on the apps' own origin, the one in the `url` from `put`
+  (`LOOM_APPS_URL`, e.g. `https://…-apps.…`; without it `http://localhost:5000`,
+  this machine only), never on Loom's. Cookies, localStorage and PWA install
+  work like on any site. All apps of this Loom share that origin, so prefix
+  storage keys with the app's name, and keep nothing there another app must
+  not read. What must survive for good goes to the server or the data a job
+  writes.
+- **Installable**: `web/manifest.webmanifest` with `name`,
   `short_name`, `"id": "./"`, `"start_url": "./"`, `"scope": "./"`,
   `"display": "standalone"` and `icons` (`favicon.svg` with `"sizes": "any"`,
   plus a 512×512 PNG), linked as `<link rel="manifest" href="manifest.webmanifest">`,
@@ -118,8 +116,7 @@ page, or chat output beyond what the user needs.
   manifest, the icons it lists and the favicon to anyone; keep them to name
   and looks.
 - Use **relative** URLs only — `fetch("api/todos")`, `fetch("data.json")`. The
-  page lives under `/apps/<name>/<token>/` and relative URLs carry the token;
-  an absolute `/api/...` hits Loom and fails.
+  page lives under `/apps/<name>/`; an absolute `/api/...` is not the app's.
 - CDNs are allowed; for charts read the `dataviz` skill first.
 - **One icon for both**: give the page a favicon, `web/favicon.svg`, linked as
   `<link rel="icon" href="favicon.svg">` (relative). The grid shows whatever
@@ -200,9 +197,8 @@ journalctl --user -u app-<name>-server -n 20 --no-pager   # a server's
 curl -s --unix-socket ~/.loom/apps/<name>/.run/http.sock http://x/api/…   # the server, as Loom calls it
 ```
 
-Then open the page itself with Playwright — at `url` (from `put`/`list`) when
-it is absolute, else at `http://localhost:4000<url>` — light and dark, and
-look at a screenshot.
+Then open the page itself with Playwright at `url` (from `put`/`list`), light
+and dark, and look at a screenshot.
 
 Tell the user it is in the sidebar's **Apps**. Do not hand out the URL unless
 asked: it is a credential (30 days, this app only), and Loom opens apps itself.

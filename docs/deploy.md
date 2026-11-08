@@ -36,6 +36,10 @@ Optional settings:
 - `LOOM_CLAUDE_CLI` and `LOOM_CODEX_CLI`
 - `LOOM_CLAUDE_FALLBACK_MODEL`: Claude Code's `--fallback-model`, for when
   the usual model is overloaded (see docs/backends.md §6.13)
+- `LOOM_APPS_URL` and `LOOM_APPS_PORT` (default 5000): the apps' own origin,
+  e.g. `https://<machine>-apps.example.com`, served on that port by
+  `LoomWeb.AppsEndpoint`. Apps never run on Loom's origin; unset, they are at
+  `http://localhost:5000`, on this machine only.
 
 No TLS settings and no model API keys are needed.
 
@@ -76,8 +80,8 @@ sudo cp rel/systemd/loom.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
-`cloudflared` runs as its own service, with ingress pointing at
-`http://localhost:4000`.
+`cloudflared` runs as its own service, with ingress pointing Loom's host at
+`http://localhost:4000` and the apps' host at `http://localhost:5000`.
 
 ## 6. Deploying Loom from inside Loom
 
