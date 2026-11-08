@@ -1071,8 +1071,8 @@ function Composer({
   }, [draftKey, text])
   const ref = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
-  // True between compositionstart and compositionend. Needed in addition to
-  // `isComposing` because the two disagree across browsers — see below.
+  // True between compositionstart and compositionend, one more guard besides
+  // `isComposing` (see the Enter handler below).
   const composingRef = useRef(false)
 
   // The command menu: open while the text could still become a command, until
@@ -1226,7 +1226,7 @@ function Composer({
             composingRef.current = false
           }}
           onKeyDown={(e) => {
-            if (selected && !composingRef.current && !e.nativeEvent.isComposing) {
+            if (selected && !composingRef.current && !isComposing(e)) {
               const n = matches.length
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault()
@@ -1250,16 +1250,11 @@ function Composer({
             if (e.key !== "Enter" || e.shiftKey) return
 
             // An IME uses Enter to commit the candidate, and that keystroke
-            // must not also send the message. Both guards are needed because
-            // the browsers disagree about ordering:
-            //
-            //   Chrome  — the committing keydown has isComposing === true.
-            //   Safari  — compositionend fires *after* that keydown, so
-            //             isComposing is already false; the ref is still true.
-            //
-            // Either way the commit is swallowed, and the next Enter (with no
-            // composition in progress) sends.
-            if (e.nativeEvent.isComposing || composingRef.current) return
+            // must not also send the message. On macOS Safari compositionend
+            // fires before that keydown, so isComposing and the ref are both
+            // already false; only keyCode 229 gives it away (see ime.ts). The
+            // next Enter, with no composition in progress, sends.
+            if (isComposing(e) || composingRef.current) return
 
             e.preventDefault()
             send()
