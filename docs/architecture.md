@@ -1,21 +1,20 @@
 # Architecture
 
 Loom is a single-user lobby for cloud agents. Every device connects to the same
-session; state lives on the server and on disk; the agent itself is Claude Code
-or Codex. Protocol details are in [backends.md](backends.md), and deployment is
-in [deploy.md](deploy.md).
+session; state lives on the server and on disk; the agent is Claude Code or
+Codex. Protocol details are in [backends.md](backends.md), deployment in
+[deploy.md](deploy.md).
 
 ## 1. Non-goals
 
 - **Multi-tenancy.** One password, one token for every device. Agents run as
   the BEAM's uid, with no sandbox.
-- **Permission prompts.** Everything runs in auto mode. Nobody is around to
-  press `y`, so a prompt would only stall the agent.
+- **Permission prompts.** Everything runs in auto mode; nobody is there to
+  press `y`.
 - **Our own agent loop.** Tools, context, compaction and memory belong to the
-  backend. Why the old in-house loop went: [backends.md §1](backends.md).
-- **A per-session working directory.** Every session starts in `$HOME`, or
-  `LOOM_WORKSPACE` if set. The project you are working on is a fact in the
-  conversation, not configuration.
+  backend ([backends.md §1](backends.md)).
+- **A per-session working directory.** Every session starts in `$HOME` (or
+  `LOOM_WORKSPACE`). The project is a fact in the conversation, not config.
 
 ## 2. One session, one GenServer
 
@@ -26,10 +25,9 @@ Loom.Agent.Session        one process per session, restart: :transient
   └─ PubSub "agent:<id>"  events and deltas
 ```
 
-There is one process per session because failures and turn state are
-per-session: one bad response must not take nine other transcripts down with
-it. The process holds no sockets, so a turn finishes even with every browser
-closed.
+Failures and turn state are per-session, so one bad response cannot take other
+transcripts down. The process holds no sockets: a turn finishes with every
+browser closed.
 
 ### 2.1 States
 
@@ -40,10 +38,9 @@ closed.
                                    :interrupted ─submit→ :starting
 ```
 
-- **`:starting`** covers the backend's cold start, which takes seconds.
-- **`:interrupted`** exists only to suppress "idle with a queue → dequeue".
-  After a stop, nothing moves on its own. Typing resumes the session, and the
-  parked messages go out with the new one.
+`:starting` covers the backend's cold start. `:interrupted` only suppresses
+"idle with a queue → dequeue": after a stop nothing moves until the user types,
+and the parked messages go out with the new one.
 
 ### 2.2 Submit
 
@@ -54,84 +51,69 @@ closed.
 | steer rejected | queue | `:queued` |
 | `:interrupted` | queue + new message, start a turn | `:started` |
 
-Both backends support mid-turn injection natively, so nothing waits for a turn
-to end. The queue only holds two things: messages typed while interrupted, and
-steers that were rejected (Codex's `expectedTurnId` mismatch). It is persisted
-to disk.
+Both backends inject mid-turn natively. The queue holds only messages typed
+while interrupted and rejected steers (Codex's `expectedTurnId` mismatch); it
+is persisted.
 
 ### 2.3 Crash recovery
 
-When the supervisor restarts a session with its original spec, `init/1` finds
-`meta.json` on disk and reattaches; the disk always wins over the spec. A
-crash mid-turn is treated as an involuntary interrupt. The turn died with the
-node, and resending it would show the model the message twice. So the session
-comes back `:interrupted`, with its queue kept and a status event explaining
-why.
+A restarted session finds `meta.json` and reattaches; disk wins over the spec.
+A crash mid-turn counts as an interrupt: resending would show the model the
+message twice. The session comes back `:interrupted`, queue kept, with a status
+event saying why.
 
-### 2.4 `/reload`
+### 2.4 `/reload` and `/cron`
 
-Loom's own command; it never reaches a backend. Typed in any session, it tells
-every session to let its backend process go: right away if idle, at the end of
-the turn if not. The next Claude Code turn is then a fresh `claude --resume`
-that reads the new settings, MCP servers and skills. Codex has one shared
-app-server, which restarts itself as soon as no Codex turn is running. Its
-threads are reattached silently on their next turn
-([backends.md §6.11](backends.md)). Only a message that is exactly `/reload`
-counts. The composer suggests `/compact`, `/reload` and `/cron` when the first
-character is `/`.
+Loom's own commands, never sent to a backend; only a message that is exactly
+the command counts. `/reload` tells every session to let its backend process
+go, now if idle or at turn end, so the next turn is a fresh `claude --resume`
+with new settings, MCP servers and skills. The shared Codex app-server restarts
+once no Codex turn is running and reattaches threads silently
+([backends.md §6.11](backends.md)). `/cron` lists the jobs (§2.5).
 
 ### 2.5 Scheduled prompts
 
 `Loom.Cron` submits a fixed prompt to an existing session at every match of a
-five-field cron expression, always in UTC. The turn is an ordinary one, so its
-reply, outputs and canvas land in that session like any other; a backend's own
-scheduler would run outside Loom and update nothing. The message is marked
-`origin: "cron"` and a busy session steers or queues it as usual.
+five-field cron expression, in UTC. It is an ordinary turn (`origin: "cron"`),
+so its reply and outputs land in the session; a busy session steers or queues
+it.
 
-- **Truth is `~/.loom/cron.json`.** One process under the supervisor reads it
-  at boot and rewrites it on every change; `next_at` is never stored. Minutes
-  missed while Loom was down are skipped, not caught up.
-- **No HTTP API.** Jobs are made on the node itself, by an agent or by hand,
-  with `bin/loom rpc`. The prompt goes in a `~S"""` heredoc, so quotes,
-  newlines and `#{}` arrive verbatim:
-
-  ```sh
-  bin/loom rpc 'IO.inspect(Loom.Cron.add(%{name: "CI", cron: "30 0 * * 1-5",
-    target: "a_…", prompt: ~S"""
-  …
-  """}))'
-  bin/loom rpc 'IO.inspect(Loom.Cron.list())'
-  bin/loom rpc 'IO.inspect(Loom.Cron.delete("c_…"))'
-  ```
-
-- **`/cron`**, typed in any session, lists every job. Like `/reload`, it never
-  reaches a backend.
+- `~/.loom/cron.json` is the truth, read at boot, rewritten on change;
+  `next_at` is never stored. Minutes missed while down are skipped.
+- No HTTP API. Jobs are made with `bin/loom rpc` (`Loom.Cron.add/list/delete`),
+  the prompt in a `~S"""` heredoc so it arrives verbatim. The `cron` skill
+  tells agents how.
 
 ### 2.6 Notifications
 
-`Loom.Push` sends a Web Push notification to every device that turned them on
-(the bell at the foot of the sidebar) when a turn ends with nothing queued
-behind it: the session's title, and the start of the last reply or the error.
-An interrupt sends nothing. Tapping it opens that session.
+`Loom.Push` sends Web Push to every subscribed device when a turn ends with
+nothing queued: the title and the start of the reply or error. An interrupt
+sends nothing; tapping opens the session.
 
-- **No account anywhere.** The VAPID key pair is made on first boot and kept
-  in `~/.loom/push.json`, beside the subscriptions; encryption and signing are
-  `:crypto` (`Loom.Push.WebPush`). Losing the file orphans every device, which
-  then has to turn notifications on again.
+- **No account.** The VAPID pair is made on first boot and kept in
+  `~/.loom/push.json` with the subscriptions; encryption and signing are
+  `:crypto`. Losing the file orphans every device.
 - **The session broadcasts, Push decides.** A session only announces
   `{:turn_ended, id, summary}` on `Loom.Agent.turns_topic/0`.
-- **Not to a device that is looking.** Each subscribed device tells the lobby
-  channel which session it is showing (`watching`, `nil` when hidden), and is
-  skipped for that one. In memory against the channel's pid, so a device that
-  drops off counts as not looking.
-- **Declarative Web Push payload** (`web_push: 8030`): Safari 18.4+ shows it
-  even if the service worker never runs; elsewhere `frontend/public/sw.js`
-  shows the same fields. The worker has no fetch handler and caches nothing.
-- **iPhone:** only from the home-screen app (iOS 16.4+); Safari tabs have no
-  Push API. Apple refuses a VAPID subject on `localhost` or plain http, so a
-  dev server signs with a stand-in address.
-- A push service answering 404 or 410 has dropped the subscription, and so
-  does Loom.
+- **Not to a device that is looking.** Each device tells the lobby channel
+  which session it shows (`nil` when hidden), held against the channel's pid.
+- **Declarative payload** (`web_push: 8030`), shown by Safari 18.4+ without the
+  service worker; elsewhere `frontend/public/sw.js` shows it. The worker
+  caches nothing.
+- iPhone: home-screen app only (iOS 16.4+). A 404/410 from the push service
+  drops the subscription.
+
+### 2.7 What the backend is told
+
+A session's backend is fixed at creation: `POST /api/agents` without
+`backend` is 422, since the history lives in the backend's own store. Titles
+stay on Loom's side.
+
+Every turn's system prompt (CC `--append-system-prompt`, Codex
+`developerInstructions`) gives the session id, its `output/` directory and
+canvas convention, and its lifetime: Loom lets an idle backend go and restarts
+on deploys, so background jobs, subagents and timers die with the turn. Work
+meant to outlive it goes through Loom: the `sessions` and `cron` skills.
 
 ## 3. Client protocol
 
@@ -140,22 +122,17 @@ event  has a seq, persisted to events.jsonl, replayed on reconnect. The truth.
 delta  no seq, transient, never replayed. The typewriter.
 ```
 
-Deltas append to a placeholder keyed by `block_id`. The event carrying the same
-`block_id` then replaces the placeholder whole. A stream cut mid-sentence
-therefore costs nothing.
+Deltas (`:block_start`, `:block_end`, `:text`, `:thinking`, `:tool_use_start`,
+`:tool_output`) append to a placeholder keyed by `block_id`; the event with the
+same `block_id` replaces it whole, so a stream cut mid-sentence costs nothing.
 
-Delta types: `:block_start`, `:block_end`, `:text`, `:thinking`,
-`:tool_use_start`, and `:tool_output` (Codex only). `:tool_output` reuses the
-tool card's `block_id`, the same pattern as text.
-
-- **Loom owns `seq`.** The session is the only writer of `events.jsonl`. Backend
-  ids go into `backend_ref` and are used for dedup on reattach.
-- **Multiple devices.** A client joins with the last `seq` it saw and receives
-  only the gap. PubSub does the fan-out. The channel holds no state.
-- **Session list.** It is pushed on the `agents` lobby channel, not polled,
-  and ordered by `last_active_at`: the last user message, reply or turn end.
-  Status events do not count, so a restart does not make every session "now".
-  It is derived from the transcript on restore, not stored.
+- **Loom owns `seq`.** The session is the only writer of `events.jsonl`;
+  backend ids go in `backend_ref`, for dedup on reattach.
+- **Multiple devices.** A client joins with the last `seq` it saw and gets the
+  gap. PubSub fans out; the channel holds no state.
+- **Session list** is pushed on the `agents` lobby channel, ordered by
+  `last_active_at` (last user message, reply or turn end, derived from the
+  transcript on restore). Devices, apps and search ride the same channel.
 
 ## 4. Storage
 
@@ -164,122 +141,72 @@ tool card's `block_id`, the same pattern as text.
 ~/.loom/sessions/<id>/events.jsonl   normalized transcript, append-only, :sync
 ~/.loom/sessions/<id>/files/…        user attachments
 ~/.loom/sessions/<id>/output/…       files the agent made for the user
-~/.loom/cron.json                    scheduled prompts (§2.5)
+~/.loom/sessions/.trash/<id>.<ms>/   a deleted session, kept whole
+~/.loom/cron.json  push.json  apps.json  apps/<name>/
 ```
 
-The base is `~/.loom` (or `LOOM_HOME`), not `priv/`, because a deploy replaces
-`priv/`.
+The base is `~/.loom` (or `LOOM_HOME`), not `priv/`, which a deploy replaces.
+Deleting a session is a rename into `.trash`; nothing is ever removed, and an
+id that is not one plain path segment is refused.
 
-There is no message log. The conversation belongs to the backend: CC keeps it
-in `~/.claude/projects/…`, Codex in its thread store. `events.jsonl` is only
-the display truth, and it may legitimately differ from the backend's history.
-For example, text streamed before an interrupt is shown but dropped by the
-backend. **Never reconcile one against the other.**
+There is no message log. The conversation belongs to the backend (CC's
+`~/.claude/projects/…`, Codex's thread store); `events.jsonl` is only the
+display truth and may legitimately differ, e.g. text streamed before an
+interrupt. **Never reconcile one against the other.**
 
 > **Gotcha:** `Store.read_meta/1` uses `String.to_existing_atom/1` and falls
-> back to string keys. An adapter atom may not exist yet at boot, so adapters
-> read meta through `Backend.meta_get/2`, which accepts both.
+> back to string keys, so adapters read meta through `Backend.meta_get/2`.
 
 ### 4.1 Attachments
 
-Attachments are uploaded over HTTP (multipart), not the channel, so a 20 MB
-screenshot doesn't block every event behind it. The model gets an absolute path
-and reads the file with its own tools: CC's `Read`, Codex's `view_image`. There
-is no base64 and no multimodal content block.
+Uploaded over HTTP multipart, not the channel. The model gets an absolute path
+and reads it with its own tools; no base64, no multimodal blocks. The text
+shown and the paths sent to the backend are stored separately.
 
-- **The displayed text is not what the model gets.** The user's text and the
-  attachment list are stored separately. Only the copy sent to the backend
-  carries the paths.
-- **Files show as small cards**, the same in the composer, in a sent bubble
-  and for a download: an image shows a thumbnail, anything else its extension
-  and name. The thumbnail of an attachment you just added comes from the local
-  copy. Otherwise it is fetched with the token, from
-  `GET /api/agents/:id/files/:name` or the output route, and cached for the
-  page.
-- **Images are scaled down in the browser first** (`shrink.ts`), to 2000 px
-  on the long edge, about what CC and Codex scale them to before a model sees
-  them. A phone photo goes from about 4 MB to under 1 MB, which matters on a
-  phone's uplink and against Bedrock's ~32 MB cap on a request, which every
-  turn's history counts toward. Only the size changes: the format stays (HEIC
-  becomes JPEG), and a JPEG keeps its EXIF — time, GPS, camera — with the
-  orientation set to 1, as the pixels are turned upright. A file that is small
-  already, would come out bigger (a screenshot's PNG often does), or will not
-  decode goes up untouched; GIF and SVG always do.
+- **Scaled in the browser** (`shrink.ts`) to 2000 px on the long edge, about
+  what CC and Codex do anyway, which matters on a phone uplink and against
+  Bedrock's ~32 MB request cap. Format kept (HEIC → JPEG), JPEG EXIF kept with
+  orientation 1. Files that would not shrink, GIF and SVG go up untouched.
 - **A path is a capability.** `Files.verify/2` rejects anything outside this
-  session's `files/`, and file names are treated as hostile.
+  session's `files/`; names are treated as hostile.
 
 ### 4.2 Output
 
-Output is the reverse of attachments. The backend's system prompt names the
-session's `output/` directory: CC via `--append-system-prompt`, Codex via
-`developerInstructions`. At every turn end (done, failed or interrupted) Loom
-diffs that directory against a snapshot and emits `:output_files` before
-`turn_done`. The frontend shows a download card whether or not the model
-linked the file.
-
-The card shows one entry per top-level name in `output/`. A file directly in
-`output/` is one card. A directory is also one card, however many files
-changed in it; a comic chapter of forty pages is one card, not forty. A
-directory with an `index.html` is a page; any other directory downloads as a
-zip (`GET /api/agents/:id/zip/*path`), stored uncompressed and capped at 1 GB.
-
-Downloads need the bearer token. The frontend therefore fetches the file as a
-blob rather than using `<a href>`. `Output.resolve/2` refuses paths outside
-`output/` and any symlink along the way.
+At every turn end Loom diffs `output/` against a snapshot and emits
+`:output_files` before `turn_done`, so a download card appears whether or not
+the model linked the file. One card per top-level name: a directory with
+`index.html` is a page, any other directory a zip (stored, capped at 1 GB).
+Downloads need the bearer token, so they are fetched as blobs.
+`Output.resolve/2` refuses paths outside `output/` and any symlink.
 
 ### 4.3 Canvas
 
-The canvas is a browser pane for `output/`. It shares the right-hand column
-with the terminals and shows one of the two at a time. Clicking a previewable
-output (a page, an image, a video, a PDF, text or code) shows it there, and the
-canvas has its own download button. Anything else downloads on click. What
-each session's canvas shows is kept per session, so switching to the terminals,
-to another session, or reloading the page finds it as it was. Only one thing
-opens the canvas without a click: a turn ending with a new or changed
-`index.html`. That page is `open` in the `:output_files` event, and only a live
-event acts on it, never history replayed on join. The agent is told the
-convention in its system prompt: `output/<name>/index.html` with assets beside
-it, referenced by relative paths.
+The canvas shows `output/` in the right-hand column, which it shares with the
+terminals. Clicking a previewable output (page, image, video, PDF, text, code)
+shows it; anything else downloads. The view is kept per session. Only one
+thing opens it unasked: a live turn end with a new or changed `index.html`.
 
-The cards in the chat only announce what each turn changed. Beside the view,
-the way NERDTree sits beside a buffer, is a file tree for the whole session:
-`output/` and the uploads in `files/`, newest first, from
-`GET /api/agents/:id/tree`, with the shown file's row marked. The button at the
-left of the canvas's head folds it, and that is remembered. On a phone the tree
-covers the view and folds itself once a file is picked. A file rewritten in place keeps its path, so the canvas does not go by the
-path alone: opening something reads it again, and so does a live
-`:output_files` event that names what is on show (the file, or the directory a
-page lives in). It lists when shown and
-again whenever a live `:output_files` or `user` event arrives, rather than
-polling. A file opens in the canvas when there is a viewer for it and
-downloads otherwise; a directory offers its page and a zip of itself.
+Beside the view, NERDTree-style, is a file tree of the whole session
+(`output/` and `files/`, newest first, `GET /api/agents/:id/tree`), refreshed on
+live `:output_files` and `user` events, never polled. A file rewritten in place
+is reread when opened or named by a live event. From the keyboard a row can be
+renamed or deleted (`PATCH`/`DELETE …/output/*path`, `…/files/:name`; 409 for a
+taken name, 422 for one that would move it).
 
-From the keyboard (docs/keys.md) a row can also be renamed or deleted:
-`PATCH`/`DELETE /api/agents/:id/output/*path` and `…/files/:name`, the new
-name in `new_name`. The same path checks as a download, plus: a rename keeps
-the directory, refuses a taken name (409) and one that would hide or move it
-(422). The chat's cards and chips still name the old path, and show nothing
-once it has gone; the canvas follows what it shows to the new name.
+The page is model output, so it is hostile:
 
-The page is model output, so it is treated as hostile:
-
-- It runs in `<iframe sandbox="allow-scripts …">` without `allow-same-origin`,
-  so it has an opaque origin and cannot reach loom's token or API. The server
-  sends the same sandbox as a CSP header on every response, so a canvas URL
-  opened in a tab of its own is just as confined.
-- An iframe cannot send the bearer header, so the files are served under a
-  signed, session-scoped prefix, `/canvas/<id>/<token>/`, valid for a day. The
-  token is in the path, so the page's own relative URLs inherit it.
-  `Referrer-Policy: no-referrer` keeps the token from being sent to the CDNs a
-  page loads from.
-- Logs, data and source files are sent as `text/plain`, so they display
-  instead of downloading.
+- `<iframe sandbox="allow-scripts …">` without `allow-same-origin`, and the
+  same sandbox as a CSP header, so a canvas URL in its own tab is as confined.
+- Files are served under a signed, session-scoped `/canvas/<id>/<token>/`,
+  valid a day; relative URLs inherit the token. `Referrer-Policy: no-referrer`
+  keeps it from CDNs. `Cache-Control: no-transform` stops Cloudflare injecting
+  its beacon.
+- Logs, data and source are sent as `text/plain`.
 
 ### 4.4 Devices (loom-node)
 
-Agents can reach the user's own machines, such as a Mac or a WSL box. Each
-device runs `loom-node daemon`, which is the Go program in `node/`. One binary
-serves both ends of the link:
+Each device runs `loom-node daemon`, the Go program in `node/`; the same binary
+is the CLI agents call here.
 
 ```
 agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
@@ -291,56 +218,80 @@ agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
           NodeChannel  ◄── wss /node/websocket, through cloudflared ──  loom-node daemon (device)
 ```
 
-- **Registering a device.** The Devices dialog at the foot of the sidebar
-  registers a name and returns a one-time install code, valid for an hour. The
-  user runs `curl …/node/install/<code> | sh` on the device. Fetching that
-  script redeems the code: it mints the device's token, which loom keeps only
-  as a SHA-256 hash, and kills the previous token. The script then downloads
-  the binary for the device's OS and arch from `/node/download/…`, writes
-  `~/.config/loom-node/config.json`, and installs a per-user service (launchd
-  or a systemd user unit). Reinstalling is how a token is replaced, and
-  removing the device revokes its token.
-- **How the CLI gets in.** The CLI's routes, `/api/node/*`, share a port with
-  everything Cloudflare forwards. They require the key from
-  `~/.loom/node-cli.json`, a mode-600 file that loom writes at boot, so only
-  this user can read it. They also refuse any request carrying `cf-ray`,
-  whatever key it presents.
-- **Online state.** A device is online while its channel is alive. Joins and
-  drops are pushed on the lobby channel. Neither side polls.
-- **Requests.** Each request (`exec`, `read`, `write`) gets an id. The
-  controller sends it to the channel, the channel pushes it to the device, and
-  the device's events (`out`/`exit`, `chunk`/`done`, `written`, `error`) come
-  back along the same path.
-  - The controller pings the CLI every second. When a ping fails to write, the
-    CLI has gone away, and the device is told to `cancel`.
-  - An offline device gets 10s to reconnect before the request is refused.
-- **Losing the device mid-request.**
-  - The controller monitors the channel, so a dropped device ends the stream
-    with `lost`, and the CLI exits 255 with a hint to check `loom-node list`.
-  - The device kills everything it was running when its connection drops,
-    because nobody is left to read the output. This includes heartbeats going
-    unanswered for 15s.
-  - The server lets a silent socket go after 45s.
-- **Running a command.** It runs as `$SHELL -lc` in its own process group:
-  - stdin is closed;
-  - the timeout defaults to 120s and is capped at 1800s, with exit 124 on
-    expiry;
-  - output is capped at 10 MB.
-
-  Writes land in a temporary file beside the target, which is renamed into
-  place. Every request is logged on the device in
+- **Registering.** The Devices dialog returns a one-time install code (1 h).
+  `curl …/node/install/<code> | sh` redeems it: mints the device token (kept as
+  SHA-256, replacing any old one), downloads the binary for the OS/arch, writes
+  `~/.config/loom-node/config.json`, installs a launchd or systemd user
+  service. Removing the device revokes the token.
+- **The CLI's routes** (`/api/node/*`) need the key in mode-600
+  `~/.loom/node-cli.json`, and refuse anything carrying `cf-ray`.
+- **Online** while the channel is alive; joins and drops are pushed.
+- **Requests** (`exec`, `read`, `write`) carry an id through controller →
+  channel → device and back. The controller pings the CLI every second and
+  cancels on the device when the CLI is gone; an offline device gets 10 s to
+  reconnect.
+- **Losing the device.** The CLI exits 255 (`lost`). The device kills what it
+  was running when its connection drops (or heartbeats go unanswered 15 s);
+  the server drops a silent socket after 45 s.
+- **Commands** run as `$SHELL -lc` in their own process group, stdin closed,
+  timeout 120 s (max 1800 s, exit 124), output capped at 10 MB. Writes go to a
+  temp file renamed into place. Everything is logged on the device in
   `~/.local/state/loom-node/log`.
-- **Skill.** `rel/deploy.sh` builds every target with `make -C node`,
-  installs the CLI at `~/.local/bin/loom-node`, and copies `node/SKILL.md`
-  into the skill directories of both backends.
 
-## 5. A session's backend is for life
+## 5. Apps
 
-`POST /api/agents` without a `backend` returns 422; there is no default. The
-history lives in the backend's own store, so switching backends would lose it.
-Titles exist only on Loom's side and are never sent to the backend.
+An app is work an agent distilled out of a conversation into a plain program,
+so using it costs no tokens: `~/.loom/apps/<name>/` with
 
-## 6. Supervision tree
+- `web/` — the page; `web/index.html` required, its favicon is the icon;
+- `server` — optional command listening on the unix socket `$APP_SOCKET`,
+  getting the page's `api/*`;
+- `job` — optional command run on `schedule` (systemd `OnCalendar`, UTC).
+
+**`Loom.Apps`** is one GenServer over `~/.loom/apps.json` (title, order, auth,
+key hash, server, idle, job, schedule), pushed whole on the lobby channel. No
+HTTP API: agents use `bin/loom rpc` per the `apps` skill. To hand work back to
+an agent, a program calls `Loom.Agent.new_session_file/1` with title and prompt
+as JSON data, never spliced into rpc code.
+
+**systemd owns the processes.** Each app becomes user units:
+`app-<name>.socket` holds `.run/http.sock`; the first connection starts a
+`systemd-socket-proxyd` that exits after `idle` and takes the server with it.
+`app-<name>-job.timer` is `Persistent`, so a run missed while down happens at
+boot. Loom never tracks a pid, and an app's server outlives a Loom restart. At
+boot every app's units are rewritten and any other `app-*` unit removed.
+
+**`LoomWeb.AppsEndpoint`** serves apps on an origin of their own
+(`LOOM_APPS_URL`, port `LOOM_APPS_PORT`; unset, `http://localhost:5000`), never
+Loom's. That origin is the isolation, so a page is a plain site: cookies,
+storage, PWA install. `LoomWeb.Apps` is a plug before `Plug.Parsers` so bodies
+pass intact; it forwards `api/*` over HTTP/1.0, one request per connection,
+buffered. A reply with `x-loom-file: <path>` is answered from disk with Range
+(like `X-Accel-Redirect`), which iOS needs to play video.
+
+**Who may reach it** (`auth`):
+
+- `"private"` (default) — the signed `/apps/<name>/<token>/` path from
+  `Loom.Apps.url/1` (30 days), which the first load trades for a cookie on the
+  app's path; or `Authorization: Bearer <key>` (`key/1`, kept as its hash, the
+  next one revokes it) for programs.
+- `"public"` — anyone; the app gets `authorization` and checks it itself.
+
+The Apps grid in the sidebar is a home screen of icons; an app opens in the
+main pane.
+
+## 6. Browser
+
+An optional Chromium on Xvfb (`rel/browser/`, a systemd unit and an AppArmor
+profile so it keeps its sandbox): Google Chrome if installed, else
+Playwright's Chromium. Its profile persists, so sites stay logged in.
+Everything is on loopback: agents drive it over CDP on `127.0.0.1:9222`, and
+the Browser pane is noVNC over `/browser/vnc`, which checks the login token and
+bridges to x11vnc (`LoomWeb.VncSocket`). On a phone it shows 1:1 with drag to
+pan and a field to type into the page. The `browser` skill says to use an own
+tab and when to hand over to the user.
+
+## 7. Supervision tree
 
 ```
 Loom.Supervisor
@@ -353,76 +304,81 @@ Loom.Supervisor
 ├─ Loom.Agent.Bootstrap           reattaches persisted sessions at boot
 ├─ Loom.Cron                      scheduled prompts
 ├─ Loom.Nodes                     the user's devices (loom-node)
+├─ Loom.Apps                      apps registry; rewrites their units at boot
 ├─ Loom.Push                      notifications when a turn ends
 ├─ Loom.Restarter                 restart-when-idle, for deploys
-└─ LoomWeb.Endpoint
+├─ LoomWeb.Endpoint
+└─ LoomWeb.AppsEndpoint           apps on their own origin
 ```
 
-`Codex.Server` respawns its OS process itself, with backoff. A `codex` that
-fails instantly would otherwise crash-loop a permanent child and take the
-application down with it.
+`Codex.Server` respawns its OS process itself, with backoff, so a `codex` that
+fails instantly cannot crash-loop the application. `loom.service` sets
+`OOMPolicy=continue`: an OOM kill takes its victim, not every session.
 
-## 7. Terminals
+Skills ship in the repo (`skills/*/SKILL.md`, `node/SKILL.md`) and
+`rel/deploy.sh` copies them into both backends' skill directories. They hold
+platform facts only.
 
-Each `Loom.Terminal.Session` owns one PTY (`expty`). Terminals are global, not
-tied to an agent session.
+## 8. Terminals
 
-- **Several clients, one shell.** Every client gets the output, and input is
-  serialized through the GenServer mailbox. The buffer is replayed inside
-  `subscribe/3`, so no output can slip in between "fetch buffer" and
-  "subscribe".
-- **The size follows whoever typed last** (tmux's `window-size latest`). A
-  resize from a client that is only watching is stored but not applied.
-- **A non-driver's terminal replies are dropped.** These are cursor reports,
-  DA, OSC, DCS, focus events and similar answers that xterm sends on its own.
-  Without this, two browsers would both answer the same query.
+Each `Loom.Terminal.Session` owns one PTY (`expty`); terminals are global, not
+tied to a session.
 
-## 8. Frontend
+- **Several clients, one shell.** Input is serialized through the mailbox; the
+  buffer is replayed inside `subscribe/3`, so nothing slips in between.
+- **Size follows whoever typed last** (tmux `window-size latest`).
+- **Only the driver's terminal replies** (cursor reports, DA, OSC, DCS, focus)
+  pass; otherwise two browsers answer the same query.
+
+## 9. Frontend
 
 ```
-App.tsx           layout: sidebar | chat | terminals or canvas (drawer + overlay on phones)
-Canvas.tsx        the canvas pane; canvasItems.ts decides what opens there
-Sidebar.tsx       "New chat", the directories (each folds) and Recents; directories.ts derives them from the sessions' prefixes
-MovePicker.tsx    "Move to directory": the row menu's submenu, or nearly the whole screen on a phone
-Search.tsx        ␣␣: titles filtered here (fuzzy.ts), what was said searched by rg on the server
-Chat.tsx          timeline, tool cards, queue, composer
+App.tsx           layout: sidebar | chat | terminals, canvas or browser (drawer + overlay on phones)
+Sidebar.tsx       New chat, Directories (folding) and Recents; Apps, Browser, Devices, Settings at the foot
+directories.ts    directories derived from the sessions' prefixes
+MovePicker.tsx    "Move to directory": the row menu's submenu, or nearly full screen on a phone
+RowMenu.tsx       a row's "…" menu, drawn on the body, with submenus
+Search.tsx        ␣␣: titles fuzzy-matched here (fuzzy.ts), transcripts by rg on the server
+Chat.tsx          timeline, tool cards, queue, composer (draft per session)
+Canvas.tsx        the canvas; canvasItems.ts decides what opens there; FileBrowser.tsx the tree
+Apps.tsx          the Apps grid and an open app
+Browser.tsx       noVNC pane
 agent.ts          pure reducers: applySnapshot / applyEvent / applyDelta / buildTimeline / foldFinished
 markdown.tsx      markdown for assistant messages only
 Terminal.tsx      one xterm pane
-push.ts           this device's notifications on/off, and whether it is looking
-keys.tsx          vim-style keys, desktop only (docs/keys.md)
-useAgent.ts       one agent channel's lifecycle
+push.ts theme.ts  this device's notifications and theme (Settings.tsx)
+keys.tsx          vim-style keys, desktop only, off by default (docs/keys.md)
+ime.ts            whether a key event belongs to an IME composition
+useAgent.ts       one agent channel; useLobby.ts the lobby
 ```
 
 - **Directories are S3 prefixes.** A session's header carries `directory`
-  (`"work/aws"`, `""` for the root); a directory exists while some session is
-  in or under it, and nothing else records it. Moving or renaming one rewrites
-  the prefix on each session under it (`Loom.Agent.move_directory/2`). The
-  session's id and its directory on disk never change. The sidebar keeps them
-  one level deep: a new name has no `/`, and a deeper path from before is
-  listed whole.
-- **Search is two searches.** Titles are already in the browser and are matched
-  fuzzily on every keystroke, IME composition included, as the whole key
-  (`aws/billing`), so a query can name the directory too; a title that matches
-  on its own ranks above one matched only by its directory. Transcripts are
-  searched by ripgrep (`Loom.Search`, over the lobby channel), 200 ms after the
-  last keystroke and never mid-composition; only user messages and replies
-  count, and a newer search kills the one still running.
-- **All transcript rules live in `agent.ts`**, as pure functions. When a turn
-  is finished, `foldFinished` collapses its consecutive tool calls into one
-  "used N tools" card.
-- **Channel params are a function**, so every rejoin asks for the gap since the
-  last `seq` actually seen.
-- **The queue is never derived from events.** The server's `:queue` event
-  carries the full list.
+  (`""` for the root); a directory exists while some session is in it.
+  Moving or renaming rewrites each session's prefix
+  (`Loom.Agent.move_directory/2`); ids and on-disk paths never change. The
+  sidebar keeps them one level deep (a new name has no `/`; an older deeper
+  path is listed whole). Which are unfolded, and whether the section is open,
+  is per device in localStorage.
+- **Search is two searches.** Titles are matched fuzzily on every keystroke as
+  `directory/title`, a title match ranking above a directory-only one.
+  Transcripts are searched by ripgrep (`Loom.Search`, over the lobby channel)
+  200 ms after the last keystroke, never mid-composition; user messages and
+  replies only, and a newer search kills the running one. Without `rg` it says
+  titles only.
+- **All transcript rules live in `agent.ts`**, as pure functions.
+  `foldFinished` collapses a finished turn's tool calls into "used N tools".
+- **Channel params are a function**, so every rejoin asks for the gap since
+  the last `seq` seen. The queue comes whole in `:queue`, never derived.
 - **Markdown is rendered from `marked.lexer()` tokens into React elements**,
-  never through HTML. Model output can contain anything from a fetched page,
-  and this way it cannot become markup. Raw `html` tokens render as text,
-  `javascript:` links are inert, and images are not loaded.
-- **IME:** check both `isComposing` and a `compositionend` flag. Chrome and
-  Safari order those events differently.
+  never HTML: raw `html` renders as text, `javascript:` links are inert,
+  images are not loaded.
+- **IME** (`ime.ts`): `isComposing`, a `compositionend` flag, and keyCode 229.
+  Safari fires `compositionend` before the keydown that commits, so only 229
+  tells that Enter was the IME's.
+- **Theme** light / dark / system per device, set on `<html>` before paint;
+  colors are CSS variables.
 
-### 8.1 Debugging: record and replay
+### 9.1 Debugging: record and replay
 
 ```sh
 pnpm transcript record <session-id> "prompt" [--attach a.png]
@@ -430,16 +386,14 @@ pnpm transcript replay <file.json> [--steps]
 pnpm transcript check  <file.json>
 ```
 
-`tools/transcript.mjs` imports `src/agent.ts` directly. It separates "the data
-is wrong" (duplicate deltas, `block_id` collisions) from "the data is fine, so
-it's CSS".
+`tools/transcript.mjs` imports `src/agent.ts` directly, separating "the data is
+wrong" (duplicate deltas, `block_id` collisions) from "it's CSS".
 
-## 9. Not done
+## 10. Not done
 
-- `:question` events (CC `AskUserQuestion`, Codex `requestUserInput`). Today a
+- `:question` events (CC `AskUserQuestion`, Codex `requestUserInput`); a
   question arrives as plain text.
 - Turns that survive a Loom restart (a Codex daemon mode).
-- Cleanup of uploads that were removed from the tray.
-- Range requests on the canvas, so a long video can seek, and a proper video
-  player. Markdown in the canvas shows as plain text, the way a browser shows
-  it.
+- Cleanup of uploads removed from the tray, and of the trash.
+- Range requests on the canvas, so a long video can seek. Markdown in the
+  canvas shows as plain text.
