@@ -1,14 +1,35 @@
-import { Folder, Globe, LayoutGrid, MonitorSmartphone, PanelLeftClose, Plus, Search, Settings } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderInput,
+  FolderMinus,
+  FolderOpen,
+  Globe,
+  LayoutGrid,
+  MonitorSmartphone,
+  PanelLeftClose,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+} from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
 import { RenameInput } from "./Confirm"
 import { DevicesDialog } from "./Devices"
-import { ROOT } from "./directories"
+import { filed, ROOT } from "./directories"
 import { ago } from "./format"
+import { dirName, MoveTargets } from "./MovePicker"
 import type { Push } from "./push"
-import { RowMenu } from "./RowMenu"
+import { type MenuItem, RowMenu } from "./RowMenu"
 import { SettingsDialog } from "./Settings"
 import { lastActive } from "./useLobby"
+
+// The directories unfolded in the sidebar, and whether the section itself is
+// (it starts folded), on this device.
+const UNFOLDED_KEY = "loom.unfolded"
+const DIRS_OPEN_KEY = "loom.dirsOpen"
 
 type Props = {
   sessions: AgentInfo[]
@@ -26,10 +47,13 @@ type Props = {
   onSelect: (id: string) => void
   onCreate: (backend: AgentBackend) => void
   onDelete: (id: string) => void
+  // A phone's "Move to directory": the picker over everything. A desktop moves
+  // from the menu's own submenu, straight to `onMoveTo`.
   onMove: (id: string) => void
-  // Search, and every directory: both open over the chat.
+  onMoveTo: (id: string, directory: string) => Promise<void>
+  onRenameDirectory: (from: string, to: string) => Promise<void>
+  narrow: boolean
   onSearch: () => void
-  onMore: () => void
   onCollapse: () => void
   browserOpen: boolean
   onToggleBrowser: () => void
@@ -51,8 +75,10 @@ export function Sidebar({
   onCreate,
   onDelete,
   onMove,
+  onMoveTo,
+  onRenameDirectory,
+  narrow,
   onSearch,
-  onMore,
   onCollapse,
   browserOpen,
   onToggleBrowser,
@@ -69,8 +95,91 @@ export function Sidebar({
   const [devicesOpen, setDevicesOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const online = devices.filter((d) => d.online).length
-  // Only the root's sessions; the rest are a directory away, under "More…".
+  // Directories first, each folded or unfolded as last left on this device;
+  // then Recents, what is in none.
+  const dirs = filed(sessions)
   const root = sessions.filter((s) => (s.directory ?? ROOT) === ROOT)
+  const [unfolded, setUnfolded] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(UNFOLDED_KEY) ?? "[]") as string[]
+    } catch {
+      return []
+    }
+  })
+  useEffect(() => localStorage.setItem(UNFOLDED_KEY, JSON.stringify(unfolded)), [unfolded])
+  const [dirsOpen, setDirsOpen] = useState(() => localStorage.getItem(DIRS_OPEN_KEY) === "1")
+  useEffect(() => localStorage.setItem(DIRS_OPEN_KEY, dirsOpen ? "1" : "0"), [dirsOpen])
+  const fold = (dir: string) =>
+    setUnfolded((open) => (open.includes(dir) ? open.filter((d) => d !== dir) : [...open, dir]))
+  const [renamingDir, setRenamingDir] = useState<string | null>(null)
+  const renameDir = async (from: string, name: string | null) => {
+    setRenamingDir(null)
+    const to = name === null ? "" : dirName(name)
+    if (to === "" || to === from) return
+    await onRenameDirectory(from, to)
+    setUnfolded((open) => open.map((d) => (d === from ? to : d)))
+  }
+
+  const menu = (s: AgentInfo): MenuItem[] => {
+    const dir = s.directory ?? ROOT
+    const move: MenuItem = narrow
+      ? { label: "Move to directory", icon: <FolderInput />, run: () => onMove(s.id) }
+      : {
+          label: "Move to directory",
+          icon: <FolderInput />,
+          sub: (close) => (
+            <MoveTargets
+              dirs={dirs}
+              current={dir}
+              onPick={async (to) => {
+                await onMoveTo(s.id, to)
+                close()
+              }}
+            />
+          ),
+        }
+    return [
+      { label: "Delete", danger: true, icon: <Trash2 />, run: () => onDelete(s.id) },
+      { divider: true },
+      ...(dir === ROOT
+        ? [move]
+        : [
+            { heading: dir },
+            move,
+            { label: "Remove from directory", icon: <FolderMinus />, run: () => void onMoveTo(s.id, ROOT) },
+          ]),
+    ]
+  }
+
+  const row = (s: AgentInfo, inDir = false) => (
+    <div
+      key={s.id}
+      ref={s.id === cursorId ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+      className={
+        "session" +
+        (inDir ? " in-dir" : "") +
+        (s.id === activeId ? " active" : "") +
+        (s.id === cursorId ? " cursor" : "")
+      }
+      onClick={() => onSelect(s.id)}
+    >
+      <span className={"dot " + s.status} title={s.status} />
+      {s.id === renamingId ? (
+        <RenameInput value={s.title ?? s.id} stem={false} onDone={(title) => onRenamed(s.id, title)} />
+      ) : (
+        <span className="session-label">{s.title ?? s.id}</span>
+      )}
+      {s.queued > 0 && (
+        <span className="session-queued" title="queued messages">
+          {s.queued}
+        </span>
+      )}
+      <span className="session-when" title={"last active " + new Date(lastActive(s)).toLocaleString()}>
+        {ago(lastActive(s))}
+      </span>
+      <RowMenu items={menu(s)} />
+    </div>
+  )
 
   return (
     <aside className="sidebar">
@@ -88,51 +197,39 @@ export function Sidebar({
 
       <div className="session-list">
         <NewChat onCreate={onCreate} />
-        {/* Only once something is filed away: the first directory is made
-            from a session's "Move to…", not from here. */}
-        {sessions.length > root.length && (
-          <div className="session more" onClick={onMore}>
-            <Folder />
-            <span className="session-label">More…</span>
-            <span className="session-when">{sessions.length - root.length}</span>
-          </div>
+
+        {dirs.length > 0 && (
+          <>
+            <div className="session-section fold" onClick={() => setDirsOpen((open) => !open)}>
+              Directories
+              {dirsOpen ? <ChevronDown /> : <ChevronRight />}
+            </div>
+            {dirsOpen && dirs.map((d) => {
+              const open = unfolded.includes(d)
+              const here = sessions
+                .filter((s) => s.directory === d)
+                .sort((a, b) => lastActive(b) - lastActive(a))
+              return (
+                <div key={d}>
+                  <div className="session directory" onClick={() => fold(d)}>
+                    {open ? <FolderOpen /> : <Folder />}
+                    {renamingDir === d ? (
+                      <RenameInput value={d} stem={false} onDone={(name) => renameDir(d, name)} />
+                    ) : (
+                      <span className="session-label">{d}</span>
+                    )}
+                    {!open && <span className="session-when">{here.length}</span>}
+                    <RowMenu items={[{ label: "Rename", run: () => setRenamingDir(d) }]} />
+                  </div>
+                  {open && here.map((s) => row(s, true))}
+                </div>
+              )
+            })}
+            <div className="session-section recents">Recents</div>
+          </>
         )}
 
-        {root.map((s) => (
-          <div
-            key={s.id}
-            ref={s.id === cursorId ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
-            className={
-              "session" + (s.id === activeId ? " active" : "") + (s.id === cursorId ? " cursor" : "")
-            }
-            onClick={() => onSelect(s.id)}
-          >
-            <span className={"dot " + s.status} title={s.status} />
-            {s.id === renamingId ? (
-              <RenameInput value={s.title ?? s.id} stem={false} onDone={(title) => onRenamed(s.id, title)} />
-            ) : (
-              <span className="session-label">{s.title ?? s.id}</span>
-            )}
-            {s.queued > 0 && (
-              <span className="session-queued" title="queued messages">
-                {s.queued}
-              </span>
-            )}
-            <span
-              className="session-when"
-              title={"last active " + new Date(lastActive(s)).toLocaleString()}
-            >
-              {ago(lastActive(s))}
-            </span>
-            <RowMenu
-              items={[
-                { label: "Move to…", run: () => onMove(s.id) },
-                { label: "Delete", danger: true, run: () => onDelete(s.id) },
-              ]}
-            />
-          </div>
-        ))}
-
+        {root.map((s) => row(s))}
       </div>
 
       <div className="sidebar-foot">
@@ -198,7 +295,7 @@ export function Sidebar({
  *
  * The choice cannot be changed later — the conversation lives in that engine's
  * own store — so it is made explicitly rather than defaulted. New sessions
- * start at the root; "Move to…" files them.
+ * start in Recents; "Move to directory" files them.
  */
 function NewChat({ onCreate }: { onCreate: (backend: AgentBackend) => void }) {
   const [open, setOpen] = useState(false)

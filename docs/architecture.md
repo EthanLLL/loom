@@ -382,9 +382,8 @@ tied to an agent session.
 ```
 App.tsx           layout: sidebar | chat | terminals or canvas (drawer + overlay on phones)
 Canvas.tsx        the canvas pane; canvasItems.ts decides what opens there
-Sidebar.tsx       the root's sessions, "New chat", "More…"
-Directories.tsx   every directory as columns; directories.ts derives them from the sessions' prefixes
-MovePicker.tsx    "Move to…" for a session or a directory
+Sidebar.tsx       "New chat", the directories (each folds) and Recents; directories.ts derives them from the sessions' prefixes
+MovePicker.tsx    "Move to directory": the row menu's submenu, or nearly the whole screen on a phone
 Search.tsx        ␣␣: titles filtered here (fuzzy.ts), what was said searched by rg on the server
 Chat.tsx          timeline, tool cards, queue, composer
 agent.ts          pure reducers: applySnapshot / applyEvent / applyDelta / buildTimeline / foldFinished
@@ -399,7 +398,9 @@ useAgent.ts       one agent channel's lifecycle
   (`"work/aws"`, `""` for the root); a directory exists while some session is
   in or under it, and nothing else records it. Moving or renaming one rewrites
   the prefix on each session under it (`Loom.Agent.move_directory/2`). The
-  session's id and its directory on disk never change.
+  session's id and its directory on disk never change. The sidebar keeps them
+  one level deep: a new name has no `/`, and a deeper path from before is
+  listed whole.
 - **Search is two searches.** Titles are already in the browser and are matched
   fuzzily on every keystroke, IME composition included, as the whole key
   (`aws/billing`), so a query can name the directory too; a title that matches

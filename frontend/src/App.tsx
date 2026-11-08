@@ -5,8 +5,7 @@ import { moved, touches, type CanvasItem } from "./canvasItems"
 import { Confirm } from "./Confirm"
 import { Chat } from "./Chat"
 import { Apps } from "./Apps"
-import { Directories } from "./Directories"
-import { allDirectories, basename, join, parent, ROOT, within } from "./directories"
+import { filed, ROOT } from "./directories"
 import type { TreeNav } from "./FileBrowser"
 import { KeyHelp, useGlobalKey, useKeys, WhichKey, type Keymap } from "./keys"
 import { Login } from "./Login"
@@ -224,8 +223,9 @@ function App() {
   // Directories are prefixes on the sessions (see directories.ts); moving
   // something only rewrites them, and the lobby pushes the result.
   const [searching, setSearching] = useState(false)
-  const [browsing, setBrowsing] = useState(false)
-  const [moving, setMoving] = useState<{ session: string } | { dir: string } | null>(null)
+  // A phone's "Move to directory", for this session.
+  const [moving, setMoving] = useState<string | null>(null)
+  const moveTo = async (id: string, directory: string) => upsert(await moveAgent(id, directory))
   const openOver = (open: (on: boolean) => void) => {
     setDrawerOpen(false)
     open(true)
@@ -460,9 +460,14 @@ function App() {
       onSelect={select}
       onCreate={create}
       onDelete={remove}
-      onMove={(id) => setMoving({ session: id })}
+      onMove={(id) => {
+        setDrawerOpen(false)
+        setMoving(id)
+      }}
+      onMoveTo={moveTo}
+      onRenameDirectory={moveDirectory}
+      narrow={narrow}
       onSearch={() => openOver(setSearching)}
-      onMore={() => openOver(setBrowsing)}
       onCollapse={() => (narrow ? setDrawerOpen(false) : setSidebarOpen(false))}
       browserOpen={side === "browser"}
       onToggleBrowser={() => {
@@ -640,41 +645,15 @@ function App() {
         )}
       </main>
 
-      {browsing && (
-        <Directories
-          sessions={sessions}
-          activeId={activeId}
-          narrow={narrow}
-          onSelect={select}
-          onMoveSession={(id) => setMoving({ session: id })}
-          onDeleteSession={remove}
-          onMoveDirectory={(dir) => setMoving({ dir })}
-          onRenameDirectory={moveDirectory}
-          onClose={() => setBrowsing(false)}
-        />
-      )}
       {searching && (
         <Search sessions={sessions} search={search} onOpen={select} onClose={() => setSearching(false)} />
       )}
       {moving && (
         <MovePicker
-          title={
-            "session" in moving
-              ? `Move ${sessions.find((s) => s.id === moving.session)?.title ?? moving.session} to…`
-              : `Move ${moving.dir} to…`
-          }
-          dirs={allDirectories(sessions)}
-          current={
-            "session" in moving
-              ? (sessions.find((s) => s.id === moving.session)?.directory ?? ROOT)
-              : parent(moving.dir)
-          }
-          // A directory cannot go into itself or anything under it.
-          allowed={"dir" in moving ? (d) => !within(d, moving.dir) : undefined}
-          onPick={async (dir) => {
-            if ("session" in moving) upsert(await moveAgent(moving.session, dir))
-            else await moveDirectory(moving.dir, join(dir, basename(moving.dir)))
-          }}
+          title={`Move ${sessions.find((s) => s.id === moving)?.title ?? moving} to…`}
+          dirs={filed(sessions)}
+          current={sessions.find((s) => s.id === moving)?.directory ?? ROOT}
+          onPick={(dir) => moveTo(moving, dir)}
           onClose={() => setMoving(null)}
         />
       )}

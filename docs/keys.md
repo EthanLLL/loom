@@ -27,7 +27,7 @@ in Vim.
 | `Ctrl-d` / `Ctrl-u` | Half a page down / up |
 | `gg` / `G` | Top / bottom (at the bottom, new output is followed again) |
 | `h` / `l` | Into the session list / the file tree, as `␣b` / `␣e` do |
-| `J` / `K` | Next / previous session, in the sidebar's order (the root's sessions; the rest are under "More…") |
+| `J` / `K` | Next / previous session, among Recents, in the sidebar's order (sessions in a directory are left out) |
 | `?` | All keys; `Esc` or `?` closes it |
 
 ## Leader (Space)

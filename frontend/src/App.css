@@ -185,6 +185,7 @@
 }
 
 .sidebar-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -223,8 +224,11 @@
   color: var(--fg);
 }
 
+/* Scrolls rather than grows: without min-height it took its rows' height
+   and squeezed the head above it. */
 .session-list {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 6px;
 }
@@ -323,6 +327,9 @@
 }
 
 .row-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 7px 10px;
   border: 0;
   background: transparent;
@@ -333,23 +340,97 @@
   cursor: pointer;
 }
 
-.row-menu button:hover {
+.row-menu button:hover,
+.row-menu button.open {
   background: var(--line);
+}
+
+.row-menu button svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+.row-menu button span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-menu .row-menu-more {
+  color: var(--fg-dim);
+}
+
+.row-menu-rule {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.row-menu-heading {
+  padding: 6px 10px 2px;
+  color: var(--fg-dim);
+  font-size: 0.846rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Beside the menu it came from ("Move to directory"). */
+.row-submenu {
+  width: 15rem;
+  max-height: 20rem;
+  overflow-y: auto;
 }
 
 .row-menu button.danger {
   color: var(--red);
 }
 
-/* The two rows above the sessions: making one, and everything filed away in
-   directories. Rows like the sessions, hover included; only the icon is dim. */
+/* The row above the sessions that makes one. Like the sessions, hover
+   included; only the icon is dim. */
 .session-list .new-session {
   display: block;
 }
 
 .session.new-chat svg,
-.session.more svg {
+.session.directory svg {
   color: var(--fg-dim);
+}
+
+/* "Directories" and "Recents": the list's two parts, named and set apart. */
+.session-section {
+  padding: 14px 8px 4px;
+  color: var(--fg-dim);
+  font-size: 0.846rem;
+}
+
+.session-section.fold {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.session-section.fold:hover {
+  color: var(--fg);
+}
+
+.session-section svg {
+  width: 13px;
+  height: 13px;
+}
+
+.session-section.recents {
+  padding-top: 22px;
+}
+
+/* A directory's sessions, unfolded under it: in line with its name. */
+.session.in-dir {
+  padding-left: 30px;
 }
 
 .new-session .backend-menu {
@@ -357,51 +438,88 @@
   right: auto;
 }
 
-/* ── Directories, "Move to", search: dialogs over the chat ─────────────── */
+/* ── "Move to directory", search: dialogs over the chat ────────────────── */
 
-.modal.directories {
-  width: min(64rem, 100%);
-  height: min(36rem, 100%);
+/* A phone's "Move to directory": nearly the whole screen. */
+.modal.picker {
+  width: min(32rem, 100%);
+  height: min(28rem, 100%);
 }
 
-.directories-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.modal-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.directory-columns {
-  flex: 1 1 auto;
-  min-height: 0;
+/* Where it can go, in the submenu or that dialog: a box for a new one, then
+   the rest, as menu rows. */
+.move-targets {
   display: flex;
-  overflow-x: auto;
-}
-
-.directory-column {
-  flex: 0 0 18rem;
+  flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.modal .move-targets {
   padding: 6px;
-  border-right: 1px solid var(--line);
 }
 
-.directory-column:last-child {
-  border-right: 0;
+.move-targets > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.923rem;
+  text-align: left;
+  cursor: pointer;
 }
 
-.session.directory .directory-chevron {
+.move-targets > button:hover {
+  background: var(--line);
+}
+
+.move-targets svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
   color: var(--fg-dim);
 }
 
-.modal.picker {
-  width: min(32rem, 100%);
-  height: min(28rem, 100%);
+.move-targets > button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.move-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+}
+
+.move-new input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.923rem;
+  outline: none;
 }
 
 .picker-input {
+  box-sizing: border-box;
   width: 100%;
   padding: 10px 12px;
   border: 0;
@@ -412,37 +530,11 @@
   outline: none;
 }
 
-.picker-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 6px;
-}
-
-.picker-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.picker-row.selected,
 .search-row.selected {
   background: var(--bg-card);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.picker-path {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.picker-note,
 .search-dir {
   flex: 0 0 auto;
   color: var(--fg-dim);
@@ -461,7 +553,6 @@
   font-size: 0.923rem;
 }
 
-.picker-empty,
 .search-empty {
   padding: 12px;
   color: var(--fg-dim);
@@ -1344,14 +1435,13 @@
 @media (max-width: 640px) {
   .device-add input,
   .device-name-input,
-  .picker-input {
+  .picker-input,
+  .move-new input {
     font-size: 16px;
   }
 
-  /* One column at a time on a phone; a back button goes up. */
-  .directory-column {
-    flex: 1 1 auto;
-    border-right: 0;
+  .modal.picker {
+    height: 100%;
   }
 }
 
