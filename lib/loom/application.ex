@@ -45,6 +45,8 @@ defmodule Loom.Application do
       # Scheduled prompts. After the bootstrap, so a job due at boot finds its
       # session already restored.
       Loom.Cron,
+      # The order the user dragged the sidebar's directories into.
+      Loom.Agent.DirectoryOrder,
       # The user's own machines that agents can run commands on.
       Loom.Nodes,
       # The apps registry; rewrites their systemd units and Caddy's config at boot.

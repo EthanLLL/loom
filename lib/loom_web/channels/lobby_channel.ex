@@ -11,6 +11,9 @@ defmodule LoomWeb.LobbyChannel do
     - "node_removed" : `%{id: _}`, when a device is removed
     - "apps"     : `%{apps: [app]}`, the whole list (`Loom.Apps.list/0`) on any
                    change; also in the join reply
+    - "directory_order" : `%{order: [path]}`, the sidebar's directories as
+                   dragged (`Loom.Agent.DirectoryOrder`), whole, on any change;
+                   also in the join reply
 
   Client → server:
     - "watching" : `%{endpoint:, session:}`, which session this device is
@@ -21,6 +24,8 @@ defmodule LoomWeb.LobbyChannel do
                    with `%{hits: [...]}` (`Loom.Search.content/1`) or
                    `%{reason:}` — `"no_rg"` when ripgrep is not installed. A new one
                    cancels the one still running.
+    - "directory_order" : `%{order: [path]}`, the whole new order after a
+                   drag; replied to with `:ok` or `%{reason:}`
 
   A summary is what `GET /api/agents` returns for one session, plus `seq`. The
   client keeps whichever copy of a session has the higher `seq`: the channel is
@@ -39,8 +44,13 @@ defmodule LoomWeb.LobbyChannel do
     # Already subscribed to "agents" by `Phoenix.Channel.Server` — the session
     # broadcasts on exactly this topic, so no extra subscribe (it would deliver
     # everything twice; see `LoomWeb.AgentChannel`).
-    {:ok, %{sessions: Agent.list_sessions(), nodes: Loom.Nodes.list(), apps: Loom.Apps.list()},
-     socket}
+    {:ok,
+     %{
+       sessions: Agent.list_sessions(),
+       nodes: Loom.Nodes.list(),
+       apps: Loom.Apps.list(),
+       directory_order: Agent.DirectoryOrder.list()
+     }, socket}
   end
 
   @impl true
@@ -48,6 +58,13 @@ defmodule LoomWeb.LobbyChannel do
       when is_binary(endpoint) do
     Loom.Push.watching(endpoint, params["session"], self())
     {:noreply, socket}
+  end
+
+  def handle_in("directory_order", %{"order" => order}, socket) do
+    case Agent.DirectoryOrder.put(order) do
+      :ok -> {:reply, :ok, socket}
+      {:error, reason} -> {:reply, {:error, %{reason: reason}}, socket}
+    end
   end
 
   # Off the channel process, so a slow search never holds up the list's own
@@ -89,6 +106,11 @@ defmodule LoomWeb.LobbyChannel do
 
   def handle_info({:apps, apps}, socket) do
     push(socket, "apps", %{apps: apps})
+    {:noreply, socket}
+  end
+
+  def handle_info({:directory_order, order}, socket) do
+    push(socket, "directory_order", %{order: order})
     {:noreply, socket}
   end
 

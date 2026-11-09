@@ -117,4 +117,29 @@ defmodule LoomWeb.LobbyChannelTest do
     Agent.delete_session(other)
     assert_push "removed", %{id: ^other}
   end
+
+  describe "directory order" do
+    setup do
+      on_exit(fn -> Agent.DirectoryOrder.put([]) end)
+    end
+
+    test "is in the join reply, set by a push, and pushed to every device" do
+      :ok = Agent.DirectoryOrder.put(["b"])
+      assert {:ok, %{directory_order: ["b"]}, socket} = join_lobby()
+
+      ref = push(socket, "directory_order", %{"order" => ["生活", "b"]})
+      assert_reply ref, :ok
+      assert_push "directory_order", %{order: ["生活", "b"]}
+
+      ref = push(socket, "directory_order", %{"order" => [".."]})
+      assert_reply ref, :error, %{reason: :invalid_directory}
+    end
+
+    test "follows a renamed directory", %{id: id} do
+      :ok = Agent.move(id, "old")
+      :ok = Agent.DirectoryOrder.put(["x", "old"])
+      :ok = Agent.move_directory("old", "new")
+      assert Agent.DirectoryOrder.list() == ["x", "new"]
+    end
+  end
 end

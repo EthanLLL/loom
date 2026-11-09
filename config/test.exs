@@ -31,6 +31,10 @@ config :loom, :codex_server, false
 # user's jobs.
 config :loom, Loom.Cron, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/cron.json")
 
+# Nor the real directory order.
+config :loom, Loom.Agent.DirectoryOrder,
+  path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/directories.json")
+
 # Nor the real device registry and CLI key.
 config :loom, Loom.Push, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/push.json")
 config :loom, Loom.Nodes, dir: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}")

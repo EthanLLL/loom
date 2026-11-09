@@ -69,7 +69,18 @@ function App() {
   // Opened from a notification: `?session=` names the session to show, and
   // goes from the address bar once read.
   const [activeId, setActiveId] = useState<string | null>(takeSessionParam)
-  const { sessions, devices, apps, upsertDevice, loaded, upsert, drop, search } = useLobby(
+  const {
+    sessions,
+    devices,
+    apps,
+    directoryOrder,
+    orderDirectories,
+    upsertDevice,
+    loaded,
+    upsert,
+    drop,
+    search,
+  } = useLobby(
     authed,
     push.endpoint ? { endpoint: push.endpoint, session: visible ? activeId : null } : null,
   )
@@ -466,6 +477,8 @@ function App() {
       }}
       onMoveTo={moveTo}
       onRenameDirectory={moveDirectory}
+      directoryOrder={directoryOrder}
+      onOrderDirectories={orderDirectories}
       narrow={narrow}
       onSearch={() => openOver(setSearching)}
       onCollapse={() => (narrow ? setDrawerOpen(false) : setSidebarOpen(false))}
@@ -651,7 +664,7 @@ function App() {
       {moving && (
         <MovePicker
           title={`Move ${sessions.find((s) => s.id === moving)?.title ?? moving} to…`}
-          dirs={filed(sessions)}
+          dirs={filed(sessions, directoryOrder)}
           current={sessions.find((s) => s.id === moving)?.directory ?? ROOT}
           onPick={(dir) => moveTo(moving, dir)}
           onClose={() => setMoving(null)}

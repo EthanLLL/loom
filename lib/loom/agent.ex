@@ -112,7 +112,8 @@ defmodule Loom.Agent do
           {:ok, new} <- [Directory.rebase(dir, from, to)],
           do: Session.move(id, new)
 
-      :ok
+      # The sidebar's order follows a renamed directory to its new name.
+      Loom.Agent.DirectoryOrder.rebase(from, to)
     end
   end
 

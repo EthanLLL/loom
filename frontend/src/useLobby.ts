@@ -12,6 +12,11 @@ type Lobby = {
   devices: Device[]
   // `Loom.Apps`, in the order the user keeps them.
   apps: AppInfo[]
+  // The sidebar's directories as dragged, first to last; see `filed`.
+  directoryOrder: string[]
+  // A drag's result, the whole list: shown at once, then sent; every device,
+  // this one included, gets it back from the server.
+  orderDirectories: (order: string[]) => void
   upsertDevice: (device: Device) => void
   loaded: boolean
   // For the caller's own create/delete, so the sidebar does not wait for the
@@ -45,6 +50,7 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
   const [devices, setDevices] = useState<Map<string, Device>>(new Map())
   // Always the whole list, in order: `Loom.Apps` sends it on every change.
   const [apps, setApps] = useState<AppInfo[]>([])
+  const [directoryOrder, setDirectoryOrder] = useState<string[]>([])
   const joinedChannel = useRef<Channel | null>(null)
   const watchingRef = useRef(watching)
   watchingRef.current = watching
@@ -98,10 +104,12 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
     channel.on("node", upsertDevice)
     channel.on("node_removed", ({ id }: { id: string }) => dropDevice(id))
     channel.on("apps", ({ apps }: { apps: AppInfo[] }) => setApps(apps))
+    channel.on("directory_order", ({ order }: { order: string[] }) => setDirectoryOrder(order))
 
     channel
       .join()
-      .receive("ok", ({ sessions, nodes, apps }: { sessions: AgentInfo[]; nodes: Device[]; apps: AppInfo[] }) => {
+      .receive("ok", (reply: { sessions: AgentInfo[]; nodes: Device[]; apps: AppInfo[]; directory_order: string[] }) => {
+        const { sessions, nodes, apps } = reply
         joined = true
         if (leaveWhenJoined) {
           channel.leave()
@@ -112,6 +120,7 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
         setById(new Map(sessions.map((s) => [s.id, s])))
         setDevices(new Map((nodes ?? []).map((d) => [d.id, d])))
         setApps(apps ?? [])
+        setDirectoryOrder(reply.directory_order ?? [])
         setLoaded(true)
       })
       // Nothing to show either way; an empty list beats "connecting…" forever.
@@ -144,6 +153,11 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
     [],
   )
 
+  const orderDirectories = useCallback((order: string[]) => {
+    setDirectoryOrder(order)
+    joinedChannel.current?.push("directory_order", { order })
+  }, [])
+
   // Most recently active first, so the conversation you are in stays on top.
   const sessions = useMemo(
     () => [...byId.values()].sort((a, b) => lastActive(b) - lastActive(a)),
@@ -153,7 +167,18 @@ export function useLobby(enabled: boolean, watching: Watching | null = null): Lo
     () => [...devices.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [devices],
   )
-  return { sessions, devices: deviceList, apps, upsertDevice, loaded, upsert, drop, search }
+  return {
+    sessions,
+    devices: deviceList,
+    apps,
+    directoryOrder,
+    orderDirectories,
+    upsertDevice,
+    loaded,
+    upsert,
+    drop,
+    search,
+  }
 }
 
 export const lastActive = (s: AgentInfo) => s.last_active_at ?? s.created_at

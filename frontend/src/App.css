@@ -400,6 +400,17 @@
   color: var(--fg-dim);
 }
 
+/* Directories are dragged into order: held still a moment on a phone. */
+.session.directory {
+  -webkit-touch-callout: none;
+}
+
+.session.directory.dragging {
+  background: var(--bg-card);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+  cursor: grabbing;
+}
+
 /* "Directories" and "Recents": the list's two parts, named and set apart. */
 .session-section {
   padding: 14px 8px 4px;

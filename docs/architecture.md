@@ -109,11 +109,16 @@ A session's backend is fixed at creation: `POST /api/agents` without
 `backend` is 422, since the history lives in the backend's own store. Titles
 stay on Loom's side.
 
-Every turn's system prompt (CC `--append-system-prompt`, Codex
-`developerInstructions`) gives the session id, its `output/` directory and
-canvas convention, and its lifetime: Loom lets an idle backend go and restarts
-on deploys, so background jobs, subagents and timers die with the turn. Work
-meant to outlive it goes through Loom: the `sessions` and `cron` skills.
+Every spawn's system prompt (CC `--append-system-prompt`, Codex
+`developerInstructions`), from `Loom.Agent.Instructions`, one text per
+backend, says, in order:
+that it runs inside Loom, how Loom is built and where its source is; the
+session's id and directory; its lifetime: Loom lets an idle backend go and
+restarts on deploys, so background jobs, subagents and timers die with the
+turn, and subagents run in the foreground even when a plugin says otherwise,
+work meant to outlive it going through Loom (the `sessions` and `cron`
+skills); how many images to read directly before handing them to
+subagents, since a request is capped at about 32 MB; and the `output/` directory and canvas convention.
 
 ## 3. Client protocol
 
@@ -264,10 +269,13 @@ spliced into rpc code.
 
 **systemd owns the processes.** Each app becomes user units:
 `app-<name>.socket` holds `.run/http.sock`; the first connection starts a
-`systemd-socket-proxyd` that exits after `idle` and takes the server with it.
-`app-<name>-job.timer` is `Persistent`, so a run missed while down happens at
-boot. Loom never tracks a pid. At boot every app's units are rewritten and any
-other `app-*` unit removed.
+`systemd-socket-proxyd` that exits after `idle` and takes the server with it,
+and is bound to it, so a server that dies takes the proxy along and the next
+connection starts both afresh. `app-<name>_job.timer` is `Persistent`, so a
+run missed while down happens at boot. Suffixes are joined with `_`, which a
+name cannot hold, so `x`'s units never collide with an app called `x-job`.
+Loom never tracks a pid. At boot every app's units are rewritten, any other
+`app-*` unit removed, and a running proxy whose unit changed stopped.
 
 **Caddy serves them**, as the user unit `loom-apps.service`, on
 `LOOM_BIND:LOOM_APPS_PORT` (5000) behind the apps' own origin
@@ -349,7 +357,8 @@ tied to a session.
 ```
 App.tsx           layout: sidebar | chat | terminals, canvas or browser (drawer + overlay on phones)
 Sidebar.tsx       New chat, Directories (folding) and Recents; Apps, Browser, Devices, Settings at the foot
-directories.ts    directories derived from the sessions' prefixes
+directories.ts    directories derived from the sessions' prefixes, in the shared order
+useDragOrder.ts   dragging the directories into that order
 MovePicker.tsx    "Move to directory": the row menu's submenu, or nearly full screen on a phone
 RowMenu.tsx       a row's "…" menu, drawn on the body, with submenus
 Search.tsx        ␣␣: titles fuzzy-matched here (fuzzy.ts), transcripts by rg on the server
@@ -372,7 +381,13 @@ useAgent.ts       one agent channel; useLobby.ts the lobby
   (`Loom.Agent.move_directory/2`); ids and on-disk paths never change. The
   sidebar keeps them one level deep (a new name has no `/`; an older deeper
   path is listed whole). Which are unfolded, and whether the section is open,
-  is per device in localStorage.
+  is per device in localStorage. Their order is shared: dragged into place
+  (`useDragOrder`, pointer events; a finger holds still first), the whole list
+  goes over the lobby channel to `Loom.Agent.DirectoryOrder`
+  (`~/.loom/directories.json`), which pushes it to every device. It is only a
+  sort key — a directory not in it goes last, in code point order — and a
+  rename carries its entry along. The sessions inside a directory go by
+  activity.
 - **Search is two searches.** Titles are matched fuzzily on every keystroke as
   `directory/title`, a title match ranking above a directory-only one.
   Transcripts are searched by ripgrep (`Loom.Search`, over the lobby channel)

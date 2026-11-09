@@ -24,6 +24,7 @@ import { dirName, MoveTargets } from "./MovePicker"
 import type { Push } from "./push"
 import { type MenuItem, RowMenu } from "./RowMenu"
 import { SettingsDialog } from "./Settings"
+import { useDragOrder } from "./useDragOrder"
 import { lastActive } from "./useLobby"
 
 // The directories unfolded in the sidebar, and whether the section itself is
@@ -52,6 +53,9 @@ type Props = {
   onMove: (id: string) => void
   onMoveTo: (id: string, directory: string) => Promise<void>
   onRenameDirectory: (from: string, to: string) => Promise<void>
+  // The directories' order, shared by every device; a drag sends a new one.
+  directoryOrder: string[]
+  onOrderDirectories: (order: string[]) => void
   narrow: boolean
   onSearch: () => void
   onCollapse: () => void
@@ -77,6 +81,8 @@ export function Sidebar({
   onMove,
   onMoveTo,
   onRenameDirectory,
+  directoryOrder,
+  onOrderDirectories,
   narrow,
   onSearch,
   onCollapse,
@@ -95,9 +101,11 @@ export function Sidebar({
   const [devicesOpen, setDevicesOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const online = devices.filter((d) => d.online).length
-  // Directories first, each folded or unfolded as last left on this device;
-  // then Recents, what is in none.
-  const dirs = filed(sessions)
+  // Directories first, in the order dragged into, each folded or unfolded as
+  // last left on this device; then Recents, what is in none. The sessions in a
+  // directory go by activity, like Recents; only the directories are dragged.
+  const dirs = filed(sessions, directoryOrder)
+  const drag = useDragOrder(dirs, onOrderDirectories)
   const root = sessions.filter((s) => (s.directory ?? ROOT) === ROOT)
   const [unfolded, setUnfolded] = useState<string[]>(() => {
     try {
@@ -204,14 +212,20 @@ export function Sidebar({
               Directories
               {dirsOpen ? <ChevronDown /> : <ChevronRight />}
             </div>
-            {dirsOpen && dirs.map((d) => {
+            {dirsOpen && drag.order.map((d) => {
               const open = unfolded.includes(d)
               const here = sessions
                 .filter((s) => s.directory === d)
                 .sort((a, b) => lastActive(b) - lastActive(a))
               return (
                 <div key={d}>
-                  <div className="session directory" onClick={() => fold(d)}>
+                  <div
+                    ref={drag.row(d)}
+                    className={"session directory" + (drag.dragging === d ? " dragging" : "")}
+                    onPointerDown={renamingDir === d ? undefined : drag.start(d)}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onClick={() => drag.clicked() || fold(d)}
+                  >
                     {open ? <FolderOpen /> : <Folder />}
                     {renamingDir === d ? (
                       <RenameInput value={d} stem={false} onDone={(name) => renameDir(d, name)} />
