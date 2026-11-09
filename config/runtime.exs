@@ -106,25 +106,16 @@ if config_env() == :prod do
     check_origin: false,
     secret_key_base: secret_key_base
 
-  # The apps' own origin (`LoomWeb.AppsEndpoint`): the public URL the tunnel
-  # serves, e.g. https://loom-apps.luozhen.cloud, and the loopback port it
-  # points at. Unset, it is http://localhost:<port>: apps work on this machine
-  # only.
+  # The apps' own origin, served by Caddy (`Loom.Apps`): the public URL the
+  # tunnel serves, e.g. https://loom-apps.luozhen.cloud, and the loopback port
+  # it points at. Unset, it is http://localhost:<port>: apps work on this
+  # machine only.
   apps_port = String.to_integer(System.get_env("LOOM_APPS_PORT", "5000"))
   apps_url = System.get_env("LOOM_APPS_URL", "http://localhost:#{apps_port}")
-  apps = URI.parse(apps_url)
 
-  config :loom, LoomWeb.AppsEndpoint,
-    url: [host: apps.host, port: apps.port, scheme: apps.scheme],
-    http: [
-      ip: bind_address.(System.get_env("LOOM_BIND")),
-      port: apps_port
-    ],
-    check_origin: false,
-    secret_key_base: secret_key_base,
-    server: true
-
-  config :loom, Loom.Apps, origin: String.trim_trailing(apps_url, "/")
+  config :loom, Loom.Apps,
+    origin: String.trim_trailing(apps_url, "/"),
+    listen: "#{System.get_env("LOOM_BIND", "127.0.0.1")}:#{apps_port}"
 
   # ## SSL Support
   #

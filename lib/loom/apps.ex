@@ -4,16 +4,36 @@ defmodule Loom.Apps do
   that using it needs no model — a page, and optionally a server behind it and
   a job that refreshes its data on a schedule.
 
-  One process owns the registry. `~/.loom/apps.json` is the truth: read at boot,
-  rewritten on every change, and pushed whole to the lobby (`"apps"`) so the
-  Apps grid follows without polling. An app's code and data are its directory,
+  Loom is their registry and nothing more: it writes what runs them and steps
+  out of the way. `~/.loom/apps.json` is the truth: read at boot, rewritten on
+  every change, and pushed whole to the lobby (`"apps"`) so the Apps grid
+  follows without polling. An app's code and data are its directory,
   `~/.loom/apps/<name>/`:
 
-    * `web/` — the page, served by `LoomWeb.Apps` as it is; `web/index.html`
-      must exist, and its favicon is its icon in the grid (`icon/1`)
+    * `web/` — the page; its favicon is its icon in the grid (`icon/1`)
     * `server` — a command run there on demand, listening on the unix socket
-      in `$APP_SOCKET`; it gets the page's `api/*` requests
+      in `$APP_SOCKET`, or on `$PORT` when the app has a `port`
     * `job` — a command run there on `schedule` (systemd `OnCalendar`, UTC)
+
+  and `proxy` says what the server gets: `"api"` (the default) its `api/*`,
+  with `web/index.html` the rest; `"all"`, everything — a whole site, such as
+  one cloned from elsewhere, with no `web/` needed.
+
+  ## Serving is Caddy's
+
+  `caddy.json` beside `apps.json` is Caddy's whole config, written from the
+  registry on every change and at boot, then loaded with `caddy reload` over
+  Caddy's admin socket. Caddy runs as the user unit `loom-apps.service`,
+  starting from that file, so the apps are served whether or not loom is up.
+  Each app is `/apps/<name>/` on the apps' origin (`origin/0`): `web/` as
+  files, the server behind a reverse proxy — HTTP/2, WebSocket and SSE pass
+  as they are — and a reply with `x-loom-file: <path in the app's directory>`
+  answered with that file from disk, with `Range`, like nginx's
+  `X-Accel-Redirect`. An `"api"` app's server sees `/api/…`; an `"all"`
+  app's sees the full path, with `X-Forwarded-Prefix: /apps/<name>`.
+
+  There is no access control here: an app is open to whoever reaches the
+  apps' origin, and checks who is asking itself if it must.
 
   ## Processes are systemd's
 
@@ -29,17 +49,6 @@ defmodule Loom.Apps do
   At boot every app's units are rewritten and any other `app-*` unit removed:
   the registry, not what happens to be installed, says what runs.
 
-  ## Who may reach it
-
-  `auth` says, and `LoomWeb.Apps` enforces:
-
-    * `"private"` (the default) — the signed path from `url/1`, which is how
-      the user's own Loom opens it, or `Authorization: Bearer <key>` with the
-      app's key (`key/1`), for a program that pushes or pulls for good
-    * `"public"` — anyone, and the app does any checking itself
-
-  A key is kept as its hash only; minting a new one revokes the old.
-
   There is no HTTP API. Apps are made by an agent on the node itself, over
   `bin/loom rpc` — see the `apps` skill.
   """
@@ -48,27 +57,25 @@ defmodule Loom.Apps do
   require Logger
 
   @name __MODULE__
-  @persisted ~w(name title order auth key_hash server idle job schedule created_at)a
-  @settable ~w(title auth server idle job schedule)a
-  @auths ~w(private public)
-  @salt "app"
-  @max_age 60 * 60 * 24 * 30
-  @cookie_salt "app cookie"
+  @persisted ~w(name title order proxy port server idle job schedule created_at)a
+  @settable ~w(title proxy port server idle job schedule)a
+  @proxies ~w(api all)
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, @name))
   end
 
   @doc """
-  Create or change an app. `attrs` takes `:title`, `:auth`, `:server`, `:idle`,
-  `:job` and `:schedule`, atom or string keys; a key given as `nil` clears it, one not
-  given is left as it was. A new app goes last. Its directory must already
-  hold `web/index.html`. Returns `{:ok, app}` or `{:error, reason}`.
+  Create or change an app. `attrs` takes `:title`, `:proxy`, `:port`,
+  `:server`, `:idle`, `:job` and `:schedule`, atom or string keys; a key given
+  as `nil` clears it, one not given is left as it was. A new app goes last. Its
+  directory must already hold `web/index.html`, unless its `proxy` is `"all"`.
+  Returns `{:ok, app}` or `{:error, reason}`.
   """
   def put(name, attrs \\ %{}, server \\ @name),
     do: GenServer.call(server, {:put, name, attrs}, 30_000)
 
-  @doc "Every app, in order, each with the signed `url` its page opens under and its `icon`."
+  @doc "Every app, in order, each with the `url` its page opens under and its `icon`."
   def list(server \\ @name), do: GenServer.call(server, :list)
 
   @doc "One app, or `nil`."
@@ -83,67 +90,13 @@ defmodule Loom.Apps do
   @doc "Run an app's job now, without waiting for its schedule; it runs in the background."
   def run(name, server \\ @name), do: GenServer.call(server, {:run, name}, 30_000)
 
-  @doc """
-  Mint a new key for a private app's `Authorization: Bearer`, revoking any
-  before it: `{:ok, key}`, the only time it is seen. `key(name, nil)` revokes
-  it and mints none.
-  """
-  def key(name, op \\ :new, server \\ @name), do: GenServer.call(server, {:key, name, op})
-
-  @doc "Whether `key` is the one `key/1` last minted for `name`."
-  def valid_key?(name, key, server \\ @name), do: GenServer.call(server, {:valid_key?, name, key})
-
-  @doc "The path an app's page opens under: signed, so an iframe or a bookmark needs no header."
-  def url(name), do: "/apps/#{name}/#{Phoenix.Token.sign(LoomWeb.Endpoint, @salt, name)}/"
-
-  @doc "Whether `token` is one `url/1` signed for `name`, in the last 30 days."
-  def valid_token?(name, token) do
-    Phoenix.Token.verify(LoomWeb.Endpoint, @salt, token, max_age: @max_age) == {:ok, name}
-  end
-
-  @doc """
-  The apps' own origin (`LOOM_APPS_URL`), where `LoomWeb.AppsEndpoint`
-  serves them: their URLs are absolute there.
-  """
+  @doc "The apps' own origin (`LOOM_APPS_URL`): their URLs are absolute there."
   def origin, do: config(:origin)
-
-  @doc """
-  The value of the cookie a signed link sets on the apps' own origin, scoped
-  to the app's path; good for 30 days from when it was last renewed.
-  """
-  def cookie(name), do: Phoenix.Token.sign(LoomWeb.Endpoint, @cookie_salt, name)
-
-  @doc "Whether `value` is one `cookie/1` made for `name`, in the last 30 days."
-  def valid_cookie?(name, value) do
-    Phoenix.Token.verify(LoomWeb.Endpoint, @cookie_salt, value, max_age: @max_age) == {:ok, name}
-  end
-
-  def max_age, do: @max_age
-
-  @doc """
-  The files in an app's `web/` a browser fetches without its cookie to install
-  it: `manifest.webmanifest`, the icons that lists, and the page's icons.
-  They say what the app is called and how it looks, nothing more, so they are
-  open to anyone on the apps' own origin.
-  """
-  def install_files(name) do
-    manifest =
-      with {:ok, body} <- File.read(Path.join([dir(name), "web", "manifest.webmanifest"])),
-           {:ok, %{"icons" => icons}} when is_list(icons) <- Jason.decode(body) do
-        for %{"src" => src} when is_binary(src) <- icons,
-            rel = src |> String.trim_leading("./"),
-            not String.contains?(rel, ":") and not String.starts_with?(rel, "/"),
-            do: rel
-      else
-        _ -> []
-      end
-
-    Enum.uniq(["manifest.webmanifest" | manifest] ++ icons(name))
-  end
 
   def root, do: config(:root) || Path.join(Loom.Agent.Store.home(), "apps")
   def dir(name), do: Path.join(root(), name)
   def path, do: config(:path) || Path.join(Loom.Agent.Store.home(), "apps.json")
+  def caddy_path, do: Path.join(Path.dirname(path()), "caddy.json")
 
   defp config(key), do: Application.get_env(:loom, __MODULE__, [])[key]
 
@@ -151,9 +104,12 @@ defmodule Loom.Apps do
 
   @impl true
   def init(opts) do
+    path = Keyword.get(opts, :path, path())
+
     state = %{
-      path: Keyword.get(opts, :path, path()),
-      apps: Map.new(load(Keyword.get(opts, :path, path())), &{&1.name, &1}),
+      path: path,
+      caddy: Path.join(Path.dirname(path), "caddy.json"),
+      apps: Map.new(load(path), &{&1.name, &1}),
       systemd: Keyword.get(opts, :systemd, config(:systemd) != false),
       units: Keyword.get(opts, :units, config(:units) || Path.expand("~/.config/systemd/user"))
     }
@@ -164,6 +120,7 @@ defmodule Loom.Apps do
   @impl true
   def handle_continue(:sync, state) do
     sync_all(state)
+    serve(state, :boot)
     {:noreply, state}
   end
 
@@ -172,10 +129,11 @@ defmodule Loom.Apps do
     old = state.apps[name]
 
     with :ok <- check_name(name),
-         :ok <- check_dir(name),
-         {:ok, app} <- build(old, name, attrs, state) do
+         {:ok, app} <- build(old, name, attrs, state),
+         :ok <- check_dir(app) do
       state = save(put_in(state.apps[name], app))
       install(app, state)
+      serve(state)
       {:reply, {:ok, public(app)}, broadcast(state)}
     else
       error -> {:reply, error, state}
@@ -193,9 +151,9 @@ defmodule Loom.Apps do
       %{^name => _} ->
         uninstall(name, state)
         trash(name)
-
-        {:reply, :ok,
-         state |> Map.update!(:apps, &Map.delete(&1, name)) |> renumber() |> save() |> broadcast()}
+        state = state |> Map.update!(:apps, &Map.delete(&1, name)) |> renumber() |> save()
+        serve(state)
+        {:reply, :ok, broadcast(state)}
 
       _ ->
         {:reply, {:error, :not_found}, state}
@@ -216,38 +174,6 @@ defmodule Loom.Apps do
       _ ->
         {:reply, {:error, :not_found}, state}
     end
-  end
-
-  def handle_call({:key, name, op}, _from, state) do
-    case state.apps do
-      %{^name => app} ->
-        {key, hash} =
-          if op == nil do
-            {nil, nil}
-          else
-            key = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
-            {key, hash(key)}
-          end
-
-        state = save(put_in(state.apps[name], %{app | key_hash: hash}))
-        {:reply, if(key, do: {:ok, key}, else: :ok), state}
-
-      _ ->
-        {:reply, {:error, :not_found}, state}
-    end
-  end
-
-  def handle_call({:valid_key?, name, key}, _from, state) do
-    valid =
-      case state.apps do
-        %{^name => %{key_hash: hash}} when is_binary(hash) and is_binary(key) ->
-          Plug.Crypto.secure_compare(hash(key), hash)
-
-        _ ->
-          false
-      end
-
-    {:reply, valid, state}
   end
 
   def handle_call({:run, name}, _from, state) do
@@ -273,7 +199,9 @@ defmodule Loom.Apps do
 
   defp check_name(_), do: {:error, "name must be a string"}
 
-  defp check_dir(name) do
+  defp check_dir(%{proxy: "all"}), do: :ok
+
+  defp check_dir(%{name: name}) do
     if File.regular?(Path.join([dir(name), "web", "index.html"])),
       do: :ok,
       else: {:error, "#{dir(name)}/web/index.html does not exist"}
@@ -288,8 +216,8 @@ defmodule Loom.Apps do
           %{
             name: name,
             title: name,
-            auth: "private",
-            key_hash: nil,
+            proxy: "api",
+            port: nil,
             order:
               (state.apps |> Map.values() |> Enum.map(& &1.order) |> Enum.max(fn -> 0 end)) + 1,
             server: nil,
@@ -300,11 +228,24 @@ defmodule Loom.Apps do
           }
 
       app = Enum.reduce(@settable, base, &take(&2, &1, attrs))
-      app = %{app | title: app.title || name, auth: app.auth || "private"}
+      app = %{app | title: app.title || name, proxy: app.proxy || "api"}
+      taken = for {n, a} <- state.apps, n != name, a.port != nil, do: a.port
 
       cond do
-        app.auth not in @auths ->
-          {:error, "auth: private or public"}
+        app.proxy not in @proxies ->
+          {:error, "proxy: api or all"}
+
+        app.proxy == "all" and app.server == nil ->
+          {:error, "proxy all needs a server"}
+
+        app.port != nil and app.server == nil ->
+          {:error, "a port needs a server"}
+
+        app.port != nil and not (is_integer(app.port) and app.port in 1024..65535) ->
+          {:error, "port: an integer from 1024 to 65535"}
+
+        app.port in taken ->
+          {:error, "port #{app.port} is another app's"}
 
         app.job != nil and app.schedule == nil ->
           {:error, "a job needs a schedule"}
@@ -327,6 +268,7 @@ defmodule Loom.Apps do
     case Map.fetch(attrs, to_string(key)) do
       {:ok, nil} -> Map.put(app, key, nil)
       {:ok, v} when is_binary(v) and v != "" -> Map.put(app, key, v)
+      {:ok, v} when key == :port -> Map.put(app, key, v)
       {:ok, _} -> app
       :error -> app
     end
@@ -343,16 +285,10 @@ defmodule Loom.Apps do
   end
 
   defp public(app) do
-    path = if app.auth == "public", do: "/apps/#{app.name}/", else: url(app.name)
-    url = origin() <> path
+    url = "#{origin()}/apps/#{app.name}/"
     icon = icon(app.name)
-
-    app
-    |> Map.delete(:key_hash)
-    |> Map.merge(%{url: url, icon: icon && url <> icon, key: app.key_hash != nil})
+    Map.merge(app, %{url: url, icon: icon && url <> icon})
   end
-
-  defp hash(key), do: :crypto.hash(:sha256, key) |> Base.encode16(case: :lower)
 
   # The page's own favicon, so one file is both: the first `<link rel="icon">`
   # (or `apple-touch-icon`, which iOS puts on the home screen) in
@@ -462,6 +398,13 @@ defmodule Loom.Apps do
     path = "PATH=" <> (System.get_env("PATH") || "/usr/bin:/bin")
     n = app.name
 
+    {target, port_env, ready} =
+      if app.port,
+        do:
+          {"127.0.0.1:#{app.port}", "\nEnvironment=PORT=#{app.port}",
+           "(exec 3<>/dev/tcp/127.0.0.1/#{app.port}) 2>/dev/null"},
+        else: {"#{run}/app.sock", "", "[ -S #{run}/app.sock ]"}
+
     server =
       if app.server do
         [
@@ -485,7 +428,7 @@ defmodule Loom.Apps do
            After=app-#{n}-server.service
 
            [Service]
-           ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=#{app.idle || "10min"} #{run}/app.sock
+           ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=#{app.idle || "10min"} #{target}
            """},
           {"app-#{n}-server.service",
            """
@@ -495,12 +438,12 @@ defmodule Loom.Apps do
 
            [Service]
            WorkingDirectory=#{dir}
-           Environment=APP_SOCKET=#{run}/app.sock
+           Environment=APP_SOCKET=#{run}/app.sock#{port_env}
            Environment="#{path}"
            ExecStartPre=/bin/rm -f #{run}/app.sock
            ExecStart=/bin/sh -c #{shell_quote("exec " <> app.server)}
-           # Ready once the socket exists: the proxy connects as soon as this returns.
-           ExecStartPost=/bin/sh -c 'i=0; until [ -S #{run}/app.sock ]; do i=$$((i+1)); [ $$i -lt 250 ] || exit 1; sleep 0.02; done'
+           # Ready once it listens: the proxy connects as soon as this returns.
+           ExecStartPost=/bin/bash -c 'i=0; until #{ready}; do i=$$((i+1)); [ $$i -lt 1500 ] || exit 1; sleep 0.02; done'
            MemoryMax=256M
            """}
         ]
@@ -580,6 +523,229 @@ defmodule Loom.Apps do
     String.trim(out)
   end
 
+  # ── Caddy ───────────────────────────────────────────────────────────────
+
+  # The registry as Caddy's config, then Caddy told to load it; at boot, its
+  # unit too, started if it is not running. The file is written first, so a
+  # Caddy that starts later starts from what is current.
+  defp serve(state, at \\ :change)
+  defp serve(%{systemd: false}, _at), do: :ok
+
+  defp serve(state, at) do
+    File.write!(state.caddy <> ".tmp", Jason.encode_to_iodata!(caddy_config(state), pretty: true))
+    File.rename!(state.caddy <> ".tmp", state.caddy)
+
+    cond do
+      caddy() == nil ->
+        Logger.warning("apps: no caddy on PATH, so the apps are not served")
+
+      at == :boot ->
+        File.write!(Path.join(state.units, "loom-apps.service"), caddy_unit(state))
+        systemctl(state, ["daemon-reload"])
+        systemctl(state, ["enable", "--now", "loom-apps.service"])
+        reload(state)
+
+      true ->
+        reload(state)
+    end
+  end
+
+  defp reload(state) do
+    case System.cmd(caddy(), ["reload", "--force", "--config", state.caddy],
+           stderr_to_stdout: true
+         ) do
+      {_, 0} ->
+        :ok
+
+      {out, code} ->
+        Logger.warning(
+          "apps: caddy reload exited #{code}: #{out |> String.trim() |> String.slice(-500, 500)}"
+        )
+    end
+  end
+
+  defp caddy, do: config(:caddy) || System.find_executable("caddy")
+
+  defp caddy_unit(state) do
+    """
+    [Unit]
+    Description=loom apps (Caddy)
+
+    [Service]
+    ExecStart=#{caddy()} run --config #{state.caddy}
+    Restart=always
+    RestartSec=2
+
+    [Install]
+    WantedBy=default.target
+    """
+  end
+
+  @doc false
+  def caddy_config(state) do
+    apps = state.apps |> Map.values() |> Enum.sort_by(& &1.name)
+    vendor = Application.app_dir(:loom, "priv/static/vendor")
+
+    %{
+      admin: %{listen: "unix/#{Path.join(Path.dirname(state.caddy), "caddy-admin.sock")}|0600"},
+      logging: %{logs: %{default: %{level: "WARN"}}},
+      apps: %{
+        http: %{
+          servers: %{
+            apps: %{
+              listen: [config(:listen) || "127.0.0.1:5000"],
+              automatic_https: %{disable: true},
+              routes:
+                [
+                  # The libraries loom offers pages it serves, at the same path:
+                  # an app or a copied deck that links `/vendor/reveal.js/…` works.
+                  %{
+                    match: [%{path: ["/vendor/*"]}],
+                    terminal: true,
+                    handle: [
+                      %{handler: "rewrite", strip_path_prefix: "/vendor"},
+                      %{handler: "file_server", root: vendor}
+                    ]
+                  }
+                ] ++
+                  Enum.map(apps, &route/1) ++
+                  [
+                    %{
+                      handle: [%{handler: "static_response", status_code: 404, body: "not found"}]
+                    }
+                  ]
+            }
+          }
+        }
+      }
+    }
+  end
+
+  defp route(app) do
+    prefix = "/apps/#{app.name}"
+    dir = dir(app.name)
+
+    rest =
+      case app do
+        %{proxy: "all"} ->
+          [%{handle: [proxy(app, dir)]}]
+
+        %{server: nil} ->
+          [%{handle: files(prefix, dir)}]
+
+        _ ->
+          [
+            %{
+              match: [%{path: ["#{prefix}/api/*"]}],
+              terminal: true,
+              handle: [%{handler: "rewrite", strip_path_prefix: prefix}, proxy(app, dir)]
+            },
+            %{handle: files(prefix, dir)}
+          ]
+      end
+
+    %{
+      match: [%{path: [prefix, prefix <> "/*"]}],
+      terminal: true,
+      handle: [
+        %{
+          handler: "subroute",
+          routes:
+            [
+              %{
+                handle: [
+                  %{
+                    handler: "headers",
+                    response: %{
+                      set: %{
+                        "X-Content-Type-Options" => ["nosniff"],
+                        "Referrer-Policy" => ["no-referrer"]
+                      }
+                    }
+                  },
+                  # Unless the app says otherwise; `no-transform` keeps
+                  # Cloudflare from injecting its analytics beacon.
+                  %{
+                    handler: "headers",
+                    response: %{
+                      set: %{"Cache-Control" => ["no-cache, no-transform"]},
+                      deferred: true,
+                      require: %{headers: %{"Cache-Control" => nil}}
+                    }
+                  }
+                ]
+              },
+              # Without the trailing slash the page's relative URLs would miss.
+              %{
+                match: [%{path: [prefix]}],
+                terminal: true,
+                handle: [
+                  %{
+                    handler: "static_response",
+                    status_code: 301,
+                    headers: %{"Location" => [prefix <> "/"]}
+                  }
+                ]
+              }
+            ] ++ rest
+        }
+      ]
+    }
+  end
+
+  defp files(prefix, dir) do
+    [
+      %{handler: "rewrite", strip_path_prefix: prefix},
+      %{handler: "file_server", root: Path.join(dir, "web")}
+    ]
+  end
+
+  # `.run/http.sock` is the socket systemd holds; the first request starts the
+  # server behind it.
+  defp proxy(app, dir) do
+    %{
+      handler: "reverse_proxy",
+      upstreams: [%{dial: "unix/#{Path.join([dir, ".run", "http.sock"])}"}],
+      flush_interval: -1,
+      headers: %{request: %{set: %{"X-Forwarded-Prefix" => ["/apps/#{app.name}"]}}},
+      handle_response: [
+        %{match: %{headers: %{"X-Loom-File" => ["/*"]}}, routes: [%{handle: loom_file(dir, "")}]},
+        %{
+          match: %{headers: %{"X-Loom-File" => ["*"]}},
+          routes: [%{handle: loom_file(dir, dir <> "/")}]
+        }
+      ]
+    }
+  end
+
+  # The file the reply names, inside the app's directory only: the path is
+  # often built from a request, and a slip there should be a 404, not
+  # someone's ~/.ssh. A path, so URL-encoded where it is not plain.
+  defp loom_file(dir, base) do
+    [
+      %{handler: "copy_response_headers", exclude: ["X-Loom-File", "Content-Length"]},
+      %{handler: "rewrite", uri: base <> "{http.reverse_proxy.header.X-Loom-File}"},
+      %{
+        handler: "subroute",
+        routes: [
+          %{
+            match: [%{path: [dir <> "/*"]}],
+            handle: [%{handler: "file_server", root: "/"}]
+          },
+          %{
+            handle: [
+              %{
+                handler: "static_response",
+                status_code: 404,
+                body: "x-loom-file: no such file in the app"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  end
+
   # ── Persistence ─────────────────────────────────────────────────────────
 
   defp load(path) do
@@ -587,7 +753,7 @@ defmodule Loom.Apps do
          {:ok, %{"apps" => apps}} <- Jason.decode(body) do
       for a <- apps, is_map(a), is_binary(a["name"]) do
         app = Map.new(@persisted, &{&1, a[to_string(&1)]})
-        %{app | auth: app.auth || "private"}
+        %{app | proxy: app.proxy || "api"}
       end
     else
       {:error, :enoent} ->

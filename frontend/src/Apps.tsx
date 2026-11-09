@@ -7,8 +7,8 @@ import "./Apps.css"
  * The apps (`Loom.Apps`) as a home screen: a grid of icons in the user's
  * order that scrolls down when there are many, and one picked opens full size
  * in the main pane. The list is the lobby's, so an app an agent just made
- * appears without a reload. Each page is on the apps' own origin
- * (`LoomWeb.AppsEndpoint`), which is the isolation, so the frame keeps it —
+ * appears without a reload. Each page is on the apps' own origin (Caddy,
+ * see `Loom.Apps`), which is the isolation, so the frame keeps it —
  * the page gets its cookie and storage — and the page can be opened in a tab
  * of its own, which is where a browser offers to install it.
  */

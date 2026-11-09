@@ -36,7 +36,9 @@ defmodule Loom.AppsTest do
     assert {:error, _} = Apps.put("Bad_Name", %{}, s)
     assert {:error, "/" <> _} = Apps.put(uniq("nopage"), %{}, s)
     assert {:error, "a job needs a schedule"} = Apps.put(a, %{job: "true"}, s)
-    assert {:error, "unknown keys: port"} = Apps.put(a, %{port: "1"}, s)
+    assert {:error, "unknown keys: auth"} = Apps.put(a, %{auth: "public"}, s)
+    assert {:error, "a port needs a server"} = Apps.put(a, %{port: 5200}, s)
+    assert {:error, "proxy all needs a server"} = Apps.put(uniq("site"), %{proxy: "all"}, s)
     assert Apps.list(s) == []
   end
 
@@ -136,37 +138,43 @@ defmodule Loom.AppsTest do
     assert String.ends_with?(icon, "/favicon.png")
   end
 
-  test "a page's link is signed for that app only" do
-    "/apps/x/" <> rest = Apps.url("x")
-    token = String.trim_trailing(rest, "/")
-    assert Apps.valid_token?("x", token)
-    refute Apps.valid_token?("y", token)
+  test "a whole site needs no page; ports are the app's own", %{name: s, units: units} do
+    site = uniq("site")
+    on_exit(fn -> File.rm_rf!(Apps.dir(site)) end)
+    File.mkdir_p!(Apps.dir(site))
+
+    assert {:ok, %{proxy: "all", port: 5200, url: "https://apps.test/apps/" <> _}} =
+             Apps.put(site, %{proxy: "all", server: "npm start", port: 5200}, s)
+
+    unit = File.read!(Path.join(units, "app-#{site}-server.service"))
+    assert unit =~ "Environment=PORT=5200"
+    assert File.read!(Path.join(units, "app-#{site}.service")) =~ " 127.0.0.1:5200\n"
+
+    b = page(uniq("b"))
+    assert {:error, "port 5200 is another app's"} = Apps.put(b, %{server: "x", port: 5200}, s)
+    assert {:error, "port: " <> _} = Apps.put(b, %{server: "x", port: "5201"}, s)
+    assert {:error, "proxy: api or all"} = Apps.put(b, %{proxy: "some"}, s)
   end
 
-  test "a key: kept as its hash, shown once, revoked by the next", %{name: s, path: path} do
+  test "Caddy's config: a route per app, the server only where there is one" do
     a = page(uniq("a"))
-    {:ok, %{auth: "private", key: false}} = Apps.put(a, %{}, s)
-    assert {:error, "auth: private or public"} = Apps.put(a, %{auth: "open"}, s)
+    site = uniq("site")
 
-    {:ok, k1} = Apps.key(a, :new, s)
-    assert Apps.valid_key?(a, k1, s)
-    refute File.read!(path) =~ k1
-    assert [%{key: true} = app] = Apps.list(s)
-    refute Map.has_key?(app, :key_hash)
+    apps = %{
+      a => %{name: a, proxy: "api", server: nil},
+      site => %{name: site, proxy: "all", server: "npm start"}
+    }
 
-    {:ok, k2} = Apps.key(a, :new, s)
-    refute Apps.valid_key?(a, k1, s)
-    assert Apps.valid_key?(a, k2, s)
-    refute Apps.valid_key?(uniq("b"), k2, s)
+    config = Apps.caddy_config(%{apps: apps, caddy: "/x/caddy.json"})
+    assert config.admin.listen == "unix//x/caddy-admin.sock|0600"
+    routes = config.apps.http.servers.apps.routes
+    json = Jason.encode!(routes)
 
-    assert :ok = Apps.key(a, nil, s)
-    refute Apps.valid_key?(a, k2, s)
-    assert {:error, :not_found} = Apps.key(uniq("b"), :new, s)
-  end
-
-  test "a public app opens unsigned", %{name: s} do
-    a = page(uniq("a"))
-    assert {:ok, %{auth: "public", url: url}} = Apps.put(a, %{auth: "public"}, s)
-    assert url == "https://apps.test/apps/#{a}/"
+    assert [%{path: ["/vendor/*"]}] = hd(routes).match
+    assert %{handle: [%{handler: "static_response", status_code: 404}]} = List.last(routes)
+    assert json =~ ~s("root":"#{Apps.dir(a)}/web")
+    refute json =~ "/apps/#{a}/api/*"
+    assert json =~ ~s("dial":"unix/#{Apps.dir(site)}/.run/http.sock")
+    assert json =~ "X-Loom-File"
   end
 end

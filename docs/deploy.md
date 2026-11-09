@@ -37,8 +37,8 @@ Optional settings:
 - `LOOM_CLAUDE_FALLBACK_MODEL`: Claude Code's `--fallback-model`, for when
   the usual model is overloaded (see docs/backends.md §6.13)
 - `LOOM_APPS_URL` and `LOOM_APPS_PORT` (default 5000): the apps' own origin,
-  e.g. `https://<machine>-apps.example.com`, served on that port by
-  `LoomWeb.AppsEndpoint`. Apps never run on Loom's origin; unset, they are at
+  e.g. `https://<machine>-apps.example.com`, served on that port by Caddy
+  (§3). Apps never run on Loom's origin; unset, they are at
   `http://localhost:5000`, on this machine only.
 
 No TLS settings and no model API keys are needed.
@@ -53,6 +53,15 @@ Loom makes no model requests itself. Before starting it, log in on the server:
 Optional: `rg` (ripgrep, e.g. `apt install ripgrep`), which searches what was
 said in every session (`␣␣`). Without it search still finds sessions by title,
 and says that it is titles only.
+
+Optional: `caddy` (2.7+), which serves the apps. Loom writes its config and
+its user unit `loom-apps.service` itself. Use the release binary, not apt's
+package, whose system service listens on :80:
+
+```sh
+v=2.11.9; curl -sSLO https://github.com/caddyserver/caddy/releases/download/v$v/caddy_${v}_linux_arm64.tar.gz
+tar xzf caddy_${v}_linux_arm64.tar.gz caddy && sudo install -m 755 caddy /usr/local/bin/
+```
 
 All of these must be on the service's `PATH`. Loom passes that `PATH` on to
 agents and terminal shells.

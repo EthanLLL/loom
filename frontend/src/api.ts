@@ -476,7 +476,7 @@ export type AppInfo = {
   name: string
   title: string
   order: number
-  url: string // signed, so the iframe needs no header
+  url: string // on the apps' own origin, served by Caddy
   icon: string | null
 }
 

@@ -20,11 +20,9 @@ config :loom, LoomWeb.Endpoint,
 
 apps_port = String.to_integer(System.get_env("LOOM_APPS_PORT", "5000"))
 
-config :loom, LoomWeb.AppsEndpoint,
-  http: [ip: {127, 0, 0, 1}, port: apps_port],
-  secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk"
-
-config :loom, Loom.Apps, origin: "http://localhost:#{apps_port}"
+# The apps' URLs only: a dev server never touches the user's systemd units or
+# Caddy, which belong to the real loom.
+config :loom, Loom.Apps, origin: "http://localhost:#{apps_port}", systemd: false
 
 # ## SSL Support
 #

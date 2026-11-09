@@ -32,10 +32,11 @@ origin. Slides are reveal.js decks served by Loom itself, with a PDF button.
 by two devices, and pass OSC 52 clipboard writes to the browser.
 
 **Apps.** Repeated work an agent distills into a plain program, so using it
-needs no model: a page, optionally a server and a scheduled job. systemd runs
-them (socket-activated, idle exit, timers); they are served on an origin of
-their own and open from an Apps grid in the sidebar. Private by default, with
-keys for programs that push to them.
+needs no model: a page or a whole site, optionally a server and a scheduled
+job. Loom only registers them: systemd runs them (socket-activated, idle exit,
+timers) and Caddy serves them on an origin of their own, so they stay up
+while Loom restarts. They open from an Apps grid in the sidebar; any login is
+the app's own.
 
 **Scheduled prompts.** Cron jobs that submit a prompt to a session; agents
 make them, `/cron` lists them.
@@ -67,7 +68,7 @@ slides) and `node/SKILL.md`, copied to both backends on deploy.
 
 - Elixir / Erlang (see `mix.exs`), Node.js + pnpm, Go (for `loom-node`)
 - `claude` and `codex` on `PATH`, both logged in
-- Optional: `rg` for search, systemd user units for apps
+- Optional: `rg` for search; Caddy and systemd user units for apps
 
 ## Development
 

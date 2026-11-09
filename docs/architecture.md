@@ -243,39 +243,54 @@ agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
 An app is work an agent distilled out of a conversation into a plain program,
 so using it costs no tokens: `~/.loom/apps/<name>/` with
 
-- `web/` — the page; `web/index.html` required, its favicon is the icon;
-- `server` — optional command listening on the unix socket `$APP_SOCKET`,
-  getting the page's `api/*`;
+- `web/` — the page, its favicon the icon;
+- `server` — optional command listening on the unix socket `$APP_SOCKET`, or
+  on `$PORT` when the app declares a `port`;
 - `job` — optional command run on `schedule` (systemd `OnCalendar`, UTC).
 
-**`Loom.Apps`** is one GenServer over `~/.loom/apps.json` (title, order, auth,
-key hash, server, idle, job, schedule), pushed whole on the lobby channel. No
-HTTP API: agents use `bin/loom rpc` per the `apps` skill. To hand work back to
-an agent, a program calls `Loom.Agent.new_session_file/1` with title and prompt
-as JSON data, never spliced into rpc code.
+`proxy` says what the server gets: `"api"` (default) only `api/*`, `web/`
+being the rest; `"all"` every request, for a whole site such as one cloned
+from elsewhere, which then needs no `web/`.
+
+**Loom is the registry, not the data plane.** `Loom.Apps` is one GenServer
+over `~/.loom/apps.json` (title, order, proxy, port, server, idle, job,
+schedule), pushed whole on the lobby channel. From it, on every change and at
+boot, it writes the units that run the apps and Caddy's config, and steps out
+of the way: nothing an app serves passes through the BEAM, and the apps stay
+up while Loom restarts. No HTTP API: agents use `bin/loom rpc` per the `apps`
+skill. To hand work back to an agent, a program calls
+`Loom.Agent.new_session_file/1` with title and prompt as JSON data, never
+spliced into rpc code.
 
 **systemd owns the processes.** Each app becomes user units:
 `app-<name>.socket` holds `.run/http.sock`; the first connection starts a
 `systemd-socket-proxyd` that exits after `idle` and takes the server with it.
 `app-<name>-job.timer` is `Persistent`, so a run missed while down happens at
-boot. Loom never tracks a pid, and an app's server outlives a Loom restart. At
-boot every app's units are rewritten and any other `app-*` unit removed.
+boot. Loom never tracks a pid. At boot every app's units are rewritten and any
+other `app-*` unit removed.
 
-**`LoomWeb.AppsEndpoint`** serves apps on an origin of their own
-(`LOOM_APPS_URL`, port `LOOM_APPS_PORT`; unset, `http://localhost:5000`), never
-Loom's. That origin is the isolation, so a page is a plain site: cookies,
-storage, PWA install. `LoomWeb.Apps` is a plug before `Plug.Parsers` so bodies
-pass intact; it forwards `api/*` over HTTP/1.0, one request per connection,
-buffered. A reply with `x-loom-file: <path>` is answered from disk with Range
-(like `X-Accel-Redirect`), which iOS needs to play video.
+**Caddy serves them**, as the user unit `loom-apps.service`, on
+`LOOM_BIND:LOOM_APPS_PORT` (5000) behind the apps' own origin
+(`LOOM_APPS_URL`; unset, `http://localhost:5000`), never Loom's.
+`~/.loom/caddy.json` is its whole config, generated, written before it is
+loaded with `caddy reload` over the admin socket `~/.loom/caddy-admin.sock`
+(0600), so a Caddy started later starts from what is current.
 
-**Who may reach it** (`auth`):
+- Each app is `/apps/<name>/`: `web/` as files, the server behind
+  `reverse_proxy` (HTTP/2, WebSocket and SSE as they are). An `"api"` app's
+  server sees `/api/…`; an `"all"` app's sees the full path, with
+  `X-Forwarded-Prefix`.
+- A reply with `x-loom-file: <path>` (absolute, or relative to the app's
+  directory; URL-encoded) is answered with that file from disk, with Range,
+  like `X-Accel-Redirect`; iOS needs Range to play video. Anything outside
+  the app's directory is a 404.
+- `/vendor/` is Loom's bundled libraries (reveal.js, KaTeX), so a deck copied
+  into an app works.
+- `Cache-Control: no-cache, no-transform` unless the app sets its own.
 
-- `"private"` (default) — the signed `/apps/<name>/<token>/` path from
-  `Loom.Apps.url/1` (30 days), which the first load trades for a cookie on the
-  app's path; or `Authorization: Bearer <key>` (`key/1`, kept as its hash, the
-  next one revokes it) for programs.
-- `"public"` — anyone; the app gets `authorization` and checks it itself.
+**No access control.** An app is open to whoever reaches the apps' origin; one
+that must know who is asking checks for itself. All apps share the origin, so
+they can read each other's storage and cookies unless scoped by path.
 
 The Apps grid in the sidebar is a home screen of icons; an app opens in the
 main pane.
@@ -304,11 +319,10 @@ Loom.Supervisor
 ├─ Loom.Agent.Bootstrap           reattaches persisted sessions at boot
 ├─ Loom.Cron                      scheduled prompts
 ├─ Loom.Nodes                     the user's devices (loom-node)
-├─ Loom.Apps                      apps registry; rewrites their units at boot
+├─ Loom.Apps                      apps registry; writes their units and Caddy's config
 ├─ Loom.Push                      notifications when a turn ends
 ├─ Loom.Restarter                 restart-when-idle, for deploys
-├─ LoomWeb.Endpoint
-└─ LoomWeb.AppsEndpoint           apps on their own origin
+└─ LoomWeb.Endpoint
 ```
 
 `Codex.Server` respawns its OS process itself, with backoff, so a `codex` that

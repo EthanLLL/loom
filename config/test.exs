@@ -13,11 +13,6 @@ config :loom, LoomWeb.Endpoint,
   secret_key_base: "VzA3sG+8Akz5Fqb3nrSRbR1nYdOqxDUe+C0WVeltx5CWLkUBeHm4nY8EcosHe6pv",
   server: false
 
-config :loom, LoomWeb.AppsEndpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4003],
-  secret_key_base: "VzA3sG+8Akz5Fqb3nrSRbR1nYdOqxDUe+C0WVeltx5CWLkUBeHm4nY8EcosHe6pv",
-  server: false
-
 # Print only warnings and errors during test
 config :logger, level: :warning
 
