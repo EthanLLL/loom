@@ -12,8 +12,12 @@ export const ROOT = ""
 
 export const join = (dir: string, name: string) => (dir === ROOT ? name : `${dir}/${name}`)
 
-/** The directories sessions are in, as the sidebar lists them, sorted. */
+/**
+ * The directories sessions are in, as the sidebar lists them: in code point
+ * order, the same on every device. `localeCompare` would follow each
+ * browser's language, pinyin on a Chinese one, and differ between devices.
+ */
 export function filed(sessions: AgentInfo[]): string[] {
   const dirs = new Set(sessions.map((s) => s.directory ?? ROOT).filter((d) => d !== ROOT))
-  return [...dirs].sort((a, b) => a.localeCompare(b))
+  return [...dirs].sort()
 }
