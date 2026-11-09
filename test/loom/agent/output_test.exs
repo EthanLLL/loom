@@ -154,18 +154,4 @@ defmodule Loom.Agent.OutputTest do
       assert Output.resolve(id, "missing.txt") == :error
     end
   end
-
-  test "the instructions name the directory, the link form and the canvas", %{id: id, dir: dir} do
-    text = Output.instructions(id)
-    assert text =~ dir
-    assert text =~ "(output/"
-    assert text =~ "#{dir}/<name>/index.html"
-  end
-
-  test "the instructions give the session id and send lasting work through Loom", %{id: id} do
-    text = Output.instructions(id)
-    assert text =~ "This session's id is #{id}."
-    assert text =~ "`sessions` skill"
-    assert text =~ "`cron` skill"
-  end
 end

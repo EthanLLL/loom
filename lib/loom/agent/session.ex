@@ -85,6 +85,7 @@ defmodule Loom.Agent.Session do
 
   alias Loom.Agent.Backend
   alias Loom.Agent.Files
+  alias Loom.Agent.Instructions
   alias Loom.Agent.Output
   alias Loom.Agent.Store
 
@@ -210,7 +211,7 @@ defmodule Loom.Agent.Session do
           outputs: outputs(id)
       }
 
-      case Backend.impl(backend).start(id, backend_meta(id, opts)) do
+      case Backend.impl(backend).start(id, backend_meta(id, backend, opts)) do
         {:ok, handle} ->
           state = %{state | handle: handle}
           persist_meta(state)
@@ -237,11 +238,11 @@ defmodule Loom.Agent.Session do
 
   # `:cwd` is only ever a test or operator override. A session has no project
   # root; the backend falls back to `:workspace` (or the user's home).
-  defp backend_meta(id, opts) do
+  defp backend_meta(id, backend, opts) do
     %{
       cc_cwd: Keyword.get(opts, :cwd),
       codex_cwd: Keyword.get(opts, :cwd),
-      instructions: Output.instructions(id)
+      instructions: Instructions.for_session(id, backend)
     }
   end
 
@@ -257,7 +258,12 @@ defmodule Loom.Agent.Session do
     with {:ok, backend} <- recorded_backend(meta),
          {:ok, logs} <- Store.open_logs(id),
          {:ok, handle} <-
-           reattach(backend, id, Map.put(meta, :instructions, Output.instructions(id)), logs) do
+           reattach(
+             backend,
+             id,
+             Map.put(meta, :instructions, Instructions.for_session(id, backend)),
+             logs
+           ) do
       transcript = Store.read_events(id, @transcript_limit)
 
       state = %{

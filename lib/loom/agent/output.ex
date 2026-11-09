@@ -10,11 +10,8 @@ defmodule Loom.Agent.Output do
   ## The agent is told, not watched
 
   Both backends write wherever they like, so the only way to know which file is
-  meant for the user is to agree on a place in advance. `instructions/1` is that
-  agreement, handed to the backend as part of its system prompt. An absolute
-  path rather than an environment variable, because Codex runs every session's
-  thread in one shared app-server — there is no per-session process to give an
-  environment to.
+  meant for the user is to agree on a place in advance. `Loom.Agent.Instructions`
+  is that agreement, handed to the backend as part of its system prompt.
 
   ## Noticed at the end of a turn, not as it happens
 
@@ -40,48 +37,6 @@ defmodule Loom.Agent.Output do
   def ensure_dir(session_id) do
     File.mkdir_p!(Store.output_dir(session_id))
     :ok
-  end
-
-  @doc """
-  What the backend is told on top of its own system prompt.
-
-  Names the absolute path, says it is the one place the user can download from,
-  and asks for links in the `output/<name>` form the UI turns into downloads.
-  Also the session's id and lifetime: the backend process is released when
-  idle, so work meant to outlive the turn goes through Loom (the `sessions`
-  and `cron` skills), not the engine's own background tasks.
-  """
-  def instructions(session_id) do
-    dir = Store.output_dir(session_id)
-
-    """
-    You are running inside Loom, a web UI. The user reads your replies in a \
-    browser and cannot see this machine's filesystem.
-
-    When you produce a file meant for the user — a spreadsheet, a slide deck, a \
-    document, an image, an archive, anything they should download — save it in \
-    #{dir} (subdirectories are fine). Files written there are offered to the \
-    user for download automatically when your turn ends; files written anywhere \
-    else are not. Use descriptive file names. When you mention such a file in \
-    your reply, link it as [name](output/<path relative to that directory>).
-
-    Next to the chat is a canvas: a browser pane. When something is better \
-    seen than downloaded — a chart or dashboard, a gallery of images, a video, \
-    a small web page — build it as a self-contained page: \
-    #{dir}/<name>/index.html with its assets beside it, referenced by relative \
-    paths. The newest such index.html opens in the canvas by itself when your \
-    turn ends; each subdirectory is shown as a single card (one with an \
-    index.html opens as a page, any other is offered as a zip). The page runs \
-    sandboxed with no access to Loom itself; it may load libraries from public \
-    CDNs. Don't build a page when a plain file is what the user asked for.
-
-    This session's id is #{session_id}. Loom stops this backend process when \
-    the session sits idle and whenever Loom restarts, so nothing started in \
-    the background — shell jobs, subagents, timers — outlives the turn it was \
-    started in. For parallel work, start Loom sessions (the `sessions` skill); \
-    for scheduled prompts and check-ins on long-running work, use Loom's cron \
-    (the `cron` skill). A subagent that finishes within the turn is fine.
-    """
   end
 
   @doc """
