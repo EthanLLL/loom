@@ -140,7 +140,7 @@ $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory t
 - Nothing wakes a model by itself. A failure shows only where the app records
   it, and in the journal.
 - **Run now**: the server can start the job without waiting for the next tick,
-  with `systemctl --user start --no-block app-<name>-job.service`, which is
+  with `systemctl --user start --no-block app-<name>_job.service`, which is
   what `Loom.Apps.run` does. A start while the job is running is dropped, so a
   job meant to be woken should loop until nothing is left.
 - **Handing work to an agent** (only when the app is designed for it):
@@ -156,12 +156,15 @@ $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory t
 ```sh
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 systemctl --user list-units --all 'app-<name>*' --no-legend | cat
-journalctl --user -u app-<name>-job -n 20 --no-pager      # a job's output
-journalctl --user -u app-<name>-server -n 20 --no-pager   # a server's
+journalctl --user -u app-<name>_job -n 20 --no-pager      # a job's output
+journalctl --user -u app-<name>_server -n 20 --no-pager   # a server's
 journalctl --user -u loom-apps -n 20 --no-pager           # Caddy
 curl -s --unix-socket ~/.loom/apps/<name>/.run/http.sock http://x/api/…   # the server directly
 curl -s "<url>api/…"                                                        # through Caddy
 ```
 
-Then open `url` with Playwright, light and dark, and look at a screenshot.
-Tell the user it is in the sidebar's **Apps**.
+Test the server's logic with its own tests and curl, not through a browser. A
+curl of `url` through Caddy shows the page is served. Open it in a browser
+only when the user asks, or when something only the page can show is in doubt;
+every screenshot read costs tokens. Tell the user it is in the sidebar's
+**Apps**.

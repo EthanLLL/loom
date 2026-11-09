@@ -41,9 +41,15 @@ defmodule Loom.Apps do
 
     * `app-<name>.socket` holds `.run/http.sock`; the first connection starts
       `app-<name>.service`, a `systemd-socket-proxyd` that exits after `idle`
-      without one, and takes `app-<name>-server.service` down with it
-    * `app-<name>-job.timer` runs `app-<name>-job.service`; `Persistent`, so a
+      without one, and takes `app-<name>_server.service` down with it; bound
+      to the server, so a server that dies takes the proxy with it and the
+      next connection starts both afresh
+    * `app-<name>_job.timer` runs `app-<name>_job.service`; `Persistent`, so a
       run missed while the host was down happens at boot
+
+  The suffixes are joined with `_`, which a name cannot contain, so no app's
+  units can be another's: `x`'s job is `app-x_job`, an app called `x-job` is
+  `app-x-job`.
 
   so an app's server outlives a restart of loom, and loom never tracks a pid.
   At boot every app's units are rewritten and any other `app-*` unit removed:
@@ -106,16 +112,24 @@ defmodule Loom.Apps do
   def init(opts) do
     path = Keyword.get(opts, :path, path())
 
+    systemd = Keyword.get(opts, :systemd, config(:systemd) != false)
+
     state = %{
       path: path,
       caddy: Path.join(Path.dirname(path), "caddy.json"),
       apps: Map.new(load(path), &{&1.name, &1}),
-      systemd: Keyword.get(opts, :systemd, config(:systemd) != false),
-      units: Keyword.get(opts, :units, config(:units) || Path.expand("~/.config/systemd/user"))
+      systemd: systemd,
+      units: Keyword.get(opts, :units, config(:units) || units_dir(systemd, path))
     }
 
     {:ok, state, {:continue, :sync}}
   end
+
+  # Without systemd (a dev server beside the real loom) the units are written
+  # next to its own apps.json: the boot sync removes every `app-*` unit it does
+  # not know, which in the user's directory would be the real loom's.
+  defp units_dir(true, _path), do: Path.expand("~/.config/systemd/user")
+  defp units_dir(false, path), do: Path.join(Path.dirname(path), "units")
 
   @impl true
   def handle_continue(:sync, state) do
@@ -179,7 +193,7 @@ defmodule Loom.Apps do
   def handle_call({:run, name}, _from, state) do
     case state.apps do
       %{^name => %{job: job}} when is_binary(job) ->
-        {:reply, systemctl(state, ["start", "--no-block", "app-#{name}-job.service"]), state}
+        {:reply, systemctl(state, ["start", "--no-block", "app-#{name}_job.service"]), state}
 
       %{^name => _} ->
         {:reply, {:error, :no_job}, state}
@@ -350,7 +364,8 @@ defmodule Loom.Apps do
   # Every app's units as the registry has them, and no others.
   defp sync_all(state) do
     File.mkdir_p!(state.units)
-    wanted = state.apps |> Map.values() |> Enum.flat_map(&write_units(&1, state))
+    written = state.apps |> Map.values() |> Enum.flat_map(&write_units(&1, state))
+    wanted = Enum.map(written, &elem(&1, 0))
 
     for file <- File.ls!(state.units), String.starts_with?(file, "app-"), file not in wanted do
       systemctl(state, ["disable", "--now", file])
@@ -359,7 +374,15 @@ defmodule Loom.Apps do
 
     systemctl(state, ["daemon-reload"])
     Enum.each(Map.values(state.apps), &enable(&1, state))
+
+    # A running proxy whose unit changed (a deploy that changes how units are
+    # written) still forwards to what it was started with. Stopped, the
+    # socket starts the new one at the next connection. An unchanged one is
+    # left alone, so open connections survive a restart of loom.
+    for {file, true} <- written, proxy?(file), do: systemctl(state, ["stop", file])
   end
+
+  defp proxy?(file), do: String.ends_with?(file, ".service") and not String.contains?(file, "_")
 
   # A change: the new units in, the old processes out, so the next request or
   # tick runs what was just put.
@@ -372,7 +395,7 @@ defmodule Loom.Apps do
 
   defp uninstall(name, state) do
     units =
-      for s <- ["", "-server", "-job"],
+      for s <- ["", "_server", "_job"],
           t <- [".socket", ".service", ".timer"],
           do: "app-#{name}#{s}#{t}"
 
@@ -387,10 +410,10 @@ defmodule Loom.Apps do
 
   defp enable(app, state) do
     if app.server, do: systemctl(state, ["enable", "--now", "app-#{app.name}.socket"])
-    if app.job, do: systemctl(state, ["enable", "--now", "app-#{app.name}-job.timer"])
+    if app.job, do: systemctl(state, ["enable", "--now", "app-#{app.name}_job.timer"])
   end
 
-  # Returns the file names written.
+  # Returns `{file, changed?}` for each unit written.
   defp write_units(app, state) do
     dir = dir(app.name)
     run = Path.join(dir, ".run")
@@ -424,13 +447,13 @@ defmodule Loom.Apps do
            """
            [Unit]
            Description=loom app #{n} (proxy)
-           Requires=app-#{n}-server.service
-           After=app-#{n}-server.service
+           BindsTo=app-#{n}_server.service
+           After=app-#{n}_server.service
 
            [Service]
            ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=#{app.idle || "10min"} #{target}
            """},
-          {"app-#{n}-server.service",
+          {"app-#{n}_server.service",
            """
            [Unit]
            Description=loom app #{n} (server)
@@ -454,7 +477,7 @@ defmodule Loom.Apps do
     job =
       if app.job do
         [
-          {"app-#{n}-job.service",
+          {"app-#{n}_job.service",
            """
            [Unit]
            Description=loom app #{n} (job)
@@ -466,7 +489,7 @@ defmodule Loom.Apps do
            ExecStart=/bin/sh -c #{shell_quote("exec " <> app.job)}
            TimeoutStartSec=30min
            """},
-          {"app-#{n}-job.timer",
+          {"app-#{n}_job.timer",
            """
            [Unit]
            Description=loom app #{n} (schedule)
@@ -484,8 +507,10 @@ defmodule Loom.Apps do
       end
 
     for {file, body} <- server ++ job do
-      File.write!(Path.join(state.units, file), body)
-      file
+      path = Path.join(state.units, file)
+      changed = File.read(path) != {:ok, body}
+      if changed, do: File.write!(path, body)
+      {file, changed}
     end
   end
 

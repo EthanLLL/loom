@@ -65,15 +65,16 @@ defmodule Loom.AppsTest do
              Enum.sort([
                "app-#{a}.socket",
                "app-#{a}.service",
-               "app-#{a}-server.service",
-               "app-#{a}-job.service",
-               "app-#{a}-job.timer"
+               "app-#{a}_server.service",
+               "app-#{a}_job.service",
+               "app-#{a}_job.timer"
              ])
 
-    server = File.read!(Path.join(units, "app-#{a}-server.service"))
+    server = File.read!(Path.join(units, "app-#{a}_server.service"))
     assert server =~ ~s(ExecStart=/bin/sh -c "exec node server.ts")
     assert server =~ "WorkingDirectory=#{Apps.dir(a)}"
-    assert File.read!(Path.join(units, "app-#{a}-job.timer")) =~ "OnCalendar=*-*-* 00/4:00:00"
+    assert File.read!(Path.join(units, "app-#{a}.service")) =~ "BindsTo=app-#{a}_server.service"
+    assert File.read!(Path.join(units, "app-#{a}_job.timer")) =~ "OnCalendar=*-*-* 00/4:00:00"
 
     {:ok, _} = Apps.put(a, %{server: nil}, s)
     refute File.exists?(Path.join(units, "app-#{a}.socket"))
@@ -85,6 +86,25 @@ defmodule Loom.AppsTest do
     assert [_] =
              File.ls!(Path.join(Apps.root(), ".trash"))
              |> Enum.filter(&String.starts_with?(&1, a <> "-"))
+  end
+
+  test "an app named like another's unit keeps its own units", %{name: s, units: units} do
+    x = page(uniq("x"))
+    xjob = page(x <> "-job")
+    {:ok, _} = Apps.put(x, %{job: "true", schedule: "hourly"}, s)
+    {:ok, _} = Apps.put(xjob, %{server: "node server.ts"}, s)
+
+    assert File.read!(Path.join(units, "app-#{x}_job.service")) =~ "exec true"
+    assert File.read!(Path.join(units, "app-#{xjob}.service")) =~ "systemd-socket-proxyd"
+
+    assert :ok = Apps.delete(x, s)
+
+    assert File.ls!(units) |> Enum.sort() ==
+             Enum.sort([
+               "app-#{xjob}.socket",
+               "app-#{xjob}.service",
+               "app-#{xjob}_server.service"
+             ])
   end
 
   test "moves, and renumbers on delete", %{name: s} do
@@ -146,7 +166,7 @@ defmodule Loom.AppsTest do
     assert {:ok, %{proxy: "all", port: 5200, url: "https://apps.test/apps/" <> _}} =
              Apps.put(site, %{proxy: "all", server: "npm start", port: 5200}, s)
 
-    unit = File.read!(Path.join(units, "app-#{site}-server.service"))
+    unit = File.read!(Path.join(units, "app-#{site}_server.service"))
     assert unit =~ "Environment=PORT=5200"
     assert File.read!(Path.join(units, "app-#{site}.service")) =~ " 127.0.0.1:5200\n"
 
