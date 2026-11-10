@@ -198,6 +198,27 @@ defmodule Loom.Agent.RestoreTest do
              end)
     end
 
+    test "seq resumes past the events on disk when the header lags them" do
+      # SIGKILL can land after events were appended but before the header was
+      # rewritten. Reissuing those seqs would make a client that already saw
+      # them drop every new event as a duplicate.
+      id = new_session()
+      Agent.submit(id, "hello")
+      BackendStub.await_turn()
+      stop_and_wait(id)
+      on_disk = id |> Store.read_events(1000) |> Enum.map(& &1.seq) |> Enum.max()
+      {:ok, meta} = Store.read_meta(id)
+      Store.write_meta(id, %{meta | seq: 0})
+
+      {:ok, _pid} = Agent.restore_session(id)
+      Agent.submit(id, "again")
+      BackendStub.await_turn()
+
+      seqs = id |> Store.read_events(1000) |> Enum.map(& &1.seq)
+      assert Enum.max(seqs) > on_disk
+      assert length(seqs) == length(Enum.uniq(seqs))
+    end
+
     test "the transcript is replayable to a client that attaches afterwards" do
       id = new_session()
       Agent.submit(id, "hello")

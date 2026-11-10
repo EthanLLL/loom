@@ -275,7 +275,10 @@ defmodule Loom.Agent.Session do
           created_at: meta[:created_at],
           last_active_at: last_active(transcript) || meta[:created_at],
           transcript: transcript,
-          seq: meta[:seq] || 0,
+          # After an unclean stop (SIGKILL) the header's seq can trail the
+          # events already on disk; resuming from it would reissue seqs the
+          # browser has seen, and it drops them as duplicates.
+          seq: max(meta[:seq] || 0, last_seq(transcript)),
           queue: restore_queue(meta[:queue]),
           usage: meta[:usage],
           context_tokens: meta[:context_tokens] || 0,
@@ -299,6 +302,9 @@ defmodule Loom.Agent.Session do
       {:error, reason} -> {:stop, {:restore_failed, reason}}
     end
   end
+
+  defp last_seq([]), do: 0
+  defp last_seq(transcript), do: transcript |> Enum.map(& &1.seq) |> Enum.max()
 
   # A header with no usable `backend` cannot be reattached to anything. Refusing
   # with a reason beats guessing an engine and opening an empty conversation
