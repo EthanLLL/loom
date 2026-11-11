@@ -112,6 +112,14 @@ Open http://localhost:5173. The password is `LOOM_PASSWORD` (`loom` in dev).
 | `cd frontend && pnpm md:check` | Markdown renderer cases |
 | `cd frontend && pnpm transcript …` | Record / replay a live agent stream ([details](docs/architecture.md#91-debugging-record-and-replay)) |
 
+## Contributors
+
+<a href="https://github.com/EthanLLL/loom/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=EthanLLL/loom" alt="Contributors">
+</a>
+
+Demo video by [@ensean](https://github.com/ensean).
+
 ## License
 
-[MIT](LICENSE). Demo video by [@ensean](https://github.com/ensean).
+[MIT](LICENSE)
