@@ -120,6 +120,21 @@ Open http://localhost:5173. The password is `LOOM_PASSWORD` (`loom` in dev).
 
 Demo video by [@ensean](https://github.com/ensean).
 
+## Built with Claude Code, inside Loom
+
+Loom is written by [Claude Code](https://claude.com/claude-code) running in a
+Loom session: nearly every commit is co-authored by Claude, and each new
+version is deployed from inside the Loom it replaces (`rel/deploy.sh`).
+
+## Thanks, Elixir and Phoenix
+
+I had pictured Loom for a long time, because on the BEAM its shape is simple:
+a process per session, PubSub to every device, a supervisor for whatever
+crashes. [Elixir](https://elixir-lang.org) and
+[Phoenix](https://www.phoenixframework.org) made it a design worth building;
+Claude Code made the first version a week's work. Thank you to José Valim and
+everyone behind them.
+
 ## License
 
 [MIT](LICENSE)
