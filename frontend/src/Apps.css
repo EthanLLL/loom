@@ -9,11 +9,6 @@
   background: var(--bg);
 }
 
-.apps-head {
-  flex: 0 0 auto;
-  padding: 8px 14px 0;
-}
-
 /* A home screen: fixed-size tiles, as many to a row as fit, and the rest
    further down. */
 .apps-grid {

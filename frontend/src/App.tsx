@@ -40,8 +40,9 @@ const CANVAS_KEY = "loom_canvas"
 const TREE_KEY = "loom_canvas_tree"
 const VIM_KEY = "loom_vim"
 
-// The right-hand side shows one thing at a time: the terminals or the canvas.
-type Side = "terminal" | "canvas" | "browser" | null
+// The right-hand side shows one thing at a time: the terminals, the canvas,
+// the browser or the apps.
+type Side = "terminal" | "canvas" | "browser" | "apps" | null
 
 function loadCanvases(): Record<string, CanvasItem> {
   try {
@@ -105,9 +106,13 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const [side, setSide] = useState<Side>(null)
-  // The Apps grid in place of the chat; picking a session goes back.
-  const [appsOpen, setAppsOpen] = useState(false)
   const terminalOpen = side === "terminal"
+  // Mounted once first opened, so an app keeps its state while the canvas or
+  // the terminals are shown instead.
+  const [appsUsed, setAppsUsed] = useState(false)
+  useEffect(() => {
+    if (side === "apps") setAppsUsed(true)
+  }, [side])
 
   // The right-hand column across the whole window, chat and sidebar hidden —
   // for presenting a page from the canvas, or a terminal with room. Not on a
@@ -201,14 +206,19 @@ function App() {
     const session = await createAgent(backend)
     upsert(session)
     setActiveId(session.id)
-    setAppsOpen(false)
+    leaveApps()
     setDrawerOpen(false)
   }
 
   const select = (id: string) => {
     setActiveId(id)
-    setAppsOpen(false)
+    leaveApps()
     setDrawerOpen(false)
+  }
+  // On a phone the apps cover the chat, so picking a session closes them;
+  // beside it, they stay.
+  const leaveApps = () => {
+    if (narrow) setSide((s) => (s === "apps" ? null : s))
   }
 
   // A notification tapped while the app is already open: the worker names the
@@ -487,10 +497,10 @@ function App() {
         if (narrow) setDrawerOpen(false)
         setSide((s) => (s === "browser" ? null : "browser"))
       }}
-      appsOpen={appsOpen}
+      appsOpen={side === "apps"}
       onToggleApps={() => {
         if (narrow) setDrawerOpen(false)
-        setAppsOpen((open) => !open)
+        setSide((s) => (s === "apps" ? null : "apps"))
       }}
     />
   )
@@ -513,15 +523,7 @@ function App() {
 
       <main className="main">
         <div className="main-chat">
-          {appsOpen ? (
-            <Apps
-              apps={apps}
-              sidebarOpen={!narrow && sidebarOpen}
-              onToggleSidebar={() =>
-                narrow ? setDrawerOpen(true) : setSidebarOpen((open) => !open)
-              }
-            />
-          ) : active ? (
+          {active ? (
             // Keyed by id so switching sessions rebuilds the channel and the
             // transcript rather than mixing two conversations.
             <Chat
@@ -593,6 +595,18 @@ function App() {
                 onClose={() => setSide(null)}
               />
             </Suspense>
+          </div>
+        )}
+
+        {appsUsed && (
+          <div className="side-column" style={{ display: side === "apps" ? "flex" : "none" }}>
+            <Apps
+              apps={apps}
+              narrow={narrow}
+              maximized={maximized}
+              onToggleMaximized={toggleFull}
+              onClose={() => setSide(null)}
+            />
           </div>
         )}
 
