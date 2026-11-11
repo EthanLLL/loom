@@ -1039,7 +1039,7 @@ const STATUS_LABELS: Record<string, string> = {
 // (Codex's adapter turns it into an RPC); `/reload` and `/cron` are loom's own.
 const COMMANDS = [
   { name: "/compact", hint: "summarize the conversation to free up context" },
-  { name: "/reload", hint: "reload Claude Code and Codex config: settings, MCP, skills" },
+  { name: "/reload", hint: "reload Claude Code, Codex and Kiro config: settings, MCP, skills" },
   { name: "/cron", hint: "list every scheduled job" },
 ]
 

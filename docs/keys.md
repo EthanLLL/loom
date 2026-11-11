@@ -44,6 +44,7 @@ After Space, a box in the bottom right lists what can follow. `Esc` gives up.
 | `␣f` | The right-hand column across the whole window, or back (also `Esc`) |
 | `␣nc` | New Claude Code session |
 | `␣nx` | New Codex session |
+| `␣nk` | New Kiro session |
 
 ## The session list (`␣b`)
 

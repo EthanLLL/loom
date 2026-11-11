@@ -1,8 +1,8 @@
 # Architecture
 
 Loom is a single-user lobby for cloud agents. Every device connects to the same
-session; state lives on the server and on disk; the agent is Claude Code or
-Codex. Protocol details are in [backends.md](backends.md), deployment in
+session; state lives on the server and on disk; the agent is Claude Code,
+Codex or Kiro. Protocol details are in [backends.md](backends.md), deployment in
 [deploy.md](deploy.md).
 
 ## 1. Non-goals
@@ -20,7 +20,7 @@ Codex. Protocol details are in [backends.md](backends.md), deployment in
 
 ```
 Loom.Agent.Session        one process per session, restart: :transient
-  ├─ Loom.Agent.Backend   adapter behaviour (ClaudeCode, Codex)
+  ├─ Loom.Agent.Backend   adapter behaviour (ClaudeCode, Codex, Kiro)
   ├─ Loom.Agent.Store     meta.json + events.jsonl
   └─ PubSub "agent:<id>"  events and deltas
 ```
@@ -110,7 +110,8 @@ A session's backend is fixed at creation: `POST /api/agents` without
 stay on Loom's side.
 
 Every spawn's system prompt (CC `--append-system-prompt`, Codex
-`developerInstructions`), from `Loom.Agent.Instructions`, one text per
+`developerInstructions`, Kiro `_meta.kiro.steering`,
+[backends.md §9](backends.md)), from `Loom.Agent.Instructions`, one text per
 backend, says, in order:
 that it runs inside Loom, how Loom is built and where its source is; the
 session's id and directory; its lifetime: Loom lets an idle backend go and
@@ -148,6 +149,7 @@ same `block_id` replaces it whole, so a stream cut mid-sentence costs nothing.
 ~/.loom/sessions/<id>/output/…       files the agent made for the user
 ~/.loom/sessions/.trash/<id>.<ms>/   a deleted session, kept whole
 ~/.loom/cron.json  push.json  apps.json  apps/<name>/
+~/.loom/backends/kiro.json           Kiro's model/effort/args/env (Loom.Agent.BackendConfig)
 ```
 
 The base is `~/.loom` (or `LOOM_HOME`), not `priv/`, which a deploy replaces.
@@ -155,7 +157,7 @@ Deleting a session is a rename into `.trash`; nothing is ever removed, and an
 id that is not one plain path segment is refused.
 
 There is no message log. The conversation belongs to the backend (CC's
-`~/.claude/projects/…`, Codex's thread store); `events.jsonl` is only the
+`~/.claude/projects/…`, Codex's thread store, Kiro's `~/.kiro/sessions`); `events.jsonl` is only the
 display truth and may legitimately differ, e.g. text streamed before an
 interrupt. **Never reconcile one against the other.**
 

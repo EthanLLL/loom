@@ -356,6 +356,7 @@ function NewChat({
             </button>
           ))}
           <button onClick={() => choose("codex")}>Codex</button>
+          <button onClick={() => choose("kiro")}>Kiro</button>
         </div>
       )}
     </div>

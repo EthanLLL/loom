@@ -123,7 +123,7 @@ export async function deleteSession(id: string): Promise<void> {
 // opaque rather than being flattened into a lowest common denominator.
 export type AgentUsage = Record<string, unknown>
 
-export type AgentBackend = "claude_code" | "codex"
+export type AgentBackend = "claude_code" | "codex" | "kiro"
 
 /**
  * `starting` is the gap between asking the backend to begin and it saying

@@ -2,7 +2,8 @@ defmodule Loom.Agent.Instructions do
   @moduledoc """
   What Loom tells the backend on top of its own system prompt: CC's
   `--append-system-prompt`, Codex's `developerInstructions`. Given at every
-  spawn and resume, since neither backend keeps it.
+  spawn and resume, since no backend keeps it. Kiro has no such slot; it gets
+  the text as steering (`_meta.kiro.steering`, `Loom.Agent.Backend.Kiro`).
 
   In order: where the agent is (Loom, how it is built, where its source is),
   this session's id and directory, why nothing may outlive a turn, how to read
@@ -20,7 +21,7 @@ defmodule Loom.Agent.Instructions do
   @source Path.expand("../../..", __DIR__)
 
   @doc "The text for session `id`, whose backend is `backend`."
-  def for_session(id, backend) when backend in [:claude_code, :codex] do
+  def for_session(id, backend) when backend in [:claude_code, :codex, :kiro] do
     dir = Store.session_dir(id)
     output = Store.output_dir(id)
 
@@ -52,7 +53,7 @@ defmodule Loom.Agent.Instructions do
     skill); for scheduled prompts and check-ins, use Loom's cron (the `cron` \
     skill).
 
-    #{images(backend, dir)}
+    #{images(backend, dir)}#{config(backend)}
     ## Files for the user
 
     When you produce a file meant for the user — a spreadsheet, a slide deck, \
@@ -86,8 +87,32 @@ defmodule Loom.Agent.Instructions do
       "JSON-RPC over stdin/stdout, every session a thread in it."
   end
 
+  defp runs_you(:kiro) do
+    "Loom runs you as Kiro: the `kiro-cli acp` agent behind an Erlang port, " <>
+      "ACP JSON-RPC over stdin/stdout, one process per session."
+  end
+
+  # Kiro's engine refuses any file-tool write under `.kiro/settings`, with no
+  # prompt and no override (measured). Its
+  # own CLI is the sanctioned way to change the MCP config.
+  defp config(:kiro) do
+    """
+
+    ## Kiro's own config
+
+    Kiro refuses file-tool writes under ~/.kiro/settings (mcp.json, cli.json), \
+    and no permission covers them. To change MCP servers, run `kiro-cli mcp \
+    add`, `kiro-cli mcp remove` or `kiro-cli mcp list` in the shell (see \
+    `kiro-cli mcp add --help`). Don't write those files any other way. A new \
+    or changed server loads only when Loom starts a fresh kiro-cli, so then \
+    ask the user to send /reload.
+    """
+  end
+
+  defp config(_backend), do: ""
+
   defp foreground(:claude_code), do: " (`run_in_background` false, for Agent and Bash alike)"
-  defp foreground(:codex), do: ""
+  defp foreground(_backend), do: ""
 
   # Bedrock and the Anthropic API cap a request at about 32 MB, and every image
   # read rides along in every later request: past ~60 the session is dead.
@@ -119,7 +144,7 @@ defmodule Loom.Agent.Instructions do
     """
   end
 
-  defp images(:codex, dir) do
+  defp images(_backend, dir) do
     """
     ## Many images
 

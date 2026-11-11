@@ -492,7 +492,8 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
         items.push({
           key,
           kind: "notice",
-          text: "reload: Claude Code restarts on its next turn, Codex once no Codex turn is running",
+          text:
+            "reload: Claude Code and Kiro restart on their next turn, Codex once no Codex turn is running",
         })
         break
 

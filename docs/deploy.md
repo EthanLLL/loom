@@ -33,7 +33,9 @@ Optional settings:
 - `LOOM_BIND` (default 127.0.0.1)
 - `LOOM_HOME` (default `~/.loom`)
 - `LOOM_WORKSPACE`
-- `LOOM_CLAUDE_CLI` and `LOOM_CODEX_CLI`
+- `LOOM_CLAUDE_CLI`, `LOOM_CODEX_CLI` and `LOOM_KIRO_CLI`
+- `LOOM_KIRO_MODEL`: Kiro's model when `~/.loom/backends/kiro.json` sets
+  none (below); unset, Kiro picks (`auto`)
 - `LOOM_CLAUDE_FALLBACK_MODEL`: Claude Code's `--fallback-model`, for when
   the usual model is overloaded (see docs/backends.md §6.13)
 - `LOOM_APPS_URL` and `LOOM_APPS_PORT` (default 5000): the apps' own origin,
@@ -49,6 +51,26 @@ Loom makes no model requests itself. Before starting it, log in on the server:
 
 - `claude`, or set `CLAUDE_CODE_USE_BEDROCK=1` and provide AWS credentials
 - `codex login`, or set a provider in `~/.codex/config.toml`
+- `kiro-cli login` (check with `kiro-cli whoami`). On a machine without a
+  browser: `kiro-cli login --identity-provider <start URL> --region <region>
+  --use-device-flow`, without `--license`
+
+Kiro's ACP engine reads no default model of its own (`chat.defaultModel` is
+ignored), so `~/.loom/backends/kiro.json` (below) is the only place
+to set one: `{"model": "claude-opus-5.5"}`, ids from `kiro-cli chat
+--list-models`.
+
+Kiro's model, effort, extra flags and environment for Loom's sessions go in
+`~/.loom/backends/kiro.json` (`Loom.Agent.BackendConfig`). Every key is
+optional, and the file is read at every spawn, so `/reload` or an idle
+session picks up an edit, no restart:
+
+```json
+{"model": "claude-opus-5.5", "effort": "high", "args": [], "env": {}}
+```
+
+`env` reaches only kiro-cli's processes; keep the file 0600 if it holds a
+key.
 
 Optional: `rg` (ripgrep, e.g. `apt install ripgrep`), which searches what was
 said in every session (`␣␣`). Without it search still finds sessions by title,
