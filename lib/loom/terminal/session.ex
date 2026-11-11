@@ -231,7 +231,10 @@ defmodule Loom.Terminal.Session do
     if Process.alive?(state.pty) do
       if state.os_pid && state.os_pid > 1 do
         System.cmd("pkill", ["-KILL", "-s", "#{state.os_pid}"], stderr_to_stdout: true)
-        System.cmd("kill", ["-KILL", "-#{state.os_pid}"], stderr_to_stdout: true)
+        # `--` is required: procps-ng 4.0.4 `kill -KILL -12993` reads only the
+        # first digit of the group and sends kill(-1, SIGKILL), taking down
+        # every process this user owns (loom, kirocrew, litellm, ...).
+        System.cmd("kill", ["-KILL", "--", "-#{state.os_pid}"], stderr_to_stdout: true)
       end
 
       ExPTY.kill(state.pty, 9)
