@@ -233,7 +233,7 @@ defmodule Loom.Terminal.Session do
         System.cmd("pkill", ["-KILL", "-s", "#{state.os_pid}"], stderr_to_stdout: true)
         # `--` is required: procps-ng 4.0.4 `kill -KILL -12993` reads only the
         # first digit of the group and sends kill(-1, SIGKILL), taking down
-        # every process this user owns (loom, kirocrew, litellm, ...).
+        # every process this user owns, Loom included.
         System.cmd("kill", ["-KILL", "--", "-#{state.os_pid}"], stderr_to_stdout: true)
       end
 
