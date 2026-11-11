@@ -1,15 +1,38 @@
-# Loom
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/loom-mark-dark.svg">
+    <img src="docs/media/loom-mark.svg" width="96" alt="">
+  </picture>
+</p>
 
-A single-user, self-hosted front end for coding agents. Chat with Claude Code
-or Codex sessions running on your server, with shells beside them, from any
-browser or phone. Sessions live on the server: close the tab, come back on
-another device, and the turn has kept running.
+<h1 align="center">Loom</h1>
 
-- **Backend**: Elixir / Phoenix. One GenServer per session and per PTY,
-  streamed over Phoenix Channels. State is on disk under `~/.loom`.
-- **Frontend**: Vite + React + xterm.js, in `frontend/`.
-- **Agents**: the `claude` and `codex` CLIs do the work. Loom makes no model
-  requests of its own.
+<p align="center">
+  <b>Your agent doesn't stop when you do.</b><br>
+  Claude Code and Codex on your server, from any browser.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/Elixir-Phoenix-4B275F?logo=elixir" alt="Elixir / Phoenix">
+  <img src="https://img.shields.io/badge/self--hosted-single%20user-555" alt="Self-hosted, single user">
+</p>
+
+https://github.com/user-attachments/assets/98ce22ab-07c6-4d59-a75f-6b84845c73d3
+
+A single-user, self-hosted front end for coding agents. Sessions live on your
+server, not in a tab:
+
+- **Close the lid.** The turn keeps running; a push notification says when it's done.
+- **Same session, any device.** Pick it up on your phone on the train, or back at your desk; each tab replays only what it missed.
+- **Take over its browser.** The agent's Chromium is yours when it hits a login or a captcha.
+- **Your own machines, too.** Agents run commands and move files on your Mac, Linux box or WSL.
+- **Then make it an app.** Repeated work becomes a plain program on a schedule: no model needed to use it.
+
+Under the hood: Elixir / Phoenix, one GenServer per session and per PTY,
+streamed over Phoenix Channels, state on disk under `~/.loom`. The frontend is
+Vite + React + xterm.js in `frontend/`. The `claude` and `codex` CLIs do the
+work; Loom makes no model requests of its own.
 
 ## What it does
 
@@ -35,8 +58,8 @@ by two devices, and pass OSC 52 clipboard writes to the browser.
 needs no model: a page or a whole site, optionally a server and a scheduled
 job. Loom only registers them: systemd runs them (socket-activated, idle exit,
 timers) and Caddy serves them on an origin of their own, so they stay up
-while Loom restarts. They open from an Apps grid in the sidebar; any login is
-the app's own.
+while Loom restarts. They open beside the chat from an Apps grid in the
+sidebar; any login is the app's own.
 
 **Scheduled prompts.** Cron jobs that submit a prompt to a session; agents
 make them, `/cron` lists them.
@@ -91,4 +114,4 @@ Open http://localhost:5173. The password is `LOOM_PASSWORD` (`loom` in dev).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Demo video by [@ensean](https://github.com/ensean).
