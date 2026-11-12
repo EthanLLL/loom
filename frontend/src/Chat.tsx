@@ -154,6 +154,7 @@ export function Chat({
         <Title
           title={session.title ?? session.id}
           backend={session.backend}
+          profile={session.profile ?? null}
           onRename={rename}
         />
 
@@ -536,10 +537,12 @@ function CronJobs({ jobs }: { jobs: CronJob[] }) {
 function Title({
   title,
   backend,
+  profile,
   onRename,
 }: {
   title: string
   backend: AgentBackend
+  profile: string | null
   onRename: (title: string) => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -582,6 +585,7 @@ function Title({
           {title}
         </span>
       )}
+      {profile && <span className="chat-profile">{profile}</span>}
     </div>
   )
 }

@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { AgentBackend, AgentInfo, Device } from "./api"
+import { listProfiles } from "./api"
 import { RenameInput } from "./Confirm"
 import { DevicesDialog } from "./Devices"
 import { filed, ROOT } from "./directories"
@@ -46,7 +47,7 @@ type Props = {
   renamingId: string | null
   onRenamed: (id: string, title: string | null) => Promise<void>
   onSelect: (id: string) => void
-  onCreate: (backend: AgentBackend) => void
+  onCreate: (backend: AgentBackend, profile?: string) => void
   onDelete: (id: string) => void
   // A phone's "Move to directory": the picker over everything. A desktop moves
   // from the menu's own submenu, straight to `onMoveTo`.
@@ -311,9 +312,20 @@ export function Sidebar({
  * own store — so it is made explicitly rather than defaulted. New sessions
  * start in Recents; "Move to directory" files them.
  */
-function NewChat({ onCreate }: { onCreate: (backend: AgentBackend) => void }) {
+function NewChat({
+  onCreate,
+}: {
+  onCreate: (backend: AgentBackend, profile?: string) => void
+}) {
   const [open, setOpen] = useState(false)
+  const [profiles, setProfiles] = useState<string[]>([])
   const ref = useRef<HTMLDivElement>(null)
+
+  // Read each time the menu opens: profiles are files on the server, added by
+  // hand or by the agent, with nothing to announce them.
+  useEffect(() => {
+    if (open) listProfiles().then(setProfiles, () => setProfiles([]))
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -324,9 +336,9 @@ function NewChat({ onCreate }: { onCreate: (backend: AgentBackend) => void }) {
     return () => document.removeEventListener("mousedown", onAway)
   }, [open])
 
-  const choose = (backend: AgentBackend) => {
+  const choose = (backend: AgentBackend, profile?: string) => {
     setOpen(false)
-    onCreate(backend)
+    onCreate(backend, profile)
   }
 
   return (
@@ -338,6 +350,11 @@ function NewChat({ onCreate }: { onCreate: (backend: AgentBackend) => void }) {
       {open && (
         <div className="backend-menu">
           <button onClick={() => choose("claude_code")}>Claude Code</button>
+          {profiles.map((p) => (
+            <button key={p} onClick={() => choose("claude_code", p)}>
+              Claude Code · {p}
+            </button>
+          ))}
           <button onClick={() => choose("codex")}>Codex</button>
         </div>
       )}

@@ -246,6 +246,11 @@ defmodule Loom.Agent.Backend do
   def label(:claude_code), do: "Claude Code"
   def label(:codex), do: "Codex"
 
+  @doc "The label, naming the profile when the session has one."
+  @spec label(kind, String.t() | nil) :: String.t()
+  def label(kind, nil), do: label(kind)
+  def label(kind, profile), do: "#{label(kind)} · #{profile}"
+
   @doc """
   Read one field out of a persisted header, by atom or string key.
 

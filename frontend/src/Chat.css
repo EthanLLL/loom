@@ -40,6 +40,17 @@
   white-space: nowrap;
 }
 
+/* Which provider the session talks to, when it is not the default. */
+.chat-profile {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg-dim);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 .chat-name-input {
   min-width: 0;
   padding: 1px 4px;

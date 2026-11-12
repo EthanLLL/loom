@@ -150,6 +150,9 @@ defmodule Loom.Agent.Backend.ClaudeCode do
       # Appended to Claude Code's own system prompt on every spawn — it is a
       # flag, not something the conversation remembers across `--resume`.
       instructions: Backend.meta_get(meta, :instructions),
+      # Which `Loom.Agent.Profiles` file to pass as `--settings`, or nil for the
+      # machine's own configuration. Fixed for the life of the session.
+      profile: Backend.meta_get(meta, :cc_profile),
       # Whether Claude Code has this conversation on disk, so the next spawn
       # resumes it rather than naming it. Set by `system/init`, not by the spawn:
       # a session that is released or restarted before its first turn got going
@@ -217,14 +220,18 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   defp ensure_process(handle), do: spawn_process(handle)
 
   defp spawn_process(handle) do
-    with {:ok, exe} <- executable() do
+    with {:ok, exe} <- executable(),
+         {:ok, profile_args} <- profile_args(handle) do
       port =
         Port.open({:spawn_executable, exe}, [
           :binary,
           :exit_status,
           :use_stdio,
           :hide,
-          args: @base_args ++ fallback_args() ++ session_args(handle) ++ instruction_args(handle),
+          args:
+            @base_args ++
+              profile_args ++
+              fallback_args(handle) ++ session_args(handle) ++ instruction_args(handle),
           cd: handle.cwd,
           env: Loom.ChildEnv.port_env()
         ])
@@ -282,12 +289,25 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   # switches on a 500 or 503 after one attempt, on a 529 after its retries,
   # never on a 429; the switch lasts the rest of the turn, and the next turn
   # starts on the usual model again. See docs/backends.md.
-  defp fallback_args do
+  #
+  # The fallback is a model of the default provider, so a session on a profile
+  # goes without: that provider would not know the name.
+  defp fallback_args(%{profile: profile}) when is_binary(profile), do: []
+
+  defp fallback_args(_handle) do
     case Application.get_env(:loom, Loom.Agent, [])[:claude_fallback_model] do
       model when is_binary(model) and model != "" -> ["--fallback-model", model]
       _ -> []
     end
   end
+
+  # A profile that has gone missing fails the turn with its name rather than
+  # quietly falling back to the default provider.
+  defp profile_args(%{profile: profile}) when is_binary(profile) do
+    with {:ok, file} <- Loom.Agent.Profiles.path(profile), do: {:ok, ["--settings", file]}
+  end
+
+  defp profile_args(_handle), do: {:ok, []}
 
   defp instruction_args(%{instructions: text}) when is_binary(text) and text != "",
     do: ["--append-system-prompt", text]
@@ -324,7 +344,12 @@ defmodule Loom.Agent.Backend.ClaudeCode do
 
   @impl Backend
   def persist(handle) do
-    %{cc_session_id: handle.session_id, cc_cwd: handle.cwd, cc_started: handle.started?}
+    %{
+      cc_session_id: handle.session_id,
+      cc_cwd: handle.cwd,
+      cc_started: handle.started?,
+      cc_profile: handle.profile
+    }
   end
 
   @impl Backend

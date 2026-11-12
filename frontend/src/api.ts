@@ -143,6 +143,9 @@ export type AgentInfo = {
   directory: string
   backend: AgentBackend
   backend_label: string
+  // The Claude Code profile it talks through, or null for the default.
+  // Older servers do not send it.
+  profile?: string | null
   created_at: number
   // The last message either way, as ms since the epoch: what orders the
   // sidebar and what its age shows. Older servers do not send it.
@@ -171,16 +174,29 @@ export async function listAgents(): Promise<AgentInfo[]> {
 }
 
 // `backend` is required and permanent: the conversation lives in that engine's
-// own store, so there is nothing to migrate if it changes later.
-export async function createAgent(backend: AgentBackend): Promise<AgentInfo> {
+// own store, so there is nothing to migrate if it changes later. So is the
+// profile, which picks the model provider a Claude Code session talks to.
+export async function createAgent(
+  backend: AgentBackend,
+  profile?: string,
+): Promise<AgentInfo> {
   const res = await fetch("/api/agents", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ backend }),
+    body: JSON.stringify(profile ? { backend, profile } : { backend }),
   })
   if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`createAgent failed: ${res.status}`)
   return res.json()
+}
+
+// Names of the Claude Code profiles on the server; empty when there are none.
+export async function listProfiles(): Promise<string[]> {
+  const res = await fetch("/api/profiles", { headers: authHeaders() })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.profiles
 }
 
 // Local to loom — a sidebar label, never pushed to the backend.

@@ -19,12 +19,34 @@ defmodule LoomWeb.AgentSessionController do
   # project is being worked on is a fact in the conversation, and the model
   # composes absolute paths from it. A channel only ever attaches to an existing
   # session, so creation goes through here.
+  #
+  # `profile` optionally names a `Loom.Agent.Profiles` file, Claude Code only.
+  # It is as permanent as the backend.
   def create(conn, params) do
     case Loom.Agent.Backend.parse(params["backend"]) do
-      {:ok, backend} -> create_session(conn, backend, params)
-      :error -> bad_backend(conn, params["backend"])
+      {:ok, backend} ->
+        case check_profile(backend, params["profile"]) do
+          :ok -> create_session(conn, backend, params)
+          {:error, reason} -> conn |> put_status(:unprocessable_entity) |> json(%{error: reason})
+        end
+
+      :error ->
+        bad_backend(conn, params["backend"])
     end
   end
+
+  # GET /api/profiles — the profiles a new Claude Code session can use.
+  def profiles(conn, _params) do
+    json(conn, %{profiles: Loom.Agent.Profiles.list()})
+  end
+
+  defp check_profile(_backend, nil), do: :ok
+
+  defp check_profile(:claude_code, name) do
+    with {:ok, _file} <- Loom.Agent.Profiles.path(name), do: :ok
+  end
+
+  defp check_profile(_backend, _name), do: {:error, "only Claude Code sessions take a profile"}
 
   defp create_session(conn, backend, params) do
     id = generate_id()
@@ -85,7 +107,11 @@ defmodule LoomWeb.AgentSessionController do
     end
   end
 
-  defp build_opts(params), do: maybe_put([], :title, params["title"])
+  defp build_opts(params) do
+    []
+    |> maybe_put(:title, params["title"])
+    |> maybe_put(:profile, params["profile"])
+  end
 
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, val), do: [{key, val} | opts]
@@ -101,6 +127,7 @@ defmodule LoomWeb.AgentSessionController do
       directory: info.directory,
       backend: info.backend,
       backend_label: info.backend_label,
+      profile: info.profile,
       created_at: info.created_at,
       last_active_at: info.last_active_at,
       status: info.status,

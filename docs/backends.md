@@ -265,6 +265,33 @@ The switch lasts until the turn ends; the next one tries the usual model
 first. A model with a context window smaller than the conversation would fail
 there too, so the fallback should be a 1M one when the usual model is.
 
+### 6.14 Profiles: another provider per session
+
+A Claude Code session can be bound to a profile, `~/.loom/profiles/<name>.json`
+(`Loom.Agent.Profiles`), chosen in New chat and fixed like the backend. The file
+is a CC settings file passed as `--settings <file>`; its `env` overrides
+`~/.claude/settings.json`'s. Measured (CC 2.1.300) against a local capture
+server, with `CLAUDE_CODE_USE_BEDROCK=0`, `ANTHROPIC_BASE_URL` and
+`ANTHROPIC_AUTH_TOKEN`: CC sent `POST <base>/v1/messages?beta=true` with
+`Authorization: Bearer <token>`, and the `ANTHROPIC_DEFAULT_*_MODEL` names went
+out as written, no `[1m]` added.
+
+The session header stores only the name, so the key stays in the file and an
+edit takes effect at the next spawn. A session on a profile gets no
+`--fallback-model`: the configured fallback names a model of the default
+provider. A profile file that has gone missing fails the turn with its name
+rather than falling back to the default.
+
+Bedrock's own Anthropic-compatible endpoint
+(`https://bedrock-runtime.<region>.amazonaws.com/anthropic`, a
+`bedrock-api-key-…` as the bearer token) needs two more variables: CC sends
+`metadata.user_id` as a JSON string, which the endpoint rejects ("Request
+metadata contains a value that violates the regular expression"), so
+`CLAUDE_CODE_EXTRA_BODY={"metadata":{"user_id":"loom"}}` replaces it; and it
+rejects CC's experimental `anthropic-beta` values, so
+`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. With both, a Loom session ran tools
+and reported a 1M window. The `profiles` skill has the full file.
+
 ## 7. Not done: permission prompts
 
 Codex has proper approval requests. CC auto-denies under

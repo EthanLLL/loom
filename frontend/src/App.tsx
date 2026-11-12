@@ -202,8 +202,8 @@ function App() {
 
   // The backend is chosen here and never again: the conversation lives in that
   // engine's own store, so there is nothing to migrate if it changes.
-  const create = async (backend: AgentBackend) => {
-    const session = await createAgent(backend)
+  const create = async (backend: AgentBackend, profile?: string) => {
+    const session = await createAgent(backend, profile)
     upsert(session)
     setActiveId(session.id)
     leaveApps()

@@ -242,6 +242,7 @@ defmodule Loom.Agent.Session do
     %{
       cc_cwd: Keyword.get(opts, :cwd),
       codex_cwd: Keyword.get(opts, :cwd),
+      cc_profile: Keyword.get(opts, :profile),
       instructions: Instructions.for_session(id, backend)
     }
   end
@@ -912,11 +913,16 @@ defmodule Loom.Agent.Session do
 
   defp maybe_title(state, _text), do: state
 
+  # Only Claude Code sessions have one; see `Loom.Agent.Profiles`.
+  defp profile(%{profile: profile}) when is_binary(profile), do: profile
+  defp profile(_handle), do: nil
+
   defp meta(state) do
     %{
       id: state.id,
       backend: state.backend,
-      backend_label: Backend.label(state.backend),
+      backend_label: Backend.label(state.backend, profile(state.handle)),
+      profile: profile(state.handle),
       title: state.title,
       directory: state.directory,
       created_at: state.created_at,
