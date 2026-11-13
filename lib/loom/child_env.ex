@@ -19,7 +19,7 @@ defmodule Loom.ChildEnv do
   # child process needs.
   @loom_vars ~w(
     SECRET_KEY_BASE LOOM_PASSWORD PHX_SERVER PHX_HOST PORT
-    LOOM_BIND LOOM_HOME LOOM_CLAUDE_CLI LOOM_CODEX_CLI LOOM_KIRO_CLI LOOM_KIRO_MODEL LOOM_WORKSPACE
+    LOOM_BIND LOOM_HOME LOOM_CLAUDE_CLI LOOM_CODEX_CLI LOOM_KIRO_CLI LOOM_WORKSPACE
     BINDIR ROOTDIR EMU PROGNAME
   )
 
@@ -49,6 +49,13 @@ defmodule Loom.ChildEnv do
     set = for {name, value} <- kept, do: {String.to_charlist(name), String.to_charlist(value)}
 
     unset ++ set
+  end
+
+  @doc "The same environment as a `System.cmd/3` `:env` option (nil unsets)."
+  def cmd_env(env \\ System.get_env()) do
+    kept = map(env)
+    unset = for {name, _} <- env, not Map.has_key?(kept, name), do: {name, nil}
+    unset ++ Map.to_list(kept)
   end
 
   defp loom_var?(name), do: name in @loom_vars or String.starts_with?(name, "RELEASE_")

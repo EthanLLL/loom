@@ -110,7 +110,7 @@ A session's backend is fixed at creation: `POST /api/agents` without
 stay on Loom's side.
 
 Every spawn's system prompt (CC `--append-system-prompt`, Codex
-`developerInstructions`, Kiro `_meta.kiro.steering`,
+`developerInstructions`, Kiro a per-session agent file,
 [backends.md §9](backends.md)), from `Loom.Agent.Instructions`, one text per
 backend, says, in order:
 that it runs inside Loom, how Loom is built and where its source is; the
@@ -169,7 +169,7 @@ Whoever is signed in has a shell, so the door is guarded (`Loom.Auth`):
 ~/.loom/sessions/.trash/<id>.<ms>/   a deleted session, kept whole
 ~/.loom/cron.json  push.json  apps.json  apps/<name>/
 ~/.loom/auth.json                    passkeys, authenticator secret, logins (0600)
-~/.loom/backends/kiro.json           Kiro's model/effort/args/env (Loom.Agent.BackendConfig)
+~/.kiro/agents/loom-<id>.md          a Kiro session's instructions and permissions
 ```
 
 The base is `~/.loom` (or `LOOM_HOME`), not `priv/`, which a deploy replaces.

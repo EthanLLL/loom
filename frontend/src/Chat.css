@@ -1188,10 +1188,13 @@ h3.md-h {
   color: var(--fg);
 }
 
+/* Kiro lists twenty-odd models: scroll rather than run off the top. */
 .command-menu.model-menu {
   left: auto;
   right: 0;
   min-width: 10rem;
+  max-height: min(60vh, 24rem);
+  overflow-y: auto;
 }
 
 .model-menu li {

@@ -35,8 +35,6 @@ Optional settings:
 - `LOOM_HOME` (default `~/.loom`)
 - `LOOM_WORKSPACE`
 - `LOOM_CLAUDE_CLI`, `LOOM_CODEX_CLI` and `LOOM_KIRO_CLI`
-- `LOOM_KIRO_MODEL`: Kiro's model when `~/.loom/backends/kiro.json` sets
-  none (below); unset, Kiro picks (`auto`)
 - `LOOM_APPS_URL` and `LOOM_APPS_PORT` (default 5000): the apps' own origin,
   e.g. `https://<machine>-apps.example.com`, served on that port by Caddy
   (§3). Apps never run on Loom's origin; unset, they are at
@@ -54,22 +52,13 @@ Loom makes no model requests itself. Before starting it, log in on the server:
   browser: `kiro-cli login --identity-provider <start URL> --region <region>
   --use-device-flow`, without `--license`
 
-Kiro's ACP engine reads no default model of its own (`chat.defaultModel` is
-ignored), so `~/.loom/backends/kiro.json` (below) is the only place
-to set one: `{"model": "claude-opus-5.5"}`, ids from `kiro-cli chat
---list-models`.
+  --use-device-flow`, without `--license`. Or an API key: kiro-cli reads it
+  only from `KIRO_API_KEY`, so give it to the service as machine config, not
+  in Loom's `.env`, e.g. a systemd drop-in with
+  `EnvironmentFile=/home/<user>/.config/kiro/kiro.env` (mode 0600)
 
-Kiro's model, effort, extra flags and environment for Loom's sessions go in
-`~/.loom/backends/kiro.json` (`Loom.Agent.BackendConfig`). Every key is
-optional, and the file is read at every spawn, so `/reload` or an idle
-session picks up an edit, no restart:
-
-```json
-{"model": "claude-opus-5.5", "effort": "high", "args": [], "env": {}}
-```
-
-`env` reaches only kiro-cli's processes; keep the file 0600 if it holds a
-key.
+The model of a Kiro session is picked in the composer, like the others; none
+picked is Kiro's `auto`.
 
 Optional: `rg` (ripgrep, e.g. `apt install ripgrep`), which searches what was
 said in every session (`␣␣`). Without it search still finds sessions by title,

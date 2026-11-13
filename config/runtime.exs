@@ -36,9 +36,6 @@ config :loom, Loom.Agent,
   claude_cli: System.get_env("LOOM_CLAUDE_CLI") || "claude",
   codex_cli: System.get_env("LOOM_CODEX_CLI") || "codex",
   kiro_cli: System.get_env("LOOM_KIRO_CLI") || "kiro-cli",
-  # Kiro's model when `~/.loom/backends/kiro.json` sets none
-  # (`Loom.Agent.BackendConfig`). Unset, Kiro picks (`auto`).
-  kiro_model: System.get_env("LOOM_KIRO_MODEL"),
   # Working directory for new sessions. Sessions have no project root of their
   # own: which project is being worked on is a fact in the conversation, and
   # the model composes absolute paths from it.

@@ -35,6 +35,10 @@ config :loom, Loom.Cron, path: Path.join(System.tmp_dir!(), "loom-test-#{System.
 config :loom, Loom.Agent.DirectoryOrder,
   path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/directories.json")
 
+# Nor the real Kiro agents directory.
+config :loom, Loom.Agent,
+  kiro_agents_dir: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/kiro-agents")
+
 # Nor the real device registry and CLI key.
 config :loom, Loom.Push, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/push.json")
 config :loom, Loom.Auth, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/auth.json")

@@ -371,17 +371,28 @@ documented, so they are the part most likely to change between releases.
   anyway. A failed load opens a new session: one that never ran a prompt was
   never written. A load reply without `modes` is treated as failed
   (defensive, not seen).
-- **No system-prompt slot.** `_meta.kiro.steering: [{name, inclusion:
-  "always", content}]` on `session/new` and `session/load` is added to Kiro's
-  own prompt: Kiro kept its identity and tools and knew a codeword given only
-  there, again after a load. It is not kept with the session, so it is sent
-  on every load.
+- **No system-prompt slot, but agents.** A Kiro agent is a markdown file in
+  `~/.kiro/agents/` (frontmatter per the engine's schema: `name`,
+  `description`, `tools`, `includeMcpJson`, `permissions`, `model`, …) whose
+  body is added to Kiro's own prompt. v3 lists agents as ACP modes, so
+  `session/set_mode {sessionId, modeId: <name>}` selects one; an unknown name
+  replies `{}` and changes nothing. Measured on 3.3.0: with
+  `loom-<id>.md` selected, Kiro kept its identity and every tool (15), knew a
+  codeword given only in the file, and after a `session/load` in a new
+  process the mode was still selected and the codeword known. Loom writes the
+  file before each spawn and removes it with the session. (Before this,
+  `_meta.kiro.steering` on new/load did the same; it is not documented.)
 - **Permissions.** v3 has no trust-all flag (`--trust-all-tools` and the other
-  v2-only flags silently select the v2 engine). `_meta.kiro.policyPreset:
-  ["allow-all"]` on new and load approves every tool call for the session: no
-  `session/request_permission` at all, and the user's config untouched, which
-  answering `allow_always` would not leave (`_kiro/policy/changed`). A
-  request that arrives anyway gets the `allow_once` option.
+  v2-only flags silently select the v2 engine). The agent's
+  `permissions: {rules: [{capability: all, effect: allow}]}` approves every
+  tool call: no `session/request_permission` while running shell commands,
+  and the user's config untouched, which answering `allow_always` would not
+  leave (`_kiro/policy/changed`). (`_meta.kiro.policyPreset: ["allow-all"]`
+  on new/load does the same, undocumented.) A request that arrives anyway
+  gets the `allow_once` option.
+- **Agent files appear in the user's own Kiro.** `kiro-cli agent list` and
+  the TUI's modes show every `loom-*` agent; that is the cost of a
+  documented slot.
 - **`.kiro/settings` is write-protected.** A file-tool write under it (home
   or workspace) is refused outright, `allow-all` notwithstanding, with no
   prompt; `kiro-cli mcp add/remove` run in the shell worked. Loom's
@@ -393,6 +404,12 @@ documented, so they are the part most likely to change between releases.
   "yes". Loom answers `{action: "answered", answer: <nobody is here, use your
   judgement>}` (not seen yet). Other requests (`fs/*`, `terminal/*`; neither
   capability is declared) get a `-32601` error, never silence.
+- **Steering is not in the advertised list** (the 44 `extensionMethods` of
+  `initialize`, which do include `_kiro/session/compact`), but works: on
+  3.3.0 a steer sent 1 s into a five-step shell task was queued at once
+  (`steering_queued`), injected after step one (`steering_injected`), and the
+  model stopped there in the same turn. Its reply carries a line
+  `[STEERING steer-…: …]` of Kiro's own.
 - **A second `session/prompt` cancels the running one** (the first replied
   `cancelled` the moment the second arrived). So steering uses
   `_session/steer {sessionId, message, messageId}`, which replies
@@ -429,9 +446,9 @@ documented, so they are the part most likely to change between releases.
   `chat.defaultModel`. On v3 the model is the `model` config option:
   `session/set_config_option {sessionId, configId: "model", value}`
   (`session/set_model` fails: `-32603 … has no persistence classification`).
-  Loom sends `model` and `effortLevel` after every new/load from
-  `~/.loom/backends/kiro.json` (`Loom.Agent.BackendConfig`), falling back to
-  `LOOM_KIRO_MODEL` for the model.
+  It is the composer's model (§6.15): set after every new/load and before a
+  turn when it changed; `auto` when none is picked. `models/0` is
+  `kiro-cli chat --list-models --format json` (~2.5 s), kept 10 minutes.
 - **Teardown** kills the tree (`kiro-cli → node → MCP servers`) as for CC.
   Closing stdin alone makes the relay wait 5 s for the engine
   (`the v3 engine did not exit within 5 seconds after ACP stdin closed`).
@@ -454,6 +471,9 @@ documented, so they are the part most likely to change between releases.
 ```sh
 kiro-cli acp --agent-engine v3 --auth-method cli
 # {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{},"clientInfo":{"name":"loom","version":"0"}}}
-# {"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/home/ubuntu","mcpServers":[],"_meta":{"kiro":{"policyPreset":["allow-all"],"steering":[{"name":"loom","inclusion":"always","content":"…"}]}}}}
-# {"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"sess_…","prompt":[{"type":"text","text":"hi"}]}}
+# with ~/.kiro/agents/loom-x.md as Loom.Agent.Backend.Kiro.agent_file/1 writes it:
+# {"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/home/ubuntu","mcpServers":[]}}
+# {"jsonrpc":"2.0","id":3,"method":"session/set_mode","params":{"sessionId":"sess_…","modeId":"loom-x"}}
+# {"jsonrpc":"2.0","id":4,"method":"session/set_config_option","params":{"sessionId":"sess_…","configId":"model","value":"claude-haiku-5.5"}}
+# {"jsonrpc":"2.0","id":5,"method":"session/prompt","params":{"sessionId":"sess_…","prompt":[{"type":"text","text":"hi"}]}}
 ```

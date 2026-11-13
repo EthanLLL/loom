@@ -92,9 +92,16 @@ defmodule Loom.Agent.Backend.KiroTest do
       {handle, out} = feed(handle, reply(2, %{"sessionId" => "sess_new"}))
       assert [{:status, %{status: :running, backend_ref: "sess_new"}}] = events(out)
       assert handle.phase == :ready
-      assert handle.prompt_id == 3
+      # 3 is session/set_mode: the session's own agent.
+      assert handle.requests[3] == :set_mode
+      assert handle.prompt_id == 4
       assert handle.pending == nil
-      assert Kiro.persist(handle) == %{kiro_session_id: "sess_new", kiro_cwd: handle.cwd}
+
+      assert Kiro.persist(handle) == %{
+               kiro_session_id: "sess_new",
+               kiro_cwd: handle.cwd,
+               model: nil
+             }
     end
 
     test "a recorded conversation is loaded, and its replay is not news" do
@@ -112,7 +119,7 @@ defmodule Loom.Agent.Backend.KiroTest do
         )
 
       assert [{:status, %{status: :running}}] = events(out)
-      assert handle.prompt_id == 3
+      assert handle.prompt_id == 4
       assert handle.context_tokens == 40_000
     end
 
@@ -138,39 +145,58 @@ defmodule Loom.Agent.Backend.KiroTest do
       assert handle.requests == %{3 => :new}
     end
 
-    test "new and load approve everything and carry Loom's instructions as steering" do
+    test "new and load carry no instructions or policy of their own; load asks for no replay" do
       handle = booting(nil)
-
-      for params <- [Kiro.session_params(handle, nil), Kiro.session_params(handle, @sid)] do
-        kiro = params["_meta"]["kiro"]
-        assert kiro["policyPreset"] == ["allow-all"]
-
-        assert [%{"name" => "loom", "inclusion" => "always", "content" => "LOOM"}] =
-                 kiro["steering"]
-      end
-
-      assert Kiro.session_params(handle, @sid)["_meta"]["kiro"]["noReplay"] == true
-      refute Map.has_key?(Kiro.session_params(handle, nil)["_meta"]["kiro"], "noReplay")
+      assert Kiro.session_params(handle, nil) == %{"cwd" => handle.cwd, "mcpServers" => []}
+      assert Kiro.session_params(handle, @sid)["_meta"] == %{"kiro" => %{"noReplay" => true}}
     end
 
-    test "with no instructions there is no steering" do
-      {:ok, handle} = Kiro.resume("a_test", %{})
-      refute Map.has_key?(Kiro.session_params(handle, nil)["_meta"]["kiro"], "steering")
+    test "the session's agent file holds Loom's instructions and allows everything" do
+      file = Kiro.agent_file(booting(nil))
+      assert file =~ ~r/\A---\nname: loom-a_test\n/
+      assert file =~ ~s(tools: "*")
+      assert file =~ "includeMcpJson: true"
+      assert file =~ "    - capability: all\n      effect: allow\n---\nLOOM\n"
+      assert Kiro.agent_path("a_test") |> Path.basename() == "loom-a_test.md"
     end
 
-    test "the configured model and effort are set once the session is open" do
-      settings = %{model: "claude-opus-5.5", effort: "high", args: [], env: %{}}
-      {handle, []} = feed(%{booting(nil) | settings: settings}, reply(1, %{}))
+    test "a picked model is set once the session is open, after its agent" do
+      {handle, []} = feed(%{booting(nil) | model: "claude-haiku-5.5"}, reply(1, %{}))
       {handle, _out} = feed(handle, reply(2, %{"sessionId" => "sess_new"}))
 
-      tags = handle.requests |> Map.values() |> Enum.sort()
-      assert tags == Enum.sort([:set_model, :set_effort, :prompt])
+      assert handle.requests |> Map.drop([1, 2]) == %{
+               3 => :set_mode,
+               4 => :set_model,
+               5 => :prompt
+             }
+
+      assert handle.live_model == "claude-haiku-5.5"
     end
 
-    test "with nothing configured no option is set" do
+    test "with no model picked none is set" do
       {handle, []} = feed(booting(nil), reply(1, %{}))
       {handle, _out} = feed(handle, reply(2, %{"sessionId" => "sess_new"}))
-      assert Map.values(handle.requests) == [:prompt]
+      assert Map.values(handle.requests) |> Enum.sort() == [:prompt, :set_mode]
+    end
+
+    test "a model switched between turns is set before the next prompt, once" do
+      # run_turn writes to a live process; `cat` swallows it.
+      port = Port.open({:spawn_executable, System.find_executable("cat")}, [:binary])
+      on_exit(fn -> if Port.info(port), do: Port.close(port) end)
+
+      handle = ready(%{port: port, prompt_id: nil, requests: %{}, next_id: 10, live_model: nil})
+      {:ok, handle} = Kiro.set_model(handle, "claude-sonnet-5.5")
+      {:ok, handle} = Kiro.run_turn(handle, "hi")
+      assert handle.requests == %{10 => :set_model, 11 => :prompt}
+
+      {:ok, handle} = Kiro.run_turn(%{handle | prompt_id: nil}, "again")
+      assert handle.requests |> Map.values() |> Enum.count(&(&1 == :set_model)) == 1
+
+      # Back to the default is Kiro's `auto`.
+      {:ok, handle} = Kiro.set_model(%{handle | prompt_id: nil}, nil)
+      {:ok, handle} = Kiro.run_turn(handle, "default")
+      assert handle.requests |> Map.values() |> Enum.count(&(&1 == :set_model)) == 2
+      assert Kiro.persist(handle).model == nil
     end
 
     test "a refused option is only logged" do

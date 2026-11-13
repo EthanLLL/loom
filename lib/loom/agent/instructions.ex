@@ -3,7 +3,7 @@ defmodule Loom.Agent.Instructions do
   What Loom tells the backend on top of its own system prompt: CC's
   `--append-system-prompt`, Codex's `developerInstructions`. Given at every
   spawn and resume, since no backend keeps it. Kiro has no such slot; it gets
-  the text as steering (`_meta.kiro.steering`, `Loom.Agent.Backend.Kiro`).
+  the text as the body of a per-session Kiro agent (`Loom.Agent.Backend.Kiro`).
 
   In order: where the agent is (Loom, how it is built, where its source is),
   this session's id and directory, why nothing may outlive a turn, how to read

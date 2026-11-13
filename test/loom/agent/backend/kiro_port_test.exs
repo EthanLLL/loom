@@ -19,7 +19,8 @@ defmodule Loom.Agent.Backend.KiroPortTest do
   setup %{tmp_dir: dir} do
     previous = Application.get_env(:loom, Loom.Agent, [])
     previous_home = Application.get_env(:loom, :home)
-    # No ~/.loom/backends/kiro.json: no model is set, so the ids below hold.
+    # No model is picked, so the ids below hold: initialize, new/load,
+    # set_mode, prompt.
     Application.put_env(:loom, :home, Path.join(dir, "home"))
 
     on_exit(fn ->
@@ -113,6 +114,8 @@ defmodule Loom.Agent.Backend.KiroPortTest do
         :take,
         reply(2, %{"sessionId" => "sess_fake", "modes" => %{}}),
         :take,
+        reply(3, %{}),
+        :take,
         chunk("Hel"),
         chunk("lo"),
         update(%{
@@ -142,7 +145,7 @@ defmodule Loom.Agent.Backend.KiroPortTest do
           "status" => "completed",
           "rawOutput" => %{"output" => "a b\n"}
         }),
-        reply(3, %{"stopReason" => "end_turn"}),
+        reply(4, %{"stopReason" => "end_turn"}),
         :linger
       ])
 
@@ -160,14 +163,17 @@ defmodule Loom.Agent.Backend.KiroPortTest do
 
     assert Kiro.persist(handle).kiro_session_id == "sess_fake"
 
-    [init, new, prompt, permission] = sent(log)
+    [init, new, mode, prompt, permission] = sent(log)
     assert init["method"] == "initialize"
     assert get_in(init, ["params", "clientCapabilities", "_meta", "kiro", "userInput"]) == true
 
+    # Loom's instructions are the session's own agent, written before the
+    # spawn and selected as its mode.
     assert new["method"] == "session/new"
-    kiro = get_in(new, ["params", "_meta", "kiro"])
-    assert kiro["policyPreset"] == ["allow-all"]
-    assert [%{"inclusion" => "always", "content" => "LOOM SAYS HI"}] = kiro["steering"]
+    refute Map.has_key?(new["params"], "_meta")
+    assert mode["method"] == "session/set_mode"
+    assert mode["params"] == %{"sessionId" => "sess_fake", "modeId" => "loom-a_1"}
+    assert File.read!(Kiro.agent_path("a_1")) =~ "---\nLOOM SAYS HI\n"
 
     assert prompt["method"] == "session/prompt"
     assert [%{"type" => "text", "text" => "hello"}] = prompt["params"]["prompt"]
@@ -176,6 +182,7 @@ defmodule Loom.Agent.Backend.KiroPortTest do
     assert permission["result"]["outcome"] == %{"outcome" => "selected", "optionId" => "accept"}
 
     Kiro.stop(handle)
+    refute File.exists?(Kiro.agent_path("a_1"))
   end
 
   test "an interrupt is a cancel, and the cancelled reply ends nothing", %{tmp_dir: dir} do
@@ -186,9 +193,11 @@ defmodule Loom.Agent.Backend.KiroPortTest do
         :take,
         reply(2, %{"sessionId" => "sess_fake", "modes" => %{}}),
         :take,
+        reply(3, %{}),
+        :take,
         chunk("working"),
         :take,
-        reply(3, %{"stopReason" => "cancelled"}),
+        reply(4, %{"stopReason" => "cancelled"}),
         :linger
       ])
 
@@ -208,7 +217,7 @@ defmodule Loom.Agent.Backend.KiroPortTest do
     refute ended?(out)
 
     assert [%{"method" => "session/cancel", "params" => %{"sessionId" => "sess_fake"}}] =
-             sent(log) |> Enum.drop(3)
+             sent(log) |> Enum.drop(4)
 
     Kiro.stop(handle)
   end
@@ -223,7 +232,9 @@ defmodule Loom.Agent.Backend.KiroPortTest do
         :take,
         reply(3, %{"sessionId" => "sess_new", "modes" => %{}}),
         :take,
-        reply(4, %{"stopReason" => "end_turn"}),
+        reply(4, %{}),
+        :take,
+        reply(5, %{"stopReason" => "end_turn"}),
         :linger
       ])
 
@@ -234,7 +245,7 @@ defmodule Loom.Agent.Backend.KiroPortTest do
     assert {:turn_done, _} = List.last(events(out))
     assert Kiro.persist(handle).kiro_session_id == "sess_new"
 
-    [_init, load, new, prompt] = sent(log)
+    [_init, load, new, _mode, prompt] = sent(log)
     assert load["method"] == "session/load"
     assert load["params"]["sessionId"] == "sess_gone"
     assert get_in(load, ["params", "_meta", "kiro", "noReplay"]) == true

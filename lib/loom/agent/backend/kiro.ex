@@ -30,13 +30,25 @@ defmodule Loom.Agent.Backend.Kiro do
   everything before `:ready` is dropped, or the transcript would grow a copy of
   the past on every respawn.
 
-  ## Loom's instructions are steering
+  ## Loom's instructions are a Kiro agent
 
-  ACP has no slot for an appended system prompt. Kiro's steering is added to
-  its own prompt, so the instructions go in `_meta.kiro.steering`
-  (`inclusion: "always"`) on every `session/new` and `session/load`; nothing
-  is added to the conversation itself (measured: Kiro kept its own prompt and
-  tools, and knew what the steering said).
+  ACP has no slot for an appended system prompt, but a Kiro agent is one: a
+  markdown file in `~/.kiro/agents/` whose body is added to Kiro's own prompt
+  and whose frontmatter grants tools and permissions. Every session gets its
+  own, `loom-<session id>.md`, written before each spawn (the instructions
+  name the session, and are given again at every spawn as for Claude Code)
+  and removed by `stop/1`. The engine lists agents as ACP modes, so it is
+  selected with the standard `session/set_mode` after every new/load
+  (measured on 3.3.0: Kiro kept its identity and every tool, knew what the
+  file said, and still did after a `session/load` in a new process).
+
+  ## Model
+
+  The composer's model is the session config option `model`
+  (`session/set_config_option`), set after every new/load and again before a
+  turn when it changed; `kiro-cli acp --model` would select the v2 engine.
+  `models/0` asks `kiro-cli chat --list-models` and keeps the answer a while,
+  since it takes a couple of seconds.
 
   ## Steering and leftovers
 
@@ -56,11 +68,10 @@ defmodule Loom.Agent.Backend.Kiro do
 
   ## Permissions
 
-  `--trust-all-tools` silently selects the old v2 engine. On v3,
-  `_meta.kiro.policyPreset: ["allow-all"]` on `session/new` and
-  `session/load` approves every tool call for that session without touching
-  the user's Kiro config (measured: no `session/request_permission` at all).
-  One that arrives anyway is answered with the allow-once option; a question
+  `--trust-all-tools` silently selects the old v2 engine. On v3 the agent's
+  own `permissions` (`capability: all, effect: allow`) approve every tool
+  call without touching the user's Kiro config (measured: no
+  `session/request_permission` at all). One that arrives anyway is answered with the allow-once option; a question
   for the user (`_kiro/userInput`) is answered that nobody is there to ask.
   Anything else the engine asks is answered with an error, never ignored: an
   unanswered request hangs the turn.
@@ -72,7 +83,6 @@ defmodule Loom.Agent.Backend.Kiro do
 
   alias Loom.Agent.Backend
   alias Loom.Agent.Backend.ClaudeCode
-  alias Loom.Agent.BackendConfig
   alias Loom.Agent.Jsonl
 
   @protocol_version 1
@@ -92,18 +102,22 @@ defmodule Loom.Agent.Backend.Kiro do
   @windows [128_000, 200_000, 256_000, 400_000, 1_000_000, 2_000_000]
   @default_window 1_000_000
 
-  @impl Backend
-  def start(_session_id, meta), do: {:ok, new(nil, meta)}
+  # How long the model list is kept: `kiro-cli chat --list-models` takes ~2.5 s.
+  @models_ttl_ms :timer.minutes(10)
 
   @impl Backend
-  def resume(_session_id, meta) do
+  def start(loom_id, meta), do: {:ok, new(loom_id, nil, meta)}
+
+  @impl Backend
+  def resume(loom_id, meta) do
     # A session restored before its first turn has no Kiro session yet: the id
     # is only minted by `session/new`. It simply opens one on its first turn.
-    {:ok, new(Backend.meta_get(meta, :kiro_session_id), meta)}
+    {:ok, new(loom_id, Backend.meta_get(meta, :kiro_session_id), meta)}
   end
 
-  defp new(session_id, meta) do
+  defp new(loom_id, session_id, meta) do
     %{
+      loom_id: loom_id,
       session_id: session_id,
       cwd: Backend.meta_get(meta, :kiro_cwd) || default_cwd(),
       instructions: Backend.meta_get(meta, :instructions),
@@ -125,9 +139,10 @@ defmodule Loom.Agent.Backend.Kiro do
       interrupted?: false,
       # The reason a summarisation failed during this prompt, if one did.
       compaction_error: nil,
-      # `~/.loom/backends/kiro.json` as of the last spawn; see
-      # `Loom.Agent.BackendConfig`.
-      settings: nil,
+      # The composer's choice (nil: Kiro's default), and what the live
+      # process was last told.
+      model: Backend.meta_get(meta, :model),
+      live_model: nil,
       # The block being streamed: `%{id, type, text}`.
       block: nil,
       tools: %{},
@@ -146,7 +161,7 @@ defmodule Loom.Agent.Backend.Kiro do
     case handle do
       %{phase: :ready} = handle ->
         if alive?(handle) do
-          {:ok, send_work(handle, work)}
+          {:ok, handle |> apply_model() |> send_work(work)}
         else
           spawn_process(%{handle | port: nil, os_pid: nil}, work)
         end
@@ -201,21 +216,71 @@ defmodule Loom.Agent.Backend.Kiro do
   def release(handle), do: {:ok, teardown(handle)}
 
   @impl Backend
-  def persist(handle), do: %{kiro_session_id: handle.session_id, kiro_cwd: handle.cwd}
+  def persist(handle),
+    do: %{kiro_session_id: handle.session_id, kiro_cwd: handle.cwd, model: handle.model}
 
   @impl Backend
   def stop(handle) do
     teardown(handle)
+    if handle.loom_id, do: File.rm(agent_path(handle.loom_id))
     :ok
+  end
+
+  @impl Backend
+  def set_model(handle, model), do: {:ok, %{handle | model: model}}
+
+  @impl Backend
+  def models do
+    case :persistent_term.get({__MODULE__, :models}, nil) do
+      {at, models} when is_integer(at) ->
+        if System.monotonic_time(:millisecond) - at < @models_ttl_ms,
+          do: models,
+          else: fetch_models()
+
+      _ ->
+        fetch_models()
+    end
+  end
+
+  # Kiro marks no default in JSON; `auto` is it (the plain list stars it).
+  defp fetch_models do
+    with {:ok, exe} <- executable(),
+         {out, 0} <- run_list_models(exe),
+         {:ok, %{"models" => list}} when is_list(list) <- Jason.decode(out) do
+      models =
+        for %{"model_id" => id} = m <- list, is_binary(id) do
+          %{id: id, label: m["model_name"] || id, default: id == "auto"}
+        end
+
+      :persistent_term.put({__MODULE__, :models}, {System.monotonic_time(:millisecond), models})
+      models
+    else
+      other ->
+        Logger.warning("Kiro: cannot list models: #{inspect(other) |> String.slice(0, 300)}")
+        []
+    end
+  end
+
+  defp run_list_models(exe) do
+    task =
+      Task.async(fn ->
+        System.cmd(exe, ["chat", "--list-models", "--format", "json"],
+          env: Loom.ChildEnv.cmd_env(),
+          stderr_to_stdout: false
+        )
+      end)
+
+    case Task.yield(task, 15_000) || Task.shutdown(task) do
+      {:ok, result} -> result
+      _ -> :timeout
+    end
   end
 
   # ── Process ───────────────────────────────────────────────────────────────
 
   defp spawn_process(handle, work) do
-    with {:ok, exe} <- executable() do
-      # Read at every spawn, so an edit applies from the next process.
-      settings = BackendConfig.get(:kiro)
-
+    with {:ok, exe} <- executable(),
+         :ok <- write_agent(handle) do
       port =
         Port.open({:spawn_executable, exe}, [
           :binary,
@@ -224,9 +289,9 @@ defmodule Loom.Agent.Backend.Kiro do
           :hide,
           # Explicit, so a release that changes the default engine cannot
           # silently switch this adapter onto one it was not written for.
-          args: ["acp", "--agent-engine", "v3", "--auth-method", "cli" | settings.args],
+          args: ["acp", "--agent-engine", "v3", "--auth-method", "cli"],
           cd: handle.cwd,
-          env: Loom.ChildEnv.port_env(Map.merge(System.get_env(), settings.env))
+          env: Loom.ChildEnv.port_env(System.get_env())
         ])
 
       handle = %{
@@ -239,7 +304,7 @@ defmodule Loom.Agent.Backend.Kiro do
           pending: work,
           prompt_id: nil,
           block: nil,
-          settings: settings
+          live_model: nil
       }
 
       {:ok,
@@ -262,29 +327,79 @@ defmodule Loom.Agent.Backend.Kiro do
     end
   end
 
-  # `kiro-cli acp --model` is a v2-only flag and silently selects the v2
-  # engine, and v3 ignores Kiro's own `chat.defaultModel` (measured). It takes
-  # the model, and the effort, as session config options, set after every
-  # new/load. The model comes from `~/.loom/backends/kiro.json`, else
-  # `LOOM_KIRO_MODEL`; unset, Kiro picks (`auto`).
-  defp select_model(handle) do
-    settings = handle.settings || %{model: nil, effort: nil}
-    model = settings.model || Application.get_env(:loom, Loom.Agent, [])[:kiro_model]
-
+  # After every new/load: the session's own agent (Loom's instructions and
+  # permissions), then the composer's model if one is picked. Sent without
+  # waiting; the engine answers requests in order (measured).
+  defp select_agent(handle) do
     handle
-    |> set_option("model", model, :set_model)
-    |> set_option("effortLevel", settings.effort, :set_effort)
+    |> request(
+      "session/set_mode",
+      %{"sessionId" => handle.session_id, "modeId" => agent_name(handle.loom_id)},
+      :set_mode
+    )
+    |> apply_model()
   end
 
-  defp set_option(handle, _config_id, value, _tag) when value in [nil, ""], do: handle
+  # `kiro-cli acp --model` is a v2-only flag and silently selects the v2
+  # engine, and v3 ignores Kiro's own `chat.defaultModel` (measured): the
+  # model is a session config option. nil goes back to Kiro's default, `auto`.
+  defp apply_model(%{model: model, live_model: model} = handle) when model != nil, do: handle
+  defp apply_model(%{model: nil, live_model: nil} = handle), do: handle
 
-  defp set_option(handle, config_id, value, tag) do
-    request(
-      handle,
+  defp apply_model(handle) do
+    handle
+    |> request(
       "session/set_config_option",
-      %{"sessionId" => handle.session_id, "configId" => config_id, "value" => value},
-      tag
+      %{
+        "sessionId" => handle.session_id,
+        "configId" => "model",
+        "value" => handle.model || "auto"
+      },
+      :set_model
     )
+    |> Map.put(:live_model, handle.model)
+  end
+
+  # ── The session's Kiro agent ──────────────────────────────────────────────
+
+  @doc false
+  def agent_path(loom_id), do: Path.join(agents_dir(), agent_name(loom_id) <> ".md")
+
+  defp agent_name(loom_id), do: "loom-" <> to_string(loom_id)
+
+  defp agents_dir do
+    Application.get_env(:loom, Loom.Agent, [])[:kiro_agents_dir] ||
+      Path.join(System.user_home!(), ".kiro/agents")
+  end
+
+  @doc false
+  # Public so a test can read what a session's agent says.
+  def agent_file(handle) do
+    """
+    ---
+    name: #{agent_name(handle.loom_id)}
+    description: Loom session #{handle.loom_id}; written by Loom at every spawn
+    tools: "*"
+    includeMcpJson: true
+    permissions:
+      rules:
+        - capability: all
+          effect: allow
+    ---
+    #{handle.instructions || ""}
+    """
+  end
+
+  defp write_agent(handle) do
+    path = agent_path(handle.loom_id)
+
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path <> ".tmp", agent_file(handle)),
+         :ok <- File.rename(path <> ".tmp", path) do
+      :ok
+    else
+      {:error, reason} -> {:error, "cannot write Kiro agent #{path}: #{inspect(reason)}"}
+    end
   end
 
   defp alive?(%{port: port}) when is_port(port), do: Port.info(port) != nil
@@ -573,43 +688,30 @@ defmodule Loom.Agent.Backend.Kiro do
 
   defp reply(handle, :set_model, _id, {:ok, _}), do: {handle, []}
 
-  defp reply(handle, :set_effort, _id, {:error, error}) do
-    Logger.warning("Kiro: cannot set effort: #{message_of(error)}")
+  defp reply(handle, :set_mode, _id, {:error, error}) do
+    Logger.warning("Kiro: cannot select the session's agent: #{message_of(error)}")
     {handle, []}
   end
 
-  defp reply(handle, :set_effort, _id, {:ok, _}), do: {handle, []}
+  defp reply(handle, :set_mode, _id, {:ok, _}), do: {handle, []}
 
   defp open_new(handle), do: request(handle, "session/new", session_params(handle, nil), :new)
 
   @doc false
   # Public only so a test can see what new/load send.
-  def session_params(handle, nil),
-    do: %{"cwd" => handle.cwd, "mcpServers" => [], "_meta" => %{"kiro" => session_meta(handle)}}
+  def session_params(handle, nil), do: %{"cwd" => handle.cwd, "mcpServers" => []}
 
-  # The engine keeps neither the preset nor the steering with the session, so
-  # both are sent on every load as well.
   def session_params(handle, id) do
-    meta = Map.put(session_meta(handle), "noReplay", true)
-    %{"sessionId" => id, "cwd" => handle.cwd, "mcpServers" => [], "_meta" => %{"kiro" => meta}}
-  end
-
-  defp session_meta(handle) do
-    meta = %{"policyPreset" => ["allow-all"]}
-
-    case handle.instructions do
-      text when is_binary(text) and text != "" ->
-        Map.put(meta, "steering", [
-          %{"name" => "loom", "inclusion" => "always", "content" => text}
-        ])
-
-      _ ->
-        meta
-    end
+    %{
+      "sessionId" => id,
+      "cwd" => handle.cwd,
+      "mcpServers" => [],
+      "_meta" => %{"kiro" => %{"noReplay" => true}}
+    }
   end
 
   defp ready(handle) do
-    handle = select_model(%{handle | phase: :ready})
+    handle = select_agent(%{handle | phase: :ready})
 
     case handle.pending do
       nil -> {handle, []}
