@@ -1,84 +1,45 @@
 :root {
-  /* Surfaces after Gemini's: --bg is the conversation, --bg-raised the
-     sidebar, the composer and dialogs, --bg-card chips, bubbles and hovers.
-     No borders between them; the tones do the separating. */
-  --bg: #131314;
-  --bg-raised: #1e1f20;
+  /* The parts not yet on Tailwind read these. They follow the shadcn tokens
+     in index.css, so the whole app shares one palette while it moves over.
+     --bg is the conversation, --bg-raised the sidebar, composer and dialogs,
+     --bg-card chips, bubbles and hovers. */
+  --bg: var(--background);
+  --bg-raised: var(--sidebar);
   /* The top bars' shared height; see .sidebar-head below. */
   --head-h: 2.8rem;
-  --bg-card: #2a2b2d;
-  /* Gemini's filled button (send): deep in dark, pale in light. */
-  --send-bg: #1f3b9b;
-  --send-fg: #e6e6e6;
-  --line: #3a3b3d;
-  --fg: #e3e3e3;
-  --fg-dim: #9a9b9d;
-  /* The strong neutral: what is selected, on or live. Colour is kept for the
-     two theme hues, blue and pink. */
-  --accent: #f5f5f5;
-  /* Subaru blue (#004890) and STI cherry red (Pantone 207C, #A50034) are the
-     light theme's own; dark keeps their hues, lifted to read on navy. */
+  --bg-card: var(--muted);
+  --send-bg: var(--primary);
+  --send-fg: var(--primary-foreground);
+  --line: var(--border);
+  --fg: var(--foreground);
+  --fg-dim: var(--muted-foreground);
+  /* The strong neutral: what is selected, on or live. */
+  --strong: var(--primary);
+  /* Links and what is on; no shadcn token for it. */
   --blue: #3d9eff;
-  /* STI pink: Claude Code, warnings and errors. */
-  --red: #ff4785;
-  --mono: "MesloLGL Nerd Font Mono", Menlo, Monaco, monospace;
+  --red: var(--destructive);
+  --mono: var(--font-mono);
   /* One column width for everything in a conversation — prose, tool cards and
-     turn lines. Exact in characters because the whole UI is monospace: 100
-     columns is a comfortable line of text and still wide enough for shell
-     output, where the old prose measure (78) was cramped. */
+     turn lines. */
   --measure: 100ch;
-  /* Washes behind error, warning and success boxes, and what dims the app
-     under a dialog. */
-  --red-wash: #2a1a20;
-  --red-banner: #3a2028;
-  --accent-wash: #1e1f20;
+  /* Washes behind error boxes, and what dims the app under a dialog. */
+  --red-wash: color-mix(in oklch, var(--destructive) 12%, var(--background));
+  --red-banner: color-mix(in oklch, var(--destructive) 20%, var(--background));
+  --accent-wash: var(--card);
   --scrim: rgb(0 0 0 / 55%);
   --shadow: rgb(0 0 0 / 50%);
   color-scheme: dark;
 }
 
-/* Light, set on <html> by theme.ts. The same roles: --accent turns black,
-   and blue and pink are darkened enough to read on white. */
 :root[data-theme="light"] {
-  --bg: #faf9f9;
-  --bg-raised: #ffffff;
-  --bg-card: #f2f0f0;
-  --send-bg: #9dd2ff;
-  --send-fg: #000000;
-  --line: #e3e1e1;
-  --fg: #1f1f1f;
-  --fg-dim: #5f6368;
-  --accent: #111418;
   --blue: #004890;
-  --red: #a50034;
-  --red-wash: #fdf0f5;
-  --red-banner: #fbe3ed;
-  --accent-wash: #ffffff;
   --scrim: rgb(0 0 0 / 30%);
   --shadow: rgb(0 0 0 / 15%);
   color-scheme: light;
 }
 
-/* Cool Night, the iTerm2 scheme the terminal pane already uses (see
-   Terminal.tsx): navy surfaces, mint for what is on, and send. */
 :root[data-theme="coolnight"] {
-  --bg: #010c18;
-  --bg-raised: #04101f;
-  --bg-card: #0b1f33;
-  --send-bg: #38ff9d;
-  --send-fg: #010c18;
-  --line: #16314f;
-  --fg: #ecdef4;
-  --fg-dim: #7f93a8;
-  --accent: #38ff9d;
   --blue: #388eff;
-  --red: #ff54b0;
-  --red-wash: #1c0a22;
-  --red-banner: #2a0e2e;
-  --accent-wash: #04101f;
-  --scrim: rgb(0 0 0 / 55%);
-  --shadow: rgb(0 0 0 / 50%);
-  color-scheme: dark;
 }
 
 /* Cool Night also brings back the thin rules the other themes dropped for
@@ -123,7 +84,7 @@
 
 :root[data-theme="coolnight"] .question,
 :root[data-theme="coolnight"] .option {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--strong);
 }
 
 :root[data-theme="coolnight"] .device-action:hover,
@@ -195,7 +156,7 @@
 }
 
 .brand {
-  color: var(--accent);
+  color: var(--strong);
   font-weight: bold;
   letter-spacing: 1px;
 }
@@ -256,12 +217,12 @@
 
 .session.active {
   background: var(--bg-card);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--strong);
 }
 
 /* Walking the list with j/k; see the keys in App.tsx. */
 .session.cursor {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--strong);
   outline-offset: -1px;
 }
 
@@ -545,7 +506,7 @@
 
 .search-row.selected {
   background: var(--bg-card);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--strong);
 }
 
 .search-dir {
@@ -648,7 +609,7 @@
 }
 
 .dot.running {
-  background: var(--accent);
+  background: var(--strong);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
@@ -665,7 +626,7 @@
 
 /* A device that is connected. Steady, not pulsing: pulsing means working. */
 .dot.online {
-  background: var(--accent);
+  background: var(--strong);
 }
 
 /* ── Devices ─────────────────────────────────────────────────────────────
@@ -706,7 +667,7 @@
 }
 
 .push-btn.on svg {
-  color: var(--accent);
+  color: var(--strong);
 }
 
 .push-btn:disabled {
@@ -853,7 +814,7 @@
   padding: 8px;
   border-radius: 6px;
   background: var(--bg-card);
-  color: var(--accent);
+  color: var(--strong);
   font-size: 0.846rem;
   word-break: break-all;
   user-select: all;
@@ -1066,6 +1027,30 @@
   overflow-wrap: anywhere;
 }
 
+/* A CSV in the canvas: a wide table scrolls on its own. */
+.md-table-wrap {
+  overflow-x: auto;
+}
+
+.md-table {
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.md-table th,
+.md-table td {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-table th {
+  color: var(--fg-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .canvas-table th {
   position: sticky;
   top: -1rem;
@@ -1127,7 +1112,7 @@
 }
 
 .tree-row.cursor {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--strong);
   outline-offset: -1px;
 }
 
@@ -1561,7 +1546,7 @@
 
 .which-key-key {
   min-width: 3.5rem;
-  color: var(--accent);
+  color: var(--strong);
 }
 
 .key-help-hint {
@@ -1716,7 +1701,7 @@
 
 .security-this {
   margin-left: 8px;
-  color: var(--accent);
+  color: var(--strong);
   font-size: 0.846rem;
 }
 

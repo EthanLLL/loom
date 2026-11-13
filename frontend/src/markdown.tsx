@@ -1,6 +1,14 @@
-import { Check, Copy, Square as SquareIcon, SquareCheck } from "lucide-react"
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { Square as SquareIcon, SquareCheck } from "lucide-react"
+import { createContext, useContext, useMemo, type ReactNode } from "react"
 import { marked, type Token, type Tokens } from "marked"
+import {
+  CodeBlock,
+  CodeBlockActions,
+  CodeBlockContent,
+  CodeBlockCopyButton,
+  CodeBlockHeader,
+  CodeBlockTitle,
+} from "@/components/ui/code-block"
 
 /**
  * Markdown for assistant messages, rendered from `marked`'s token stream.
@@ -46,9 +54,15 @@ export const OutputLink = createContext<
   ((path: string, label: ReactNode) => ReactNode) | null
 >(null)
 
+/** Inline code, wherever it appears: in a reply, a user's message, a card. */
+export const codeSpan = "rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.875em] box-decoration-clone"
+
+// Block spacing is tight enough that a short answer stays one visual unit.
+const p = "my-3 first:mt-0 last:mb-0"
+
 export function Markdown({ text }: { text: string }) {
   const tokens = useMemo(() => marked.lexer(text, { gfm: true }), [text])
-  return <div className="md">{blocks(tokens)}</div>
+  return <div className="min-w-0 wrap-break-word">{blocks(tokens)}</div>
 }
 
 function blocks(tokens: Token[]): ReactNode[] {
@@ -63,28 +77,39 @@ function Block({ token }: { token: Token }): ReactNode {
       // usual size would dwarf the conversation around it.
       const level = Math.min(t.depth, 3)
       const Tag = `h${level}` as "h1" | "h2" | "h3"
-      return <Tag className="md-h">{inline(t.tokens)}</Tag>
+      const size = level === 1 ? "text-lg" : level === 2 ? "text-base" : "text-base text-muted-foreground"
+      return <Tag className={`mt-5 mb-2 font-semibold first:mt-0 ${size}`}>{inline(t.tokens)}</Tag>
     }
 
     case "paragraph":
-      return <p className="md-p">{inline((token as Tokens.Paragraph).tokens)}</p>
+      return <p className={p}>{inline((token as Tokens.Paragraph).tokens)}</p>
 
     case "code": {
       const t = token as Tokens.Code
       return (
-        <div className="code-block">
-          <pre className="code">{t.text}</pre>
-          <div className="code-tools">
-            {t.lang ? <span className="code-lang">{t.lang}</span> : null}
-            <CopyButton text={t.text} />
-          </div>
-        </div>
+        // The copy button is the way to take a command away on a phone,
+        // where selecting by hand fights the block's sideways scroll.
+        <CodeBlock size="sm" className={`${p} bg-muted/40`}>
+          {t.lang ? (
+            <CodeBlockHeader>
+              <CodeBlockTitle className="font-mono font-normal text-muted-foreground">{t.lang}</CodeBlockTitle>
+              <CodeBlockActions>
+                <CodeBlockCopyButton value={t.text} />
+              </CodeBlockActions>
+            </CodeBlockHeader>
+          ) : (
+            <CodeBlockActions>
+              <CodeBlockCopyButton value={t.text} />
+            </CodeBlockActions>
+          )}
+          <CodeBlockContent>{t.text}</CodeBlockContent>
+        </CodeBlock>
       )
     }
 
     case "blockquote":
       return (
-        <blockquote className="md-quote">
+        <blockquote className={`${p} border-l-2 pl-3 text-muted-foreground`}>
           {blocks((token as Tokens.Blockquote).tokens)}
         </blockquote>
       )
@@ -93,10 +118,17 @@ function Block({ token }: { token: Token }): ReactNode {
       const t = token as Tokens.List
       const Tag = t.ordered ? "ol" : "ul"
       return (
-        <Tag className="md-list" start={t.ordered ? Number(t.start) || 1 : undefined}>
+        <Tag
+          className={`${p} pl-6 marker:text-muted-foreground ${t.ordered ? "list-decimal" : "list-disc"} [&_p]:my-1`}
+          start={t.ordered ? Number(t.start) || 1 : undefined}
+        >
           {t.items.map((item, i) => (
-            <li key={i} className={item.task ? "md-task" : undefined}>
-              {item.task ? <span className="md-check">{item.checked ? <SquareCheck /> : <SquareIcon />}</span> : null}
+            <li key={i} className={"my-1 " + (item.task ? "-ml-5 list-none" : "")}>
+              {item.task ? (
+                <span className="mr-1.5 inline-block align-[-0.125em] text-primary">
+                  {item.checked ? <SquareCheck /> : <SquareIcon />}
+                </span>
+              ) : null}
               {blocks(item.tokens)}
             </li>
           ))}
@@ -107,8 +139,11 @@ function Block({ token }: { token: Token }): ReactNode {
     case "table": {
       const t = token as Tokens.Table
       return (
-        <div className="md-table-wrap">
-          <table className="md-table">
+        // A wide table scrolls on its own rather than widening the reply and
+        // pushing the whole conversation sideways. The models reach for
+        // tables constantly, so they get real cell borders.
+        <div className={`${p} overflow-x-auto rounded-lg border`}>
+          <table className="w-full border-collapse text-sm [&_td]:border-t [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-top [&_th]:bg-muted/50 [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-medium [&_th]:whitespace-nowrap [&_td+td]:border-l [&_th+th]:border-l">
             <thead>
               <tr>
                 {t.header.map((cell, i) => (
@@ -135,15 +170,15 @@ function Block({ token }: { token: Token }): ReactNode {
     }
 
     case "hr":
-      return <hr className="md-hr" />
+      return <hr className="my-4 border-border" />
 
     // Never as markup. See the moduledoc: this is the whole reason for
     // rendering tokens instead of HTML.
     case "html":
-      return <p className="md-p">{(token as Tokens.HTML).raw}</p>
+      return <p className={p}>{(token as Tokens.HTML).raw}</p>
 
     case "text":
-      return <p className="md-p">{inlineOrText(token as Tokens.Text)}</p>
+      return <p className={p}>{inlineOrText(token as Tokens.Text)}</p>
 
     // `space` is layout that CSS already handles; `def` is a link definition
     // with nothing to show.
@@ -152,7 +187,7 @@ function Block({ token }: { token: Token }): ReactNode {
       return null
 
     default:
-      return <p className="md-p">{(token as { raw?: string }).raw ?? ""}</p>
+      return <p className={p}>{(token as { raw?: string }).raw ?? ""}</p>
   }
 }
 
@@ -175,7 +210,7 @@ function Inline({ token }: { token: Token }): ReactNode {
       return (token as Tokens.Escape).text
 
     case "codespan":
-      return <code>{(token as Tokens.Codespan).text}</code>
+      return <code className={codeSpan}>{(token as Tokens.Codespan).text}</code>
 
     case "strong":
       return <strong>{inline((token as Tokens.Strong).tokens)}</strong>
@@ -184,7 +219,7 @@ function Inline({ token }: { token: Token }): ReactNode {
       return <em>{inline((token as Tokens.Em).tokens)}</em>
 
     case "del":
-      return <del>{inline((token as Tokens.Del).tokens)}</del>
+      return <del className="text-muted-foreground">{inline((token as Tokens.Del).tokens)}</del>
 
     case "br":
       return <br />
@@ -200,13 +235,19 @@ function Inline({ token }: { token: Token }): ReactNode {
       // model said.
       if (!href) {
         return (
-          <span className="md-link-blocked" title={t.href}>
+          <span className="cursor-help text-muted-foreground underline decoration-destructive decoration-dotted" title={t.href}>
             {inline(t.tokens)}
           </span>
         )
       }
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer" title={t.title ?? t.href}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={t.title ?? t.href}
+          className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+        >
           {inline(t.tokens)}
         </a>
       )
@@ -217,7 +258,7 @@ function Inline({ token }: { token: Token }): ReactNode {
     // what it was. One of the session's own outputs opens like an output link.
     case "image": {
       const t = token as Tokens.Image
-      const label = <span className="md-image">🖼 {t.text || t.href}</span>
+      const label = <span className="text-muted-foreground">🖼 {t.text || t.href}</span>
       const output = outputPath(t.href)
       return output !== null && renderOutput ? renderOutput(output, label) : label
     }
@@ -256,40 +297,4 @@ function outputPath(href: string): string | null {
 function safeHref(href: string): string | null {
   const trimmed = (href ?? "").trim()
   return SAFE_SCHEME.test(trimmed) ? trimmed : null
-}
-
-/**
- * Copies a fenced block whole. On a phone, selecting a command by hand fights
- * the block's own horizontal scroll, so this is the way to take one away.
- */
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copied])
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-    } catch {
-      // No clipboard (an http origin, or permission refused): the block is
-      // still selectable by hand.
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      className="code-copy"
-      onClick={copy}
-      title={copied ? "Copied" : "Copy"}
-      aria-label={copied ? "Copied" : "Copy code"}
-    >
-      {copied ? <Check /> : <Copy />}
-    </button>
-  )
 }

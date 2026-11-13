@@ -341,9 +341,10 @@ export type TimelineItem =
       result: ToolResult | null
     }
   | { key: string; kind: "question"; question: string; options: string[] }
-  // A finished stretch of tool calls folded into one card; see `foldFinished`.
-  // `steps` are the tool cards and any thinking with words in it, in order.
-  | { key: string; kind: "tools"; steps: TimelineItem[]; tools: number; failed: number }
+  // A stretch of tool calls folded into one line; see `foldTools`. `steps` are
+  // the calls and any thinking with words in it, in order. `live` while the
+  // agent is still in it.
+  | { key: string; kind: "tools"; steps: TimelineItem[]; tools: number; failed: number; live: boolean }
   // What a turn left in the output directory, offered for download. `more`
   // counts files past the server's cap.
   | { key: string; kind: "outputs"; files: OutputFile[]; more: number }
@@ -586,65 +587,61 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
 }
 
 /**
- * Fold every finished stretch of tool calls into one card.
+ * Fold every stretch of tool calls into one line.
  *
- * While a turn runs, each call is its own card, because watching them land is
- * how you know it is not stuck. Once the turn is over they are history: ten
- * cards of `cat` and `grep` push the answer off the screen, and the answer is
- * what you came back for. So a stretch of consecutive tools and thinking —
+ * Ten lines of `cat` and `grep` push the answer off the screen, and the answer
+ * is what you came back for. So a stretch of consecutive tools and thinking —
  * between the user's message, the replies, the turn's end — becomes one
- * "used N tools" card that opens to the same cards as before. Stretches, not
- * whole turns: a reply written between two batches of calls stays where it
- * was written.
+ * "tools" item that opens to the calls inside it. Stretches, not whole turns:
+ * a reply written between two batches of calls stays where it was written.
  *
- * Thinking with no words in it ("thought for a moment") says nothing once the
- * turn is over and is dropped; thinking that has words goes inside the card.
+ * The stretch the agent is in right now is folded too, and marked `live`: its
+ * line shows the step under way, which is how you know it is not stuck, and
+ * changes as each new one starts.
  *
- * "Finished" is everything up to the last turn ending (its context line, an
- * error, a stop notice) while the agent is busy, and everything when it is not.
+ * Thinking with no words in it ("thought for a moment") says nothing once it
+ * is over and is dropped; thinking that has words goes inside. Thinking on its
+ * own, with no tool beside it, stays where it was.
+ *
+ * The item keeps the key of the stretch's first step, dropped or not, so the
+ * line stays the same element as the stretch grows.
  */
-export function foldFinished(items: TimelineItem[], busy: boolean): TimelineItem[] {
-  let live = items.length
-  if (busy) {
-    live = 0
-    items.forEach((item, i) => {
-      if (item.kind === "turn" || item.kind === "error" || item.kind === "notice") live = i + 1
-    })
-  }
-
+export function foldTools(items: TimelineItem[], busy: boolean): TimelineItem[] {
   const out: TimelineItem[] = []
   let run: TimelineItem[] = []
+  let first: string | null = null
 
-  const flush = () => {
+  const flush = (live: boolean) => {
     const tools = run.filter((s) => s.kind === "tool")
-    if (tools.length > 0) {
+    if (tools.length > 0 || (live && run.length > 0)) {
       out.push({
-        key: `g${run[0].key}`,
+        key: `g${first}`,
         kind: "tools",
         steps: run,
         tools: tools.length,
         failed: tools.filter((s) => s.kind === "tool" && s.result?.ok === false).length,
+        live,
       })
     } else {
-      // Thinking on its own, with no tools to sit under, stays as it was.
       out.push(...run)
     }
     run = []
+    first = null
   }
 
-  items.slice(0, live).forEach((item) => {
-    if (item.kind === "tool") {
-      run.push(item)
-    } else if (item.kind === "thinking") {
-      if (item.text.trim() !== "") run.push(item)
+  for (const item of items) {
+    if (item.kind === "tool" || item.kind === "thinking") {
+      first ??= item.key
+      if (item.kind === "tool" || item.streaming || item.text.trim() !== "") run.push(item)
     } else {
-      flush()
+      flush(false)
       out.push(item)
     }
-  })
-  flush()
+  }
+  // Only the stretch at the very end can still be growing.
+  flush(busy)
 
-  return out.concat(items.slice(live))
+  return out
 }
 
 function streamFor(t: Transcript, blockId: string): string {
