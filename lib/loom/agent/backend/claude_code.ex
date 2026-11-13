@@ -153,6 +153,13 @@ defmodule Loom.Agent.Backend.ClaudeCode do
       # Which `Loom.Agent.Profiles` file to pass as `--settings`, or nil for the
       # machine's own configuration. Fixed for the life of the session.
       profile: Backend.meta_get(meta, :cc_profile),
+      # An alias (`opus`, `sonnet`, `haiku`) chosen in the composer, or nil for
+      # the CLI's default. The settings in force map it to a model id
+      # (`ANTHROPIC_DEFAULT_*_MODEL`), so the same three work on any profile.
+      model: Backend.meta_get(meta, :model),
+      # What the live process is running, so a change is sent to it once, at
+      # the start of the next turn. nil with no process.
+      live_model: nil,
       # Whether Claude Code has this conversation on disk, so the next spawn
       # resumes it rather than naming it. Set by `system/init`, not by the spawn:
       # a session that is released or restarted before its first turn got going
@@ -187,7 +194,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   @impl Backend
   def run_turn(handle, text) when is_binary(text) do
     with {:ok, handle} <- ensure_process(handle) do
-      handle = write(handle, message_line(text))
+      handle = handle |> apply_model() |> write(message_line(text))
       # Block ids need no per-turn reset: they are qualified by the API call's
       # message id, which is unique across turns. See `block_id/2`.
       {:ok, %{handle | tools: %{}, interrupted?: false}}
@@ -231,7 +238,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
           args:
             @base_args ++
               profile_args ++
-              fallback_args(handle) ++ session_args(handle) ++ instruction_args(handle),
+              model_args(handle) ++ session_args(handle) ++ instruction_args(handle),
           cd: handle.cwd,
           env: Loom.ChildEnv.port_env()
         ])
@@ -245,7 +252,8 @@ defmodule Loom.Agent.Backend.ClaudeCode do
            tools: %{},
            message_id: nil,
            pending_blocks: [],
-           booting: %{resumed?: handle.started?, lines: []}
+           booting: %{resumed?: handle.started?, lines: []},
+           live_model: handle.model
        }}
     end
   end
@@ -285,20 +293,34 @@ defmodule Loom.Agent.Backend.ClaudeCode do
 
   defp claude_dir, do: System.get_env("CLAUDE_CONFIG_DIR") || Path.expand("~/.claude")
 
-  # What to answer with when the model is unavailable. Claude Code (2.1.300)
-  # switches on a 500 or 503 after one attempt, on a 529 after its retries,
-  # never on a 429; the switch lasts the rest of the turn, and the next turn
-  # starts on the usual model again. See docs/backends.md.
-  #
-  # The fallback is a model of the default provider, so a session on a profile
-  # goes without: that provider would not know the name.
-  defp fallback_args(%{profile: profile}) when is_binary(profile), do: []
+  defp model_args(%{model: model}) when is_binary(model), do: ["--model", model]
+  defp model_args(_handle), do: []
 
-  defp fallback_args(_handle) do
-    case Application.get_env(:loom, Loom.Agent, [])[:claude_fallback_model] do
-      model when is_binary(model) and model != "" -> ["--fallback-model", model]
-      _ -> []
-    end
+  # A model picked since the process started reaches it as a `set_model`
+  # control request, which takes effect from the next API call: no restart, and
+  # the conversation carries on (measured: opus answered, `set_model haiku` was
+  # acknowledged, the next answer came from haiku in the same process). Back to
+  # nil cannot be said that way, so it costs a restart, which spawns with no
+  # `--model` at all.
+  defp apply_model(%{model: model, live_model: model} = handle), do: handle
+
+  defp apply_model(%{model: nil} = handle) do
+    {:ok, handle} = spawn_process(teardown(handle))
+    handle
+  end
+
+  defp apply_model(handle) do
+    id = "model_#{handle.next_control_id}"
+
+    handle
+    |> write(
+      Jsonl.line(%{
+        "type" => "control_request",
+        "request_id" => id,
+        "request" => %{"subtype" => "set_model", "model" => handle.model}
+      })
+    )
+    |> Map.merge(%{live_model: handle.model, next_control_id: handle.next_control_id + 1})
   end
 
   # A profile that has gone missing fails the turn with its name rather than
@@ -348,9 +370,22 @@ defmodule Loom.Agent.Backend.ClaudeCode do
       cc_session_id: handle.session_id,
       cc_cwd: handle.cwd,
       cc_started: handle.started?,
-      cc_profile: handle.profile
+      cc_profile: handle.profile,
+      model: handle.model
     }
   end
+
+  @impl Backend
+  def models do
+    [
+      %{id: "opus", label: "Opus", default: true},
+      %{id: "sonnet", label: "Sonnet", default: false},
+      %{id: "haiku", label: "Haiku", default: false}
+    ]
+  end
+
+  @impl Backend
+  def set_model(handle, model), do: {:ok, %{handle | model: model}}
 
   @impl Backend
   def stop(handle) do

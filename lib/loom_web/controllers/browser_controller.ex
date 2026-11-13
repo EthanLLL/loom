@@ -7,7 +7,7 @@ defmodule LoomWeb.BrowserController do
 
   def vnc(conn, params) do
     case Loom.Auth.verify_token(params["token"]) do
-      :ok ->
+      {:ok, _login} ->
         # A screen that doesn't change sends nothing, and noVNC doesn't ping, so
         # the idle limit is long; a dropped connection ends it either way.
         conn

@@ -42,3 +42,12 @@ IO.puts(ev |> Enum.filter(&(&1.kind == :assistant_text)) |> List.last() |> then(
   schedule a check-in on this session with the `cron` skill.
 - `Loom.Agent.delete_session(id)` discards one and its history; only when the
   user asks.
+
+## Not for apps
+
+This is for an agent splitting its work across sessions. An app that wants
+AI calls a model itself first (see the `apps` skill, "Using a model").
+`Loom.Agent.submit` into an existing session sends that session's whole
+context with every turn, and re-bills all of it after a pause. If an app has
+to use it anyway, tell the user what it will cost per call and how often it
+will fire, and get their agreement first.

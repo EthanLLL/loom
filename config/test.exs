@@ -37,6 +37,7 @@ config :loom, Loom.Agent.DirectoryOrder,
 
 # Nor the real device registry and CLI key.
 config :loom, Loom.Push, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/push.json")
+config :loom, Loom.Auth, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/auth.json")
 config :loom, Loom.Nodes, dir: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}")
 config :loom, LoomWeb.NodeController, await_ms: 200
 

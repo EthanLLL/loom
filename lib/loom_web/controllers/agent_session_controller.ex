@@ -40,6 +40,14 @@ defmodule LoomWeb.AgentSessionController do
     json(conn, %{profiles: Loom.Agent.Profiles.list()})
   end
 
+  # GET /api/models?backend=… — what a session of that kind can be switched to.
+  def models(conn, params) do
+    case Loom.Agent.Backend.parse(params["backend"]) do
+      {:ok, backend} -> json(conn, %{models: Agent.models(backend)})
+      :error -> bad_backend(conn, params["backend"])
+    end
+  end
+
   defp check_profile(_backend, nil), do: :ok
 
   defp check_profile(:claude_code, name) do
@@ -74,6 +82,14 @@ defmodule LoomWeb.AgentSessionController do
   # list (`""` is the root). See `Loom.Agent.Directory`.
   def update(conn, %{"id" => id, "directory" => directory}) do
     case Agent.move(id, directory) do
+      :ok -> json(conn, view(Agent.info(id)))
+      {:error, reason} -> conn |> put_status(:unprocessable_entity) |> json(%{error: reason})
+    end
+  end
+
+  # PATCH /api/agents/:id with `model` — from the next turn on.
+  def update(conn, %{"id" => id, "model" => model}) do
+    case Agent.set_model(id, model) do
       :ok -> json(conn, view(Agent.info(id)))
       {:error, reason} -> conn |> put_status(:unprocessable_entity) |> json(%{error: reason})
     end
@@ -128,6 +144,7 @@ defmodule LoomWeb.AgentSessionController do
       backend: info.backend,
       backend_label: info.backend_label,
       profile: info.profile,
+      model: info.model,
       created_at: info.created_at,
       last_active_at: info.last_active_at,
       status: info.status,

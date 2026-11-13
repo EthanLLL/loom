@@ -7,8 +7,8 @@ Codex. Protocol details are in [backends.md](backends.md), deployment in
 
 ## 1. Non-goals
 
-- **Multi-tenancy.** One password, one token for every device. Agents run as
-  the BEAM's uid, with no sandbox.
+- **Multi-tenancy.** One user, signed in per device (§3.1). Agents run as the
+  BEAM's uid, with no sandbox.
 - **Permission prompts.** Everything runs in auto mode; nobody is there to
   press `y`.
 - **Our own agent loop.** Tools, context, compaction and memory belong to the
@@ -139,6 +139,25 @@ same `block_id` replaces it whole, so a stream cut mid-sentence costs nothing.
   `last_active_at` (last user message, reply or turn end, derived from the
   transcript on restore). Devices, apps and search ride the same channel.
 
+### 3.1 Signing in
+
+Whoever is signed in has a shell, so the door is guarded (`Loom.Auth`):
+
+- **Two ways in.** A passkey — Face ID, Touch ID, Windows Hello, or a phone
+  nearby — or `LOOM_PASSWORD` plus a code from an authenticator app (or a
+  one-time recovery code). The password alone works only until an
+  authenticator is set up, so the first device can get in to set one up.
+- **WebAuthn without CBOR.** The browser hands over the new key's SPKI
+  (`getPublicKey()`) and the authenticator data, so `:crypto` is enough;
+  attestation is not checked (registering needs a signed-in device). The RP
+  id is the origin's host, kept with the passkey.
+- **A login per device**, named from its user agent; the bearer token names
+  it. Removing one in Settings → Sign-in drops its socket (`login:<id>`); two
+  weeks unused lapses it. Tokens from before logins work while the password
+  alone does, and are swapped for a login on the next open.
+- Five wrong passwords or codes lock the password way in for 15 minutes; a
+  new sign-in is announced to every device with notifications on.
+
 ## 4. Storage
 
 ```
@@ -148,6 +167,7 @@ same `block_id` replaces it whole, so a stream cut mid-sentence costs nothing.
 ~/.loom/sessions/<id>/output/…       files the agent made for the user
 ~/.loom/sessions/.trash/<id>.<ms>/   a deleted session, kept whole
 ~/.loom/cron.json  push.json  apps.json  apps/<name>/
+~/.loom/auth.json                    passkeys, authenticator secret, logins (0600)
 ```
 
 The base is `~/.loom` (or `LOOM_HOME`), not `priv/`, which a deploy replaces.

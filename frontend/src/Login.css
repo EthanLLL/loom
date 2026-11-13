@@ -62,3 +62,29 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.login-passkey {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.login-passkey svg {
+  width: 18px;
+  height: 18px;
+}
+
+.login-or {
+  color: var(--fg-dim);
+  font-size: 0.846rem;
+  text-align: center;
+}
+
+/* With a passkey on offer, the password is the way in on other devices. */
+.login-secondary {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  font-weight: normal;
+}

@@ -509,6 +509,10 @@ export function buildTimeline(t: Transcript): TimelineItem[] {
         })
         break
 
+      case "model_changed":
+        items.push({ key, kind: "notice", text: `model: ${String(p.label ?? p.model)}` })
+        break
+
       case "renamed":
         break
 

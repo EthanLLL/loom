@@ -1159,3 +1159,46 @@ h3.md-h {
   color: var(--fg-dim);
   font-size: 0.769rem;
 }
+
+/* ── Model picker ─────────────────────────────────────────────────────────
+   Beside the send button, like Gemini's: the model for the next turn. */
+
+.model-picker {
+  position: relative;
+  align-self: center;
+}
+
+.model-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 2.25rem;
+  padding: 0 0.4rem 0 0.6rem;
+  border: none;
+  border-radius: 1.1rem;
+  background: transparent;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.model-btn:hover {
+  color: var(--fg);
+}
+
+.command-menu.model-menu {
+  left: auto;
+  right: 0;
+  min-width: 10rem;
+}
+
+.model-menu li {
+  justify-content: space-between;
+}
+
+.model-menu .name {
+  color: var(--fg);
+  white-space: nowrap;
+}

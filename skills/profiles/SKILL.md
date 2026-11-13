@@ -17,7 +17,10 @@ the machine's `~/.claude/settings.json`. The choice is fixed for the session.
 - Removing a file breaks the sessions on it: their turns fail with
   "profile <name> not found". Check `grep -l '"cc_profile":"<name>"'
   ~/.loom/sessions/*/meta.json` first and tell the user which ones.
-- Sessions on a profile have no fallback model.
+- The composer's model menu (Opus / Sonnet / Haiku) picks between
+  `ANTHROPIC_DEFAULT_OPUS_MODEL`, `_SONNET_` and `_HAIKU_`. Set all three to
+  names the endpoint knows. One left out falls back to the machine's id for
+  that alias, which another provider will refuse.
 
 ## An endpoint with a key (Anthropic-compatible: relays, LiteLLM, Anthropic API)
 

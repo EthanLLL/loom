@@ -7,8 +7,8 @@ export class UnauthorizedError extends Error {
 
 // Token lives in localStorage, so it survives the app being closed. On iOS the
 // only way to reload a home-screen web app is to kill it, and sessionStorage
-// made every reload a password prompt. The server's 30-day max_age is what
-// eventually logs a device out.
+// made every reload a password prompt. The server signs a device out after two
+// weeks unused, or when it is removed from Settings → Sign-in.
 const TOKEN_KEY = "loom_token"
 
 // Who to tell when the server stops accepting the token. Set once by `App`.
@@ -18,8 +18,8 @@ export function onUnauthorized(listener: () => void) {
   unauthorizedListener = listener
 }
 
-// A 401 means the token is dead — expired after its 30 days, or signed with a
-// secret that has since changed. Kept, it would be sent forever, so it goes and
+// A 401 means the token is dead — its device unused for two weeks or signed
+// out, or signed with a secret that has since changed. Kept, it would be sent forever, so it goes and
 // the app falls back to the login screen.
 function unauthorized(): UnauthorizedError {
   clearToken()
@@ -36,8 +36,13 @@ function unauthorized(): UnauthorizedError {
  */
 export async function checkAuth(): Promise<void> {
   if (!getToken()) return
-  const res = await fetch("/api/layout", { headers: authHeaders() }).catch(() => null)
+  const res = await fetch("/api/auth", { headers: authHeaders() }).catch(() => null)
   if (res?.status === 401) unauthorized()
+  // A token from before per-device logins comes back with one of its own.
+  if (res?.ok) {
+    const data: AuthOverview = await res.json()
+    if (data.token) setToken(data.token)
+  }
 }
 
 export function getToken(): string | null {
@@ -62,17 +67,206 @@ export function clearToken() {
   sessionStorage.removeItem(TOKEN_KEY)
 }
 
-export async function login(password: string): Promise<string> {
+/** Password, plus a code from the authenticator once one is set up. */
+export async function login(password: string, code?: string): Promise<string> {
   const res = await fetch("/api/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ password, code }),
   })
   if (res.status === 401) throw new Error("invalid_password")
+  if (res.status === 429) throw new Error("locked")
   if (!res.ok) throw new Error(`login failed: ${res.status}`)
   const data = await res.json()
   setToken(data.token)
   return data.token
+}
+
+// ── Passkeys and the authenticator; see `Loom.Auth` ─────────────────────
+
+export type AuthOptions = { passkey: boolean; totp: boolean }
+
+export type Passkey = {
+  id: string
+  name: string
+  rp_id: string
+  created_at: string
+  last_used_at: string | null
+}
+
+export type Login = {
+  id: string
+  name: string
+  method: string
+  ip: string | null
+  created_at: string
+  last_seen_at: string
+}
+
+export type AuthOverview = {
+  passkeys: Passkey[]
+  totp: { created_at: string; recovery_left: number } | null
+  logins: Login[]
+  idle_days: number
+  current: string
+  token?: string
+}
+
+/** What the sign-in page offers. */
+export async function authOptions(): Promise<AuthOptions> {
+  const res = await fetch("/api/auth/options")
+  if (!res.ok) throw new Error(`authOptions failed: ${res.status}`)
+  return res.json()
+}
+
+/** Whether this browser can make or use a passkey at all. */
+export function passkeysSupported(): boolean {
+  return typeof window.PublicKeyCredential === "function"
+}
+
+const b64url = {
+  encode(buf: ArrayBuffer): string {
+    let s = ""
+    for (const b of new Uint8Array(buf)) s += String.fromCharCode(b)
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+  },
+  decode(text: string): Uint8Array<ArrayBuffer> {
+    const s = atob(text.replace(/-/g, "+").replace(/_/g, "/"))
+    const out = new Uint8Array(s.length)
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i)
+    return out
+  },
+}
+
+/**
+ * Sign in with a passkey: Face ID, Touch ID, Windows Hello, or a phone nearby.
+ * No list of credentials is sent, so the browser offers whichever passkeys it
+ * has for this site.
+ */
+export async function passkeyLogin(): Promise<string> {
+  const ch = await fetch("/api/auth/passkey/challenge", { method: "POST" })
+  if (!ch.ok) throw new Error(`challenge failed: ${ch.status}`)
+  const { challenge } = await ch.json()
+
+  const cred = (await navigator.credentials.get({
+    publicKey: {
+      challenge: b64url.decode(challenge),
+      rpId: location.hostname,
+      userVerification: "required",
+      timeout: 120_000,
+    },
+  })) as PublicKeyCredential | null
+  if (!cred) throw new Error("cancelled")
+  const response = cred.response as AuthenticatorAssertionResponse
+
+  const res = await fetch("/api/auth/passkey/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: cred.id,
+      client_data: b64url.encode(response.clientDataJSON),
+      authenticator_data: b64url.encode(response.authenticatorData),
+      signature: b64url.encode(response.signature),
+    }),
+  })
+  if (!res.ok) throw new Error("passkey_refused")
+  const data = await res.json()
+  setToken(data.token)
+  return data.token
+}
+
+export async function authOverview(): Promise<AuthOverview> {
+  const res = await fetch("/api/auth", { headers: authHeaders() })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`authOverview failed: ${res.status}`)
+  return res.json()
+}
+
+/** Make a passkey on this device (or a phone nearby) and register it. */
+export async function registerPasskey(): Promise<Passkey> {
+  const ch = await fetch("/api/auth/passkeys/challenge", { method: "POST", headers: authHeaders() })
+  if (ch.status === 401) throw unauthorized()
+  if (!ch.ok) throw new Error(`challenge failed: ${ch.status}`)
+  const { challenge, exclude } = (await ch.json()) as { challenge: string; exclude: string[] }
+
+  const cred = (await navigator.credentials.create({
+    publicKey: {
+      challenge: b64url.decode(challenge),
+      rp: { id: location.hostname, name: "Loom" },
+      // One user per Loom, so a fixed handle. A device that already has one
+      // says so, from `excludeCredentials`.
+      user: {
+        id: new TextEncoder().encode("loom"),
+        name: `loom@${location.hostname}`,
+        displayName: "Loom",
+      },
+      pubKeyCredParams: [
+        { type: "public-key", alg: -7 },
+        { type: "public-key", alg: -257 },
+      ],
+      authenticatorSelection: { residentKey: "required", userVerification: "required" },
+      attestation: "none",
+      excludeCredentials: exclude.map((id) => ({ type: "public-key", id: b64url.decode(id) })),
+      timeout: 120_000,
+    },
+  })) as PublicKeyCredential | null
+  if (!cred) throw new Error("cancelled")
+  const response = cred.response as AuthenticatorAttestationResponse
+  const publicKey = response.getPublicKey()
+  if (!publicKey) throw new Error("This browser did not give the passkey's public key")
+
+  const res = await fetch("/api/auth/passkeys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      id: cred.id,
+      client_data: b64url.encode(response.clientDataJSON),
+      authenticator_data: b64url.encode(response.getAuthenticatorData()),
+      public_key: b64url.encode(publicKey),
+    }),
+  })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`Passkey refused: ${(await res.json()).error}`)
+  return (await res.json()).passkey
+}
+
+export async function deletePasskey(id: string): Promise<void> {
+  await authDelete(`/api/auth/passkeys/${encodeURIComponent(id)}`)
+}
+
+/** A new authenticator secret, kept by the server until confirmed. */
+export async function totpBegin(): Promise<string> {
+  const res = await fetch("/api/auth/totp", { method: "POST", headers: authHeaders() })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`totpBegin failed: ${res.status}`)
+  return (await res.json()).secret
+}
+
+/** Confirm the secret with a code from the app; returns the recovery codes. */
+export async function totpConfirm(code: string): Promise<string[]> {
+  const res = await fetch("/api/auth/totp/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ code }),
+  })
+  if (res.status === 401) throw unauthorized()
+  if (res.status === 422) throw new Error("That code is not right; check the app's clock and try the next one")
+  if (!res.ok) throw new Error(`totpConfirm failed: ${res.status}`)
+  return (await res.json()).recovery_codes
+}
+
+export async function totpRemove(): Promise<void> {
+  await authDelete("/api/auth/totp")
+}
+
+export async function revokeLogin(id: string): Promise<void> {
+  await authDelete(`/api/auth/logins/${encodeURIComponent(id)}`)
+}
+
+async function authDelete(path: string): Promise<void> {
+  const res = await fetch(path, { method: "DELETE", headers: authHeaders() })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`${path} failed: ${res.status}`)
 }
 
 function authHeaders(): Record<string, string> {
@@ -146,6 +340,9 @@ export type AgentInfo = {
   // The Claude Code profile it talks through, or null for the default.
   // Older servers do not send it.
   profile?: string | null
+  // The model picked in the composer, or null for the backend's default.
+  // Older servers do not send it.
+  model?: string | null
   created_at: number
   // The last message either way, as ms since the epoch: what orders the
   // sidebar and what its age shows. Older servers do not send it.
@@ -197,6 +394,39 @@ export async function listProfiles(): Promise<string[]> {
   if (!res.ok) return []
   const data = await res.json()
   return data.profiles
+}
+
+export type ModelOption = { id: string; label: string; default: boolean }
+
+// Once per backend per page load: the list only changes with the machine's
+// configuration, and the composer asks every time a session opens.
+const modelLists = new Map<AgentBackend, Promise<ModelOption[]>>()
+
+export function listModels(backend: AgentBackend): Promise<ModelOption[]> {
+  let list = modelLists.get(backend)
+  if (!list) {
+    list = fetch(`/api/models?backend=${backend}`, { headers: authHeaders() })
+      .then(async (res) => (res.ok ? (await res.json()).models : []))
+      .catch(() => [])
+    modelLists.set(backend, list)
+    // A failure is not worth remembering; the next session asks again.
+    list.then((models) => {
+      if (models.length === 0) modelLists.delete(backend)
+    })
+  }
+  return list
+}
+
+// From the next turn on; the one running finishes on the model it started with.
+export async function setAgentModel(id: string, model: string): Promise<AgentInfo> {
+  const res = await fetch(`/api/agents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ model }),
+  })
+  if (res.status === 401) throw unauthorized()
+  if (!res.ok) throw new Error(`setAgentModel failed: ${res.status}`)
+  return res.json()
 }
 
 // Local to loom — a sidebar label, never pushed to the backend.

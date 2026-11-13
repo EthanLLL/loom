@@ -1,12 +1,14 @@
-import { Bell, BellOff, Keyboard, KeyboardOff, SunMoon, X } from "lucide-react"
-import { useEffect } from "react"
+import { Bell, BellOff, Keyboard, KeyboardOff, ShieldCheck, SunMoon, X } from "lucide-react"
+import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import type { Push } from "./push"
+import { SecurityDialog } from "./Security"
 import { setThemePref, useThemePref, type ThemePref } from "./theme"
 
 /**
  * Per-device preferences, kept out of the sidebar so its foot stays three
- * rows: theme, Vim keys (desktop only) and notifications.
+ * rows: theme, Vim keys (desktop only) and notifications. And the way in to
+ * sign-in settings, which are this Loom's rather than this device's.
  */
 export function SettingsDialog({
   push,
@@ -17,11 +19,16 @@ export function SettingsDialog({
   vim: { on: boolean; toggle: () => void } | null
   onClose: () => void
 }) {
+  const [security, setSecurity] = useState(false)
+
   useEffect(() => {
+    if (security) return
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [onClose, security])
+
+  if (security) return <SecurityDialog onClose={() => setSecurity(false)} />
 
   return createPortal(
     <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -46,6 +53,10 @@ export function SettingsDialog({
             </button>
           )}
           <PushRow push={push} />
+          <button className="devices-btn push-btn" onClick={() => setSecurity(true)} title="Passkeys, authenticator app, signed-in devices">
+            <ShieldCheck />
+            <span>Sign-in</span>
+          </button>
         </div>
       </div>
     </div>,

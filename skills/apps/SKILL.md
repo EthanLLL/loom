@@ -143,13 +143,83 @@ $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory t
   with `systemctl --user start --no-block app-<name>_job.service`, which is
   what `Loom.Apps.run` does. A start while the job is running is dropped, so a
   job meant to be woken should loop until nothing is left.
-- **Handing work to an agent** (only when the app is designed for it):
-  - Write `{"title": "…", "prompt": "…"}` to a JSON file and run
-    `loom rpc 'IO.inspect(Loom.Agent.new_session_file("/abs/path/req.json"))'`.
-    `loom` is on the job's and the server's PATH.
-  - It starts a session in the sidebar and returns `{:ok, id}`.
-  - Never splice text into rpc code: any `#{…}` in a title someone typed
-    runs as Elixir.
+## Using a model
+
+Nothing in an app calls a model unless its code does, so every AI feature is
+a cost the app carries on every call. Pick the first of these that does the
+job, and settle it with the user before writing code:
+
+1. **Call the model directly**: a prompt built by the app, or a short fixed
+   workflow of calls (extract, then classify, then write).
+2. **The app's own agent loop**: the model plus the few tools the feature
+   needs, each a small function of the app's, nothing more.
+3. **A new Loom session**, when the point is Loom's full agent (shell,
+   files, skills) and the user should see it in the sidebar.
+4. **Submitting to an existing session** (`Loom.Agent.submit`): last, and only
+   when the user has agreed. The turn carries that session's whole context,
+   tens to hundreds of thousands of tokens. After a pause longer than the
+   cache's lifetime (5 min or 1 h), all of it is billed again at the cache
+   write price, $0.5–0.9 per 100k tokens on Opus. An app whose input comes back
+   out of that session can also loop.
+
+### Which model
+
+- Tell the user which models this machine can call, then agree on one.
+  - Claude: the region and ids in `~/.claude/settings.json` `env`
+    (`AWS_REGION`, `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`).
+  - GPT: Codex's region in `~/.codex/config.toml`;
+    `aws bedrock list-inference-profiles --region <r>` lists what can be
+    called.
+  - Profiles in `~/.loom/profiles/` are other providers' endpoints, with
+    their own key and price.
+- Be frugal. Try the feature's real inputs (a few actual images, messages,
+  files) on the cheapest candidates first, say Haiku, then Sonnet or a GPT,
+  and keep the cheapest that gets them right. Show the user the results and
+  the per-call cost.
+- Log every call in the app: time, model, the `usage` the response returns,
+  what it was for. That log is the only record of what the app spends.
+
+### Calling it
+
+Bedrock, with the machine's own role: no key, but always a region. Calls only
+work from this machine, since the role is IP-locked. One API covers Claude and
+GPT, images included:
+
+```python
+import boto3
+br = boto3.client("bedrock-runtime", region_name="us-west-2")
+r = br.converse(
+    modelId="us.anthropic.claude-haiku-5-5",
+    system=[{"text": "Extract the total. Number only."}],
+    messages=[{"role": "user", "content": [
+        {"image": {"format": "png", "source": {"bytes": png_bytes}}},
+        {"text": "What is the total?"},
+    ]}],
+    inferenceConfig={"maxTokens": 200},
+)
+text = r["output"]["message"]["content"][0]["text"]
+usage = r["usage"]   # inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens
+```
+
+- Ids take a `us.`/`global.` prefix: `us.openai.gpt-5.5` works, while
+  `openai.gpt-5.5` is refused. Drop the `[1m]` that CC's settings append,
+  which Bedrock refuses.
+- **Prompt caching** is opt-in: put `{"cachePoint": {"type": "default"}}`
+  after the part that repeats (a handbook, long instructions). It pays when
+  the same prefix comes back within 5 minutes: the first call writes it at
+  1.25× the input price, later ones read it at 0.05–0.1×. For scattered calls,
+  leave it out: every call would pay the write and none the read.
+  `usage.cacheReadInputTokens` shows whether it hit.
+
+### Handing work to a new session
+
+- Write `{"title": "…", "prompt": "…"}` to a JSON file and run
+  `loom rpc 'IO.inspect(Loom.Agent.new_session_file("/abs/path/req.json"))'`.
+  `loom` is on the job's and the server's PATH.
+- It starts a session in the sidebar and returns `{:ok, id}`. Each one starts
+  at about 20k tokens of context before it does anything.
+- Never splice text into rpc code: any `#{…}` in a title someone typed runs
+  as Elixir.
 
 ## Checking your work
 

@@ -356,6 +356,33 @@ defmodule Loom.Agent.SessionTest do
     end
   end
 
+  describe "switching the model" do
+    test "records it, says so in the transcript, and keeps it across a restart" do
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.topic(id))
+      assert Agent.info(id).model == nil
+
+      assert :ok = Agent.set_model(id, "small")
+
+      assert_receive {:agent_event, ^id,
+                      %{kind: :model_changed, payload: %{model: "small", label: "Small"}}},
+                     500
+
+      assert Agent.info(id).model == "small"
+      assert {:ok, %{model: "small"}} = Store.read_meta(id)
+
+      Agent.stop_session(id)
+      {:ok, _} = Agent.restore_session(id)
+      assert Agent.info(id).model == "small"
+    end
+
+    test "a model the backend does not offer is refused" do
+      id = new_session()
+      assert {:error, _} = Agent.set_model(id, "gigantic")
+      assert Agent.info(id).model == nil
+    end
+  end
+
   describe "the transcript" do
     test "events are numbered, persisted and replayable" do
       id = new_session()

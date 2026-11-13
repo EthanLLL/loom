@@ -142,7 +142,7 @@ defmodule Loom.BackendStub do
   @impl Loom.Agent.Backend
   def start(session_id, meta) do
     :ok = GenServer.call(__MODULE__, {:meta, meta})
-    {:ok, %{session_id: session_id, ref: "stub-#{session_id}"}}
+    {:ok, %{session_id: session_id, ref: "stub-#{session_id}", model: nil}}
   end
 
   @impl Loom.Agent.Backend
@@ -150,7 +150,7 @@ defmodule Loom.BackendStub do
     :ok = GenServer.call(__MODULE__, {:meta, meta})
 
     case GenServer.call(__MODULE__, :resuming) do
-      :ok -> {:ok, %{session_id: session_id, ref: ref}}
+      :ok -> {:ok, %{session_id: session_id, ref: ref, model: meta[:model]}}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -190,7 +190,15 @@ defmodule Loom.BackendStub do
   def decode(_handle, _message), do: :ignore
 
   @impl Loom.Agent.Backend
-  def persist(handle), do: %{stub_ref: handle.ref}
+  def persist(handle), do: %{stub_ref: handle.ref, model: handle.model}
+
+  @impl Loom.Agent.Backend
+  def models do
+    [%{id: "big", label: "Big", default: true}, %{id: "small", label: "Small", default: false}]
+  end
+
+  @impl Loom.Agent.Backend
+  def set_model(handle, model), do: {:ok, %{handle | model: model}}
 
   @impl Loom.Agent.Backend
   def stop(_handle) do

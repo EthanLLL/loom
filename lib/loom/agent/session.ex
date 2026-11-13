@@ -156,6 +156,13 @@ defmodule Loom.Agent.Session do
   def move(id, directory), do: GenServer.call(via(id), {:move, directory})
 
   @doc """
+  Switch the model, one of the backend's `models/0`. From the next turn on: one
+  in flight finishes on the model it started with. Said in the transcript, so a
+  change of voice halfway down a conversation has its explanation right there.
+  """
+  def set_model(id, model), do: GenServer.call(via(id), {:set_model, model})
+
+  @doc """
   Attach for replay. Returns the session's metadata plus every event after
   `since_seq` (pass 0 for the whole retained transcript).
   """
@@ -461,6 +468,21 @@ defmodule Loom.Agent.Session do
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:set_model, model}, _from, state) do
+    impl = Backend.impl(state.backend)
+
+    case Enum.find(impl.models(), &(&1.id == model)) do
+      nil ->
+        {:reply, {:error, "unknown model #{inspect(model)}"}, state}
+
+      %{label: label} ->
+        {:ok, handle} = impl.set_model(state.handle, model)
+        state = emit(%{state | handle: handle}, :model_changed, %{model: model, label: label})
+        persist_meta(state)
+        {:reply, :ok, state}
     end
   end
 
@@ -923,6 +945,8 @@ defmodule Loom.Agent.Session do
       backend: state.backend,
       backend_label: Backend.label(state.backend, profile(state.handle)),
       profile: profile(state.handle),
+      # The model picked in the composer, or nil for the backend's default.
+      model: Map.get(state.handle || %{}, :model),
       title: state.title,
       directory: state.directory,
       created_at: state.created_at,

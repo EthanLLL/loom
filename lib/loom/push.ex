@@ -56,6 +56,9 @@ defmodule Loom.Push do
   @doc "Forget a subscription, by its endpoint."
   def unsubscribe(endpoint, server \\ @name), do: GenServer.call(server, {:unsubscribe, endpoint})
 
+  @doc "Tell every device something that is not about a session: a new sign-in."
+  def announce(title, body, server \\ @name), do: GenServer.cast(server, {:announce, title, body})
+
   @doc "Every subscription, for inspection."
   def list(server \\ @name), do: GenServer.call(server, :list)
 
@@ -125,6 +128,11 @@ defmodule Loom.Push do
         else: watching
 
     {:noreply, %{state | watching: watching}}
+  end
+
+  def handle_cast({:announce, title, body}, state) do
+    for {_endpoint, sub} <- state.subs, do: send_to(state, sub, message(sub, title, body, nil))
+    {:noreply, state}
   end
 
   def handle_cast({:gone, endpoint}, state) do

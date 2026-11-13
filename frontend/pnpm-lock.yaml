@@ -32,6 +32,9 @@ importers:
       phoenix:
         specifier: ^1.8.9
         version: 1.8.9
+      qrcode-generator:
+        specifier: ^2.0.4
+        version: 2.0.4
       react:
         specifier: ^19.2.7
         version: 19.2.8
@@ -480,6 +483,9 @@ packages:
     resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
     engines: {node: ^10 || ^12 || >=14}
 
+  qrcode-generator@2.0.4:
+    resolution: {integrity: sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==}
+
   react-dom@19.2.8:
     resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
     peerDependencies:
@@ -838,6 +844,8 @@ snapshots:
       nanoid: 3.3.16
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  qrcode-generator@2.0.4: {}
 
   react-dom@19.2.8(react@19.2.8):
     dependencies:

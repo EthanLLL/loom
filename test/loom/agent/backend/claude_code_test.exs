@@ -34,7 +34,9 @@ defmodule Loom.Agent.Backend.ClaudeCodeTest do
       next_control_id: 1,
       context_tokens: 0,
       context_window: nil,
-      profile: nil
+      profile: nil,
+      model: nil,
+      live_model: nil
     }
 
     Map.merge(base, overrides)

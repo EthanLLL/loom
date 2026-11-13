@@ -87,6 +87,11 @@ defmodule Loom.Agent.Backend.Codex do
   end
 
   defp resume_thread(id, meta) do
+    with {:ok, handle} <- reattach_thread(id, meta),
+         do: {:ok, %{handle | model: Backend.meta_get(meta, :model)}}
+  end
+
+  defp reattach_thread(id, meta) do
     instructions = Backend.meta_get(meta, :instructions)
     cwd = Backend.meta_get(meta, :codex_cwd) || default_cwd()
 
@@ -130,6 +135,10 @@ defmodule Loom.Agent.Backend.Codex do
       # Kept for `reopen/3`, which needs it long after the header was read.
       cwd: cwd,
       turn_id: nil,
+      # Picked in the composer, or nil for the app-server's default. Sent with
+      # every turn rather than once: `turn/start` takes it per call, and a
+      # thread reopened or reattached after a respawn then needs nothing more.
+      model: nil,
       aborted?: false,
       stale?: false,
       tools: %{},
@@ -153,7 +162,7 @@ defmodule Loom.Agent.Backend.Codex do
       {:error, reason} ->
         with true <- unborn?(reason),
              {:ok, fresh} <- reopen(handle.thread_id, cwd(handle), handle.instructions) do
-          run_turn(fresh, text)
+          run_turn(%{fresh | model: model(handle)}, text)
         else
           false -> {:error, describe_error(reason)}
           error -> error
@@ -166,7 +175,7 @@ defmodule Loom.Agent.Backend.Codex do
   end
 
   defp start_turn(handle, text) do
-    case Server.start_turn(handle.thread_id, text) do
+    case Server.start_turn(handle.thread_id, text, model: model(handle)) do
       {:ok, turn_id} ->
         {:ok, %{handle | turn_id: turn_id, aborted?: false, tools: %{}}}
 
@@ -236,8 +245,29 @@ defmodule Loom.Agent.Backend.Codex do
 
   @impl Backend
   def persist(handle) do
-    %{codex_thread_id: handle.thread_id, codex_turn_id: handle.turn_id}
+    %{codex_thread_id: handle.thread_id, codex_turn_id: handle.turn_id, model: model(handle)}
   end
+
+  # What the app-server offers, in its own order, which puts the default first.
+  # Empty when it is down: there is nothing to switch to then anyway.
+  @impl Backend
+  def models do
+    case Server.request("model/list", %{}) do
+      {:ok, %{"data" => models}} ->
+        for %{"id" => id} = m <- models,
+            m["hidden"] != true,
+            do: %{id: id, label: m["displayName"] || id, default: m["isDefault"] == true}
+
+      _ ->
+        []
+    end
+  end
+
+  @impl Backend
+  def set_model(handle, model), do: {:ok, Map.put(handle, :model, model)}
+
+  # Handles from before models could be picked.
+  defp model(handle), do: Map.get(handle, :model)
 
   @impl Backend
   def stop(%{thread_id: nil}), do: :ok

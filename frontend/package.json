@@ -20,6 +20,7 @@
     "lucide-react": "^1.59.0",
     "marked": "^18.1.1",
     "phoenix": "^1.8.9",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "reveal.js": "^6.0.2"

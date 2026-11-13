@@ -45,9 +45,12 @@ import {
   downloadAgentOutput,
   downloadAgentZip,
   downloadAttachment,
+  listModels,
   outputUrl,
+  setAgentModel,
   type AgentFile,
   type AgentInfo,
+  type ModelOption,
   type OutputFile,
 } from "./api"
 import "./Chat.css"
@@ -224,6 +227,8 @@ export function Chat({
 
         <Composer
           sessionId={session.id}
+          backend={session.backend}
+          model={session.model ?? null}
           busy={busy}
           interrupted={transcript.status === "interrupted"}
           attachments={attachments}
@@ -1052,6 +1057,8 @@ function commandMatches(text: string) {
 
 function Composer({
   sessionId,
+  backend,
+  model,
   busy,
   interrupted,
   attachments,
@@ -1059,6 +1066,8 @@ function Composer({
   onInterrupt,
 }: {
   sessionId: string
+  backend: AgentBackend
+  model: string | null
   busy: boolean
   interrupted: boolean
   attachments: Attachments
@@ -1266,6 +1275,7 @@ function Composer({
         />
 
         <div className="composer-actions">
+          <ModelPicker sessionId={sessionId} backend={backend} model={model} />
           {busy && (
             <button
               className="composer-btn stop"
@@ -1302,6 +1312,85 @@ function Composer({
 }
 
 // Past this the box scrolls instead of eating the conversation.
+// The model for this session's next turn, switched in place; the transcript
+// says when it changed. Shows the backend's default until one is picked.
+function ModelPicker({
+  sessionId,
+  backend,
+  model,
+}: {
+  sessionId: string
+  backend: AgentBackend
+  model: string | null
+}) {
+  const [options, setOptions] = useState<ModelOption[]>([])
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let live = true
+    listModels(backend).then((list) => live && setOptions(list))
+    return () => {
+      live = false
+    }
+  }, [backend])
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !box.current?.contains(e.target as Node))
+        setOpen(false)
+    }
+    document.addEventListener("mousedown", close)
+    document.addEventListener("keydown", close)
+    return () => {
+      document.removeEventListener("mousedown", close)
+      document.removeEventListener("keydown", close)
+    }
+  }, [open])
+
+  const current = options.find((o) => o.id === model) ?? options.find((o) => o.default)
+  if (!current) return null
+
+  const pick = (id: string) => {
+    setOpen(false)
+    if (id !== current.id) setAgentModel(sessionId, id).catch(() => {})
+  }
+
+  return (
+    <div className="model-picker" ref={box}>
+      <button
+        className="model-btn"
+        title="Model for the next turn"
+        onClick={() => setOpen(!open)}
+      >
+        {current.label}
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <ul className="command-menu model-menu" role="listbox">
+          {options.map((o) => (
+            <li
+              key={o.id}
+              role="option"
+              aria-selected={o.id === current.id}
+              className={o.id === current.id ? "on" : ""}
+              onMouseDown={(e) => {
+                // Keep the textarea's focus, and with it the phone keyboard.
+                e.preventDefault()
+                pick(o.id)
+              }}
+            >
+              <span className="name">{o.label}</span>
+              {o.id === current.id && <Check size={14} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 const MAX_LINES = 6
 
 /**

@@ -18,6 +18,9 @@ defmodule LoomWeb.Router do
     pipe_through :api
 
     post "/login", AuthController, :login
+    get "/auth/options", AuthController, :options
+    post "/auth/passkey/challenge", AuthController, :login_challenge
+    post "/auth/passkey/login", AuthController, :passkey_login
   end
 
   scope "/api", LoomWeb do
@@ -30,6 +33,7 @@ defmodule LoomWeb.Router do
     get "/agents", AgentSessionController, :index
     post "/agents", AgentSessionController, :create
     get "/profiles", AgentSessionController, :profiles
+    get "/models", AgentSessionController, :models
     patch "/agents/:id", AgentSessionController, :update
     delete "/agents/:id", AgentSessionController, :delete
     post "/directories/move", AgentSessionController, :move_directory
@@ -53,6 +57,15 @@ defmodule LoomWeb.Router do
     patch "/devices/:id", DevicesController, :update
     delete "/devices/:id", DevicesController, :delete
     post "/devices/:id/install", DevicesController, :install
+
+    get "/auth", AuthController, :show
+    post "/auth/passkeys/challenge", AuthController, :register_challenge
+    post "/auth/passkeys", AuthController, :register
+    delete "/auth/passkeys/:id", AuthController, :delete_passkey
+    post "/auth/totp", AuthController, :totp_begin
+    post "/auth/totp/confirm", AuthController, :totp_confirm
+    delete "/auth/totp", AuthController, :totp_remove
+    delete "/auth/logins/:id", AuthController, :revoke
 
     get "/push", PushController, :show
     post "/push/subscriptions", PushController, :create
@@ -90,7 +103,7 @@ defmodule LoomWeb.Router do
 
   # The UI itself. Last so it can never shadow an API route, and only `/` —
   # see `LoomWeb.SpaController`. Unauthenticated on purpose: the app shell is
-  # a login form until the password is entered, and every route that touches a
+  # a login form until the user signs in, and every route that touches a
   # session is behind `RequireAuth` or the socket's token check.
   # No bearer token and no `accepts`: an iframe asks for whatever the page
   # references. The signed path is the credential; see `CanvasController`.

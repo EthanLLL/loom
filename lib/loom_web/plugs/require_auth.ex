@@ -1,13 +1,16 @@
 defmodule LoomWeb.Plugs.RequireAuth do
-  @moduledoc "Rejects API requests lacking a valid bearer token."
+  @moduledoc """
+  Rejects API requests lacking a valid bearer token, and puts the login it
+  names (`Loom.Auth`) in `conn.assigns.login`.
+  """
   import Plug.Conn
 
   def init(opts), do: opts
 
   def call(conn, _opts) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         :ok <- Loom.Auth.verify_token(token) do
-      conn
+         {:ok, login} <- Loom.Auth.verify_token(token) do
+      assign(conn, :login, login)
     else
       _ ->
         conn

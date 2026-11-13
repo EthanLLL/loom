@@ -190,6 +190,21 @@ defmodule Loom.Agent.Backend do
   @callback persist(handle) :: map()
 
   @doc """
+  The models a session of this kind can be switched to, the default first-class
+  one marked. Asked when the picker opens, so a list that comes from the engine
+  itself (Codex) is current.
+  """
+  @callback models() :: [%{id: String.t(), label: String.t(), default: boolean()}]
+
+  @doc """
+  Use `model` from the next turn on; nil goes back to the engine's default.
+
+  Only recorded here: the turn in flight, if any, finishes on the model it
+  started with, and the next `run_turn/2` applies the change.
+  """
+  @callback set_model(handle, model :: String.t() | nil) :: {:ok, handle}
+
+  @doc """
   Drop whatever this handle is holding warm, keeping it usable.
 
   Claude Code keeps a ~275 MB process alive between turns so that the second and

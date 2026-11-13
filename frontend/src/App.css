@@ -1688,3 +1688,63 @@
   background: var(--bg-card);
   color: var(--fg);
 }
+
+/* Settings → Sign-in; rows borrow the Devices dialog's. */
+.security-section + .security-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.security-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 2px;
+  font-weight: bold;
+}
+
+.security .device-empty {
+  padding: 4px 8px 8px;
+  font-size: 0.846rem;
+}
+
+.security .device-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.security-this {
+  margin-left: 8px;
+  color: var(--accent);
+  font-size: 0.846rem;
+}
+
+.totp-setup {
+  margin: 2px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.totp-setup a {
+  color: var(--blue);
+}
+
+.totp-qr {
+  align-self: center;
+  width: 180px;
+  height: 180px;
+  image-rendering: pixelated;
+  border-radius: 6px;
+}
+
+.totp-setup .install-actions input {
+  flex: 1 1 auto;
+  font-size: 16px;
+}
+
+.recovery-codes {
+  white-space: pre;
+  word-break: normal;
+}

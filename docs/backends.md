@@ -251,19 +251,9 @@ for CC; for Codex a `CODEX_HOME` whose provider has `base_url =
 "http://127.0.0.1:<port>/v1"`, `wire_api = "responses"` and
 `stream_max_retries = 2`.
 
-**Falling back.** With `LOOM_CLAUDE_FALLBACK_MODEL` set (e.g.
-`us.anthropic.claude-opus-5[1m]`), CC runs with `--fallback-model`. Measured
-against the same local server (CC 2.1.300, `CLAUDE_CODE_MAX_RETRIES=2`):
-
-| status | usual model | fallback |
-|---|---|---|
-| 500, 503 | one attempt | then its retries |
-| 529 | all retries | then its retries |
-| 429 | all retries | never tried |
-
-The switch lasts until the turn ends; the next one tries the usual model
-first. A model with a context window smaller than the conversation would fail
-there too, so the fallback should be a 1M one when the usual model is.
+There is no automatic fallback to another model. When the usual one is down,
+the user switches by hand (the composer's model menu, or a session on Codex or
+another profile), so which model answered is never a surprise.
 
 ### 6.14 Profiles: another provider per session
 
@@ -277,9 +267,7 @@ server, with `CLAUDE_CODE_USE_BEDROCK=0`, `ANTHROPIC_BASE_URL` and
 out as written, no `[1m]` added.
 
 The session header stores only the name, so the key stays in the file and an
-edit takes effect at the next spawn. A session on a profile gets no
-`--fallback-model`: the configured fallback names a model of the default
-provider. A profile file that has gone missing fails the turn with its name
+edit takes effect at the next spawn. A profile file that has gone missing fails the turn with its name
 rather than falling back to the default.
 
 Bedrock's own Anthropic-compatible endpoint
@@ -291,6 +279,30 @@ metadata contains a value that violates the regular expression"), so
 rejects CC's experimental `anthropic-beta` values, so
 `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. With both, a Loom session ran tools
 and reported a 1M window. The `profiles` skill has the full file.
+
+### 6.15 Switching the model mid-session
+
+The composer's model menu lists `Backend.models/0`. For CC that is three
+aliases, `opus`, `sonnet` and `haiku`. The settings in force map each alias to
+an id through `ANTHROPIC_DEFAULT_*_MODEL`, so the same three work on every
+profile. For Codex it is the app-server's own `model/list`, without the hidden
+entries.
+
+A switch is recorded in the header (`model`) and said in the transcript
+(`:model_changed`). It applies from the next turn; a turn already running
+finishes on its own model. Neither engine restarts:
+
+- **CC.** A process spawned after the switch gets `--model`. A process that is
+  already live is sent `{"type":"control_request","request":{"subtype":
+  "set_model","model":…}}` just before the next message. Measured (CC 2.1.300):
+  opus answered, `set_model haiku` was acknowledged, and the next answer came
+  from haiku in the same process, with the conversation intact.
+- **Codex.** `turn/start` carries `model` on every turn. Measured: a session
+  switched to `openai.gpt-5.5` ran its turn on it, and the context window it
+  reported changed to that model's.
+
+Caches are per model. The first turn after a switch writes the whole
+conversation into the new model's cache.
 
 ## 7. Not done: permission prompts
 
