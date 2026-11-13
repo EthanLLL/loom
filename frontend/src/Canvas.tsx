@@ -1,5 +1,5 @@
-import { ChevronLeft, Download, FolderTree, Maximize, Minimize, RotateCw } from "lucide-react"
-import { useEffect, useMemo, useState, type RefObject } from "react"
+import { ArrowLeft01Icon, Download04Icon, FolderTreeIcon, Maximize01Icon, Minimize01Icon, ReloadIcon } from "@hugeicons/core-free-icons"
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react"
 import {
   canvasBase,
   downloadAgentOutput,
@@ -10,6 +10,7 @@ import {
 import { viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
 import { FileBrowser, type TreeNav } from "./FileBrowser"
 import { Markdown } from "./markdown"
+import { PaneButton, PaneHead, PaneNote, PaneTitle } from "./Pane"
 
 /**
  * The canvas: one session's output, shown beside the chat. Pages and PDFs go
@@ -116,62 +117,56 @@ export function Canvas({
   }
 
   return (
-    <div className="canvas">
-      <div className="pane-head">
-        <span className="pane-title">
-          {narrow && (
-            <button className="pane-btn" onClick={onBack} title="Back to the chat">
-              <ChevronLeft />
-            </button>
-          )}
-          {sessionId && (
-            <button
-              className={"pane-btn tree-toggle" + (showTree ? " on" : "")}
-              onClick={toggleTree}
-              title={showTree ? "Hide the files" : "All files in this session"}
-            >
-              <FolderTree />
-            </button>
-          )}
-          <span className="canvas-title" title={item?.path}>
-            {item ? item.title : "canvas"}
-          </span>
-        </span>
-        <span className="pane-actions">
-          {item && (
-            <>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PaneHead
+        main
+        title={
+          <>
+            {narrow && <PaneButton icon={ArrowLeft01Icon} onClick={onBack} title="Back to the chat" />}
+            {sessionId && (
+              <PaneButton
+                icon={FolderTreeIcon}
+                pressed={showTree}
+                onClick={toggleTree}
+                title={showTree ? "Hide the files" : "All files in this session"}
+              />
+            )}
+            <PaneTitle hint={item?.path}>{item ? item.title : "Canvas"}</PaneTitle>
+          </>
+        }
+      >
+        {item && (
+          <>
             {!narrow && (
-              <button
-                className="pane-btn"
+              <PaneButton
+                icon={maximized ? Minimize01Icon : Maximize01Icon}
                 onClick={onToggleMaximized}
                 title={maximized ? "Back beside the chat (Esc)" : "Full window"}
-              >
-                {maximized ? <Minimize /> : <Maximize />}
-              </button>
+              />
             )}
-            <button className="pane-btn" onClick={() => setReloads((n) => n + 1)} title="Reload">
-              <RotateCw />
-            </button>
-            <button
-              className={"pane-btn download" + (downloading ? " busy" : "")}
+            <PaneButton icon={ReloadIcon} onClick={() => setReloads((n) => n + 1)} title="Reload" />
+            <PaneButton
+              icon={Download04Icon}
               onClick={download}
+              disabled={downloading}
+              className="disabled:cursor-progress"
               title={
                 item.download.kind === "dir"
                   ? `Download ${item.download.path} as a zip`
                   : `Download ${item.download.path}`
               }
-            >
-              <Download />
-            </button>
-            </>
-          )}
-        </span>
-      </div>
-      <div className="canvas-body">
-        {/* Kept mounted while folded, so what was unfolded stays unfolded. */}
+            />
+          </>
+        )}
+      </PaneHead>
+      <div className="relative flex min-h-0 flex-1">
+        {/* Kept mounted while folded, so what was unfolded stays unfolded. A
+            phone has no room for both: there the tree covers the view. */}
         {sessionId && (
           <div
-            className={"canvas-tree" + (narrow ? " overlay" : "")}
+            className={
+              "min-w-0 " + (narrow ? "absolute inset-0 z-2 bg-background" : "relative w-64 shrink-0 border-r")
+            }
             style={{ display: showTree ? undefined : "none" }}
           >
             <FileBrowser
@@ -185,17 +180,17 @@ export function Canvas({
             />
           </div>
         )}
-        <div className="canvas-view">
-          {error && <div className="canvas-note failed">{error}</div>}
+        <div className="relative min-w-0 flex-1">
+          {error && <PaneNote failed>{error}</PaneNote>}
           {src && item ? (
             // Remounted on reload, when another file is opened, and when this
             // one is opened again or rewritten (`rev`).
             <View key={`${src}#${reloads}#${item.rev ?? 0}`} src={src} item={item} />
           ) : (
             !error && (
-              <div className="canvas-note">
-                {item ? "loading…" : sessionId ? "Pick a file to show it here." : "No session selected."}
-              </div>
+              <PaneNote>
+                {item ? "Loading…" : sessionId ? "Pick a file to show it here." : "No session selected."}
+              </PaneNote>
             )
           )}
         </div>
@@ -212,15 +207,15 @@ function View({ src, item }: { src: string; item: CanvasItem }) {
       return <ImageView src={src} alt={item.title} />
     case "video":
       return (
-        <div className="canvas-media">
-          <video src={src} controls playsInline preload="metadata" />
-        </div>
+        <Media>
+          <video src={src} controls playsInline preload="metadata" className="max-h-full max-w-full object-contain" />
+        </Media>
       )
     case "audio":
       return (
-        <div className="canvas-media">
-          <audio src={src} controls preload="metadata" />
-        </div>
+        <Media>
+          <audio src={src} controls preload="metadata" className="w-[min(32rem,90%)]" />
+        </Media>
       )
     case "markdown":
     case "table":
@@ -240,25 +235,39 @@ function View({ src, item }: { src: string; item: CanvasItem }) {
               : "allow-scripts allow-forms allow-popups allow-modals allow-downloads"
           }
           allow="autoplay; fullscreen"
+          // White, not the app's background: pages, PDFs and plain text are
+          // written to be read on white, and a transparent page would
+          // otherwise be dark on dark.
+          className="absolute inset-0 size-full border-0 bg-white"
           referrerPolicy="no-referrer"
         />
       )
   }
 }
 
+/** Images and media: centred by margin rather than by the flexbox, so that an
+ * image at its actual size still scrolls to its top-left corner. */
+function Media({ children }: { children: ReactNode }) {
+  return <div className="absolute inset-0 flex overflow-auto bg-background *:m-auto">{children}</div>
+}
+
+// Behind an image, so a transparent PNG or a black-line SVG shows.
+const CHECKER = "repeating-conic-gradient(#e8e8e8 0 25%, #fff 0 50%) 0 0 / 16px 16px"
+
 /** Fitted to the pane; a click toggles its actual size, scrolled. */
 function ImageView({ src, alt }: { src: string; alt: string }) {
   const [actual, setActual] = useState(false)
   return (
-    <div className="canvas-media">
+    <Media>
       <img
         src={src}
         alt={alt}
-        className={actual ? "actual" : "fit"}
+        style={{ background: CHECKER }}
+        className={"block " + (actual ? "cursor-zoom-out" : "max-h-full max-w-full cursor-zoom-in object-contain")}
         onClick={() => setActual((a) => !a)}
         title={actual ? "Fit to the pane" : "Actual size"}
       />
-    </div>
+    </Media>
   )
 }
 
@@ -287,21 +296,26 @@ function TextView({ src, viewer, path }: { src: string; viewer: Viewer; path: st
     }
   }, [src])
 
-  if (error) return <div className="canvas-note failed">{error}</div>
-  if (text === null) return <div className="canvas-note">loading…</div>
+  if (error) return <PaneNote failed>{error}</PaneNote>
+  if (text === null) return <PaneNote>Loading…</PaneNote>
 
   const cut = text.length > TEXT_LIMIT
   const shown = cut ? text.slice(0, TEXT_LIMIT) : text
   return (
-    <div className="canvas-doc">
+    // Markdown, tables and text, in the app's own colours and type.
+    <div className="absolute inset-0 overflow-auto px-5 pt-4 pb-8 font-sans">
       {viewer === "markdown" ? (
-        <Markdown text={shown} />
+        <div className="mx-auto max-w-[52rem]">
+          <Markdown text={shown} />
+        </div>
       ) : viewer === "table" ? (
         <Table text={shown} tsv={path.toLowerCase().endsWith(".tsv")} />
       ) : (
-        <pre className="canvas-text">{pretty(shown, path)}</pre>
+        <pre className="m-0 font-mono text-[0.8rem] leading-normal wrap-anywhere whitespace-pre-wrap">
+          {pretty(shown, path)}
+        </pre>
       )}
-      {cut && <div className="canvas-note">Cut short at 1 MB. Download for the rest.</div>}
+      {cut && <PaneNote>Cut short at 1 MB. Download for the rest.</PaneNote>}
     </div>
   )
 }
@@ -321,12 +335,13 @@ function Table({ text, tsv }: { text: string; tsv: boolean }) {
     while (rows.length && rows[rows.length - 1].every((c) => c === "")) rows.pop()
     return rows
   }, [text, tsv])
-  if (!rows.length) return <div className="canvas-note">empty</div>
+  if (!rows.length) return <PaneNote>Empty.</PaneNote>
 
   const [head, ...body] = rows
   return (
-    <div className="md-table-wrap">
-      <table className="md-table canvas-table">
+    // The canvas itself scrolls a wide table, so its header can stick.
+    <div>
+      <table className="border-collapse text-sm [&_td]:border [&_td]:px-2.5 [&_td]:py-1 [&_td]:align-top [&_th]:sticky [&_th]:-top-4 [&_th]:border [&_th]:bg-muted [&_th]:px-2.5 [&_th]:py-1 [&_th]:text-left [&_th]:font-medium [&_th]:whitespace-nowrap [&_th]:text-muted-foreground">
         <thead>
           <tr>
             {head.map((cell, i) => (
@@ -345,9 +360,9 @@ function Table({ text, tsv }: { text: string; tsv: boolean }) {
         </tbody>
       </table>
       {body.length > TABLE_ROWS && (
-        <div className="canvas-note">
+        <PaneNote>
           First {TABLE_ROWS} of {body.length} rows. Download for the rest.
-        </div>
+        </PaneNote>
       )}
     </div>
   )

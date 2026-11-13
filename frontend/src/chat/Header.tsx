@@ -1,7 +1,9 @@
-import { PaintbrushIcon, PanelLeftOpenIcon, SquareTerminalIcon } from "lucide-react"
+import { PaintBrush03Icon, SquareTerminalIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 import type { Transcript } from "../agent"
 import type { AgentBackend, AgentInfo } from "../api"
 import { BackendIcon } from "../BackendIcon"
@@ -15,8 +17,6 @@ import { contextPressure, formatTokens } from "./format"
 export function ChatHeader({
   session,
   transcript,
-  sidebarOpen,
-  onToggleSidebar,
   terminalOpen,
   terminalCount,
   onToggleTerminal,
@@ -26,8 +26,6 @@ export function ChatHeader({
 }: {
   session: AgentInfo
   transcript: Transcript
-  sidebarOpen: boolean
-  onToggleSidebar: () => void
   terminalOpen: boolean
   terminalCount: number
   onToggleTerminal: () => void
@@ -41,12 +39,9 @@ export function ChatHeader({
     // `.chat-header` keeps the bar's height in step with the sidebar's own
     // (`--head-h`, App.css) and lets Cool Night draw its rule under it. On a
     // phone it also clears the status bar.
-    <header className="chat-header flex h-(--head-h) shrink-0 items-center gap-2 border-b bg-background px-3 max-sm:gap-1 max-sm:px-2 max-sm:pt-[max(0px,env(safe-area-inset-top))]">
-      {!sidebarOpen && (
-        <Button variant="ghost" size="icon" onClick={onToggleSidebar} title="Show sidebar" aria-label="Show sidebar">
-          <PanelLeftOpenIcon />
-        </Button>
-      )}
+    <header className="chat-header flex h-(--head-h) shrink-0 items-center gap-2 border-b bg-background px-3 sm:pointer-coarse:px-5 max-sm:gap-1 max-sm:px-2 max-sm:pt-[max(0px,env(safe-area-inset-top))]">
+      {/* The sidebar's one switch, open or shut, desktop or drawer. */}
+      <SidebarTrigger size="icon" className="text-muted-foreground pointer-coarse:size-[48px]" title="Sidebar" />
 
       <Title
         title={session.title ?? session.id}
@@ -61,7 +56,8 @@ export function ChatHeader({
           <Badge
             variant="outline"
             className={
-              "tabular-nums " +
+              // Narrow, the name matters more; each turn's line has the number too.
+              "tabular-nums @max-xl:hidden " +
               (pressure === "hot" ? "text-destructive" : pressure === "warm" ? "text-amber-500" : "text-muted-foreground")
             }
             title="How big the conversation is now, against the model's window"
@@ -78,7 +74,7 @@ export function ChatHeader({
           variant="ghost"
           size="icon"
           aria-pressed={terminalOpen}
-          className="relative text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+          className="relative text-muted-foreground pointer-coarse:size-[48px] aria-pressed:bg-muted aria-pressed:text-foreground"
           onClick={onToggleTerminal}
           title={
             (terminalOpen ? "Hide" : "Show") +
@@ -86,7 +82,7 @@ export function ChatHeader({
             " (they open in your home directory)"
           }
         >
-          <SquareTerminalIcon />
+          <HugeiconsIcon icon={SquareTerminalIcon} />
           {terminalCount > 0 && (
             <span className="absolute top-0.5 right-0.5 min-w-3.5 rounded-full bg-primary px-1 text-[0.625rem] leading-3.5 font-semibold text-primary-foreground tabular-nums">
               {terminalCount}
@@ -97,11 +93,11 @@ export function ChatHeader({
           variant="ghost"
           size="icon"
           aria-pressed={canvasOpen}
-          className="text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+          className="text-muted-foreground pointer-coarse:size-[48px] aria-pressed:bg-muted aria-pressed:text-foreground"
           onClick={onToggleCanvas}
           title={(canvasOpen ? "Hide" : "Show") + " the canvas"}
         >
-          <PaintbrushIcon />
+          <HugeiconsIcon icon={PaintBrush03Icon} />
         </Button>
       </div>
     </header>
@@ -139,7 +135,7 @@ function Title({
       <BackendIcon backend={backend} />
       {editing ? (
         <input
-          className="h-7 min-w-0 flex-1 rounded-md border border-ring bg-background px-2 text-sm font-medium outline-none max-sm:text-base"
+          className="h-7 min-w-0 flex-1 rounded-md border border-ring bg-background px-2 text-sm font-medium outline-none max-sm:text-base pointer-coarse:h-9 pointer-coarse:text-base"
           value={draft}
           autoFocus
           onChange={(e) => setDraft(e.target.value)}
@@ -155,7 +151,9 @@ function Title({
         />
       ) : (
         <span
-          className="truncate text-sm font-medium"
+          // `chat-name`: with the title bar hidden, only the name is not the
+          // window's to drag (App.css), so a double-click renames here.
+          className="chat-name truncate text-sm font-medium pointer-coarse:text-base pointer-coarse:font-semibold"
           title="Double-click to rename"
           onDoubleClick={() => {
             setDraft(title)

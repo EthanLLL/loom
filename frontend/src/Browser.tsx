@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import RFB from "@novnc/novnc"
-import { ArrowRightToLine, ChevronLeft, CornerDownLeft, Delete, Keyboard, Maximize, Minimize, RefreshCw, Send, X, ZoomIn, ZoomOut } from "lucide-react"
+import { ArrowLeft01Icon, ArrowRightToLineIcon, ArrowTurnBackwardIcon, Cancel01Icon, DeletePutBackIcon, KeyboardIcon, Maximize01Icon, Minimize01Icon, ReloadIcon, SentIcon, ZoomInAreaIcon, ZoomOutAreaIcon } from "@hugeicons/core-free-icons"
+import { Input } from "@/components/ui/input"
 import { getToken } from "./api"
+import { PaneButton, PaneHead, PaneTitle } from "./Pane"
 
 /**
  * Loom's own browser — the Chromium that agents drive over CDP — shown here so
@@ -103,87 +105,77 @@ export function Browser({
   }
 
   return (
-    <div className="browser-pane">
-      <div className="pane-head">
-        <span className="pane-title">
-          {narrow && (
-            <button className="pane-btn" onClick={onClose} title="Back to the chat">
-              <ChevronLeft />
-            </button>
-          )}
-          browser
-          {state !== "connected" && <span className="browser-state">{state === "connecting" ? "connecting…" : "disconnected"}</span>}
-        </span>
-        <span className="pane-actions">
-          {state === "closed" && (
-            <button className="pane-btn" onClick={() => setAttempt((n) => n + 1)} title="Connect again">
-              <RefreshCw />
-            </button>
-          )}
-          <button
-            className={"pane-btn" + (typing ? " on" : "")}
-            onClick={() => setTyping((t) => !t)}
-            title="Type text into the page"
-          >
-            <Keyboard />
-          </button>
-          <button
-            className="pane-btn"
-            onClick={() => setFit((f) => !f)}
-            title={fit ? "Actual size; drag to pan on a touch screen" : "Fit the screen in the pane"}
-          >
-            {fit ? <ZoomIn /> : <ZoomOut />}
-          </button>
-          {!narrow && (
-            <button
-              className="pane-btn"
-              onClick={onToggleMaximized}
-              title={maximized ? "Back beside the chat" : "Full window"}
-            >
-              {maximized ? <Minimize /> : <Maximize />}
-            </button>
-          )}
-          {!narrow && (
-            <button className="pane-btn" onClick={onClose} title="Close">
-              <X />
-            </button>
-          )}
-        </span>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PaneHead
+        main
+        title={
+          <>
+            {narrow && <PaneButton icon={ArrowLeft01Icon} onClick={onClose} title="Back to the chat" />}
+            <PaneTitle>Browser</PaneTitle>
+            {state !== "connected" && (
+              <span className="shrink-0 text-xs">{state === "connecting" ? "connecting…" : "disconnected"}</span>
+            )}
+          </>
+        }
+      >
+        {state === "closed" && (
+          <PaneButton icon={ReloadIcon} onClick={() => setAttempt((n) => n + 1)} title="Connect again" />
+        )}
+        <PaneButton
+          icon={KeyboardIcon}
+          pressed={typing}
+          onClick={() => setTyping((t) => !t)}
+          title="Type text into the page"
+        />
+        <PaneButton
+          icon={fit ? ZoomInAreaIcon : ZoomOutAreaIcon}
+          onClick={() => setFit((f) => !f)}
+          title={fit ? "Actual size; drag to pan on a touch screen" : "Fit the screen in the pane"}
+        />
+        {!narrow && (
+          <PaneButton
+            icon={maximized ? Minimize01Icon : Maximize01Icon}
+            onClick={onToggleMaximized}
+            title={maximized ? "Back beside the chat" : "Full window"}
+          />
+        )}
+        {!narrow && <PaneButton icon={Cancel01Icon} onClick={onClose} title="Close" />}
+      </PaneHead>
       {typing && (
         <form
-          className="browser-type"
+          className="flex items-center gap-1 border-b px-2 py-1.5 font-sans"
           onSubmit={(e) => {
             e.preventDefault()
             send(text)
             setText("")
           }}
         >
-          <input
+          {/* 16px everywhere: iOS zooms the page into any smaller field. */}
+          <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Text for the focused field"
+            className="flex-1 text-base! pointer-coarse:h-[44px]"
             autoCapitalize="off"
             autoCorrect="off"
             autoComplete="off"
             spellCheck={false}
           />
-          <button type="submit" className="pane-btn" title="Type it">
-            <Send />
-          </button>
-          <button type="button" className="pane-btn" onClick={() => key(0xff08)} title="Backspace">
-            <Delete />
-          </button>
-          <button type="button" className="pane-btn" onClick={() => key(0xff09)} title="Tab">
-            <ArrowRightToLine />
-          </button>
-          <button type="button" className="pane-btn" onClick={() => key(0xff0d)} title="Enter">
-            <CornerDownLeft />
-          </button>
+          <PaneButton type="submit" icon={SentIcon} title="Type it" />
+          <PaneButton icon={DeletePutBackIcon} onClick={() => key(0xff08)} title="Backspace" />
+          <PaneButton icon={ArrowRightToLineIcon} onClick={() => key(0xff09)} title="Tab" />
+          <PaneButton icon={ArrowTurnBackwardIcon} onClick={() => key(0xff0d)} title="Enter" />
         </form>
       )}
-      <div className="browser-screen" ref={screen} onPaste={paste} />
-      <textarea ref={catcher} className="browser-paste" onPaste={paste} tabIndex={-1} aria-hidden="true" />
+      <div className="min-h-0 flex-1 bg-[#1a1a1a]" ref={screen} onPaste={paste} />
+      {/* Where a paste lands on its way into the page; see above. */}
+      <textarea
+        ref={catcher}
+        className="pointer-events-none fixed top-0 left-0 size-px opacity-0"
+        onPaste={paste}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
     </div>
   )
 }

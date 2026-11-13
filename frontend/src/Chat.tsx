@@ -14,8 +14,6 @@ import { useAttachments, useFileDrop } from "./useAttachments"
 
 type Props = {
   session: AgentInfo
-  sidebarOpen: boolean
-  onToggleSidebar: () => void
   terminalOpen: boolean
   terminalCount: number
   onToggleTerminal: () => void
@@ -35,8 +33,6 @@ type Props = {
  */
 export function Chat({
   session,
-  sidebarOpen,
-  onToggleSidebar,
   terminalOpen,
   terminalCount,
   onToggleTerminal,
@@ -98,7 +94,7 @@ export function Chat({
     <ChatContext.Provider value={scope}>
       <div
         className={
-          "chat flex min-h-0 min-w-0 flex-1 flex-col bg-background font-sans text-foreground" +
+          "chat @container flex min-h-0 min-w-0 flex-1 flex-col bg-background font-sans text-foreground" +
           (drop.dragging ? " outline-1 -outline-offset-2 outline-primary outline-dashed" : "")
         }
         {...drop.handlers}
@@ -114,8 +110,6 @@ export function Chat({
         <ChatHeader
           session={session}
           transcript={transcript}
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={onToggleSidebar}
           terminalOpen={terminalOpen}
           terminalCount={terminalCount}
           onToggleTerminal={onToggleTerminal}

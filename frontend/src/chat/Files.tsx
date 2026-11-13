@@ -1,4 +1,5 @@
-import { FileIcon, FolderIcon, GlobeIcon, LoaderCircleIcon, XIcon } from "lucide-react"
+import { Cancel01Icon, File01Icon, Folder01Icon, Globe02Icon, Loading03Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useState, type ReactNode } from "react"
 import {
   Attachment,
@@ -63,7 +64,7 @@ function FileCard({
   const [broken, setBroken] = useState(false)
   const showImage = image !== null && !broken && !unreachable && src !== null
   const loading = busy || (image !== null && !broken && !unreachable && src === null && !error)
-  const Icon = kind === "dir" ? FolderIcon : kind === "page" ? GlobeIcon : FileIcon
+  const icon = kind === "dir" ? Folder01Icon : kind === "page" ? Globe02Icon : File01Icon
 
   return (
     <Attachment
@@ -75,11 +76,11 @@ function FileCard({
       {onClick && <AttachmentTrigger onClick={onClick} aria-label={title} />}
       <AttachmentMedia variant={showImage ? "image" : "icon"}>
         {loading ? (
-          <LoaderCircleIcon className="animate-spin" />
+          <HugeiconsIcon icon={Loading03Icon} className="animate-spin" />
         ) : showImage ? (
           <img src={src} alt="" onError={() => setBroken(true)} />
         ) : (
-          <Icon />
+          <HugeiconsIcon icon={icon} />
         )}
       </AttachmentMedia>
       <AttachmentContent>
@@ -89,7 +90,7 @@ function FileCard({
       {onRemove && (
         <AttachmentActions>
           <AttachmentAction aria-label={`Remove ${name}`} onClick={onRemove}>
-            <XIcon />
+            <HugeiconsIcon icon={Cancel01Icon} />
           </AttachmentAction>
         </AttachmentActions>
       )}

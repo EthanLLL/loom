@@ -1,4 +1,5 @@
-import { ArrowDownIcon } from "lucide-react"
+import { ArrowDown02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useLayoutEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import type { TimelineItem } from "../agent"
@@ -146,7 +147,7 @@ export function Timeline({
           title="Jump to the latest"
           aria-label="Jump to the latest"
         >
-          <ArrowDownIcon />
+          <HugeiconsIcon icon={ArrowDown02Icon} />
         </Button>
       )}
     </div>

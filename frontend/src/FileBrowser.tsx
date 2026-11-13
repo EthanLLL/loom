@@ -1,19 +1,5 @@
-import {
-  AppWindow,
-  ChevronDown,
-  ChevronRight,
-  Download,
-  File as FileIcon,
-  FileCode,
-  FileImage,
-  FileMusic,
-  FileSpreadsheet,
-  FileText,
-  FileVideo,
-  Folder,
-  FolderOpen,
-  type LucideIcon,
-} from "lucide-react"
+import { ArrowDown01Icon, ArrowRight01Icon, BrowserIcon, Download04Icon, File01Icon, FileScriptIcon, FileTextIcon, Folder01Icon, FolderOpenIcon, Image01Icon, MusicNote01Icon, Video01Icon, Xls01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react"
 import {
   deleteAgentOutputOrAttachment,
@@ -24,9 +10,11 @@ import {
   sessionTree,
   type TreeFile,
 } from "./api"
+import { Button } from "@/components/ui/button"
 import { Confirm, RenameInput } from "./Confirm"
 import { itemForAttachment, itemForPath, viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
 import { formatBytes } from "./format"
+import { PaneNote } from "./Pane"
 
 type Section = "output" | "files"
 
@@ -243,7 +231,7 @@ export function FileBrowser({
       const isDir = !!node.children
       const unfoldedHere = isDir && unfolded.has(`${section}:${node.path}`)
       const page = isDir && node.children!.some((c) => c.name === "index.html" && !c.children)
-      const Icon = isDir ? (unfoldedHere ? FolderOpen : Folder) : iconFor(node.name)
+      const icon = isDir ? (unfoldedHere ? FolderOpenIcon : Folder01Icon) : iconFor(node.name)
       // The row of what is shown, or the folded directory hiding it.
       const shown =
         current === `${section}:${node.path}` ||
@@ -254,24 +242,36 @@ export function FileBrowser({
         <div
           key={key}
           ref={onCursor ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
-          className={"tree-row" + (shown ? " current" : "") + (onCursor ? " cursor" : "")}
-          style={{ paddingLeft: `${0.5 + depth * 0.9}rem` }}
+          className={
+            "group/row mx-1.5 flex min-h-7.5 cursor-pointer items-center gap-1.5 rounded-md pr-1 hover:bg-muted pointer-coarse:min-h-[44px]" +
+            (shown ? " bg-muted font-medium text-foreground" : "") +
+            (onCursor ? " ring-1 ring-ring ring-inset" : "")
+          }
+          style={{ paddingLeft: `${0.25 + depth * 0.9}rem` }}
           onClick={() => open(section, node)}
           title={`${node.path}\n${formatBytes(node.size)} · ${formatTime(node.mtime)}`}
         >
-          <span className="tree-fold">
-            {isDir && (unfoldedHere ? <ChevronDown /> : <ChevronRight />)}
+          <span className="inline-flex w-4 shrink-0 text-muted-foreground">
+            {isDir && <HugeiconsIcon icon={unfoldedHere ? ArrowDown01Icon : ArrowRight01Icon} />}
           </span>
-          <Icon className="tree-icon" />
+          <HugeiconsIcon
+            icon={icon}
+            className={"shrink-0 " + (shown ? "text-foreground" : "text-muted-foreground")}
+          />
           {renaming === key ? (
             <RenameInput value={node.name} onDone={(name) => rename(section, node, name)} />
           ) : (
-            <span className="tree-name">{node.name}</span>
+            <span className="min-w-0 flex-1 truncate">{node.name}</span>
           )}
-          <span className="tree-actions">
+          {/* Shown on hover, where there is hover; always on a touch screen.
+              Hidden rather than absent, so names do not shift under the
+              pointer. */}
+          <span className="invisible flex shrink-0 gap-0.5 group-hover/row:visible pointer-coarse:visible">
             {page && (
-              <button
-                className="pane-btn"
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-muted-foreground"
                 title={`Show ${node.path} in the canvas`}
                 onClick={(e) => {
                   e.stopPropagation()
@@ -282,19 +282,21 @@ export function FileBrowser({
                   })
                 }}
               >
-                <AppWindow />
-              </button>
+                <HugeiconsIcon icon={BrowserIcon} />
+              </Button>
             )}
-            <button
-              className="pane-btn download"
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground"
               title={isDir ? `Download ${node.path} as a zip` : `Download ${node.name}`}
               onClick={(e) => {
                 e.stopPropagation()
                 download(section, node)
               }}
             >
-              <Download />
-            </button>
+              <HugeiconsIcon icon={Download04Icon} />
+            </Button>
           </span>
         </div>
       )
@@ -302,7 +304,7 @@ export function FileBrowser({
     })
 
   return (
-    <div className="file-browser">
+    <div className="absolute inset-0 overflow-auto pt-1 pb-8 font-sans text-sm pointer-coarse:text-base">
       {asking && (
         <Confirm
           title={`Delete ${asking.node.name}?`}
@@ -315,26 +317,31 @@ export function FileBrowser({
           onClose={() => setAsking(null)}
         />
       )}
-      {error && <div className="canvas-note failed">{error}</div>}
-      {!tree && !error && <div className="canvas-note">loading…</div>}
+      {error && <PaneNote failed>{error}</PaneNote>}
+      {!tree && !error && <PaneNote>Loading…</PaneNote>}
       {tree && (
         <>
-          <div className="tree-section">Output</div>
-          {output.length ? (
-            rows("output", output, 0)
-          ) : (
-            <div className="tree-empty">Nothing made in this session yet.</div>
-          )}
-          <div className="tree-section">Uploads</div>
-          {files.length ? (
-            rows("files", files, 0)
-          ) : (
-            <div className="tree-empty">Nothing attached in this session yet.</div>
-          )}
+          <Heading>Output</Heading>
+          {output.length ? rows("output", output, 0) : <Empty>Nothing made in this session yet.</Empty>}
+          <Heading>Uploads</Heading>
+          {files.length ? rows("files", files, 0) : <Empty>Nothing attached in this session yet.</Empty>}
         </>
       )}
     </div>
   )
+}
+
+// As the sidebar labels its groups.
+function Heading({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-3.5 pt-3 pb-1 text-xs font-medium text-muted-foreground pointer-coarse:text-[13px]">
+      {children}
+    </div>
+  )
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return <div className="px-3.5 py-1 text-xs text-muted-foreground pointer-coarse:text-[13px]">{children}</div>
 }
 
 /** Flat paths into a tree, each level newest first. */
@@ -367,21 +374,21 @@ function build(list: TreeFile[]): Node[] {
   return root.children!
 }
 
-const ICONS: Record<Viewer, LucideIcon> = {
-  image: FileImage,
-  video: FileVideo,
-  audio: FileMusic,
-  markdown: FileText,
-  table: FileSpreadsheet,
-  text: FileCode,
-  frame: AppWindow,
+const ICONS: Record<Viewer, IconSvgElement> = {
+  image: Image01Icon,
+  video: Video01Icon,
+  audio: MusicNote01Icon,
+  markdown: FileTextIcon,
+  table: Xls01Icon,
+  text: FileScriptIcon,
+  frame: BrowserIcon,
 }
 
-function iconFor(name: string): LucideIcon {
-  if (/\.(xlsx?|numbers)$/i.test(name)) return FileSpreadsheet
-  if (/\.(docx?|pdf|pptx?|key)$/i.test(name)) return FileText
+function iconFor(name: string): IconSvgElement {
+  if (/\.(xlsx?|numbers)$/i.test(name)) return Xls01Icon
+  if (/\.(docx?|pdf|pptx?|key)$/i.test(name)) return FileTextIcon
   const viewer = viewerFor(name)
-  return viewer ? ICONS[viewer] : FileIcon
+  return viewer ? ICONS[viewer] : File01Icon
 }
 
 // Time of day for today, the date otherwise, with the year only when it is not this one.

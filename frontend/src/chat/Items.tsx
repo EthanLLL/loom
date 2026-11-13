@@ -1,4 +1,5 @@
-import { ClockIcon } from "lucide-react"
+import { Clock01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { memo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -119,7 +120,7 @@ function UserMessage({ item }: { item: Extract<TimelineItem, { kind: "user" }> }
     item.origin === "phone" && <Badge key="phone" variant="secondary">phone</Badge>,
     item.origin === "cron" && (
       <Badge key="cron" variant="secondary">
-        <ClockIcon /> cron
+        <HugeiconsIcon icon={Clock01Icon} /> cron
       </Badge>
     ),
   ].filter(Boolean)

@@ -1,7 +1,7 @@
-import { ChevronLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react"
+import { ArrowLeft01Icon, Cancel01Icon, LinkSquare02Icon, Maximize01Icon, Minimize01Icon } from "@hugeicons/core-free-icons"
 import { useState } from "react"
 import type { AppInfo } from "./api"
-import "./Apps.css"
+import { PaneButton, PaneHead, PaneLink, PaneTitle } from "./Pane"
 
 /**
  * The apps (`Loom.Apps`) as a home screen: a grid of icons in the user's
@@ -32,60 +32,52 @@ export function Apps({
   const [open, setOpen] = useState<AppInfo | null>(null)
 
   return (
-    <div className="apps">
-      <div className="pane-head">
-        <span className="pane-title">
-          {open && (
-            <button className="pane-btn" onClick={() => setOpen(null)} title="Back to apps">
-              <ChevronLeft />
-            </button>
-          )}
-          {open ? open.title : "apps"}
-        </span>
-        <span className="pane-actions">
-          {open && (
-            <a
-              className="pane-btn"
-              href={open.url}
-              target="_blank"
-              rel="noopener"
-              title="Open in its own tab"
-            >
-              <ExternalLink />
-            </a>
-          )}
-          {!narrow && (
-            <button
-              className="pane-btn"
-              onClick={onToggleMaximized}
-              title={maximized ? "Back beside the chat (Esc)" : "Full window"}
-            >
-              {maximized ? <Minimize /> : <Maximize />}
-            </button>
-          )}
-          <button className="pane-btn" onClick={onClose} title="Close">
-            <X />
-          </button>
-        </span>
-      </div>
+    <div className="flex size-full min-h-0 min-w-0 flex-1 flex-col bg-background">
+      <PaneHead
+        main
+        title={
+          <>
+            {open && <PaneButton icon={ArrowLeft01Icon} onClick={() => setOpen(null)} title="Back to apps" />}
+            <PaneTitle>{open ? open.title : "Apps"}</PaneTitle>
+          </>
+        }
+      >
+        {open && (
+          <PaneLink icon={LinkSquare02Icon} href={open.url} target="_blank" rel="noopener" title="Open in its own tab" />
+        )}
+        {!narrow && (
+          <PaneButton
+            icon={maximized ? Minimize01Icon : Maximize01Icon}
+            onClick={onToggleMaximized}
+            title={maximized ? "Back beside the chat (Esc)" : "Full window"}
+          />
+        )}
+        <PaneButton icon={Cancel01Icon} onClick={onClose} title="Close" />
+      </PaneHead>
       {open ? (
-        <iframe
-          className="app-frame"
-          src={open.url}
-          title={open.title}
-          sandbox={SANDBOX}
-        />
+        <iframe className="w-full flex-1 border-0" src={open.url} title={open.title} sandbox={SANDBOX} />
       ) : (
-        <div className="apps-grid">
-          {apps.length === 0 && <p className="apps-note">No apps yet. Ask an agent to make one.</p>}
+        // A home screen: fixed-size tiles, as many to a row as fit, and the
+        // rest further down; on a phone four to a row, as on its own.
+        <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,112px)] content-start gap-x-5 gap-y-7 overflow-y-auto px-12 py-10 font-sans max-sm:grid-cols-4 max-sm:gap-x-2 max-sm:gap-y-6 max-sm:px-3 max-sm:py-6">
+          {apps.length === 0 && (
+            <p className="col-span-full text-sm text-muted-foreground">No apps yet. Ask an agent to make one.</p>
+          )}
           {apps.map((app) => (
-            <button key={app.name} className="app-tile" onClick={() => setOpen(app)} title={app.name}>
+            <button
+              key={app.name}
+              className="group/tile flex cursor-pointer flex-col items-center gap-2.5 text-foreground outline-none"
+              onClick={() => setOpen(app)}
+              title={app.name}
+            >
               {app.icon ? (
-                <img className="app-icon" src={app.icon} alt="" />
+                <img className={ICON + " object-cover"} src={app.icon} alt="" />
               ) : (
-                <span className="app-icon app-icon-letter">{app.title.slice(0, 1).toUpperCase()}</span>
+                <span className={ICON + " flex items-center justify-center bg-muted text-3xl max-sm:text-2xl"}>
+                  {app.title.slice(0, 1).toUpperCase()}
+                </span>
               )}
-              <span className="app-label">{app.title}</span>
+              <span className="max-w-full truncate text-center text-sm max-sm:text-xs">{app.title}</span>
             </button>
           ))}
         </div>
@@ -93,3 +85,6 @@ export function Apps({
     </div>
   )
 }
+
+const ICON =
+  "size-18 rounded-[18px] shadow-md ring-1 ring-foreground/10 transition-transform duration-100 group-hover/tile:scale-106 group-focus-visible/tile:scale-106 group-active/tile:scale-96 max-sm:size-15 max-sm:rounded-[15px]"

@@ -1,5 +1,7 @@
-import { ChevronLeft, Maximize, Minimize, Plus, X } from "lucide-react"
+import { ArrowLeft01Icon, Cancel01Icon, Maximize01Icon, Minimize01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { BackendIcon } from "./BackendIcon"
 import { Canvas } from "./Canvas"
 import { moved, touches, type CanvasItem } from "./canvasItems"
 import { Confirm } from "./Confirm"
@@ -10,14 +12,17 @@ import type { TreeNav } from "./FileBrowser"
 import { KeyHelp, useGlobalKey, useKeys, WhichKey, type Keymap } from "./keys"
 import { Login } from "./Login"
 import { MovePicker } from "./MovePicker"
+import { PaneButton, PaneHead, PaneTitle } from "./Pane"
 import { usePush, useVisible } from "./push"
 import { Search } from "./Search"
-import { Sidebar } from "./Sidebar"
+import { Sidebar, SidebarHandle, WIDE } from "./Sidebar"
+import { SidebarProvider } from "@/components/ui/sidebar"
 import { Terminal } from "./Terminal"
 // noVNC is only for the browser pane, so it loads when that is first opened.
 const Browser = lazy(() => import("./Browser").then((m) => ({ default: m.Browser })))
 import { useLobby } from "./useLobby"
-import { useNarrow } from "./useNarrow"
+import { ViewportReadout } from "./ViewportReadout"
+import { useCompact, useNarrow } from "./useNarrow"
 import {
   createAgent,
   createSession,
@@ -36,6 +41,7 @@ import { dropSocket } from "./socket"
 import "./App.css"
 
 const SIDEBAR_KEY = "loom_sidebar_open"
+const SIDEBAR_SCALE_KEY = "loom_sidebar_scale"
 const CANVAS_KEY = "loom_canvas"
 const TREE_KEY = "loom_canvas_tree"
 const VIM_KEY = "loom_vim"
@@ -86,6 +92,7 @@ function App() {
     push.endpoint ? { endpoint: push.endpoint, session: visible ? activeId : null } : null,
   )
   const narrow = useNarrow()
+  const compact = useCompact()
 
   // The token outlives the app now (see `getToken`), so a stored one can be
   // dead. Checked once on open, and any 401 later lands here too.
@@ -104,6 +111,10 @@ function App() {
     () => localStorage.getItem(SIDEBAR_KEY) !== "0",
   )
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Whether the sidebar was dragged a third wider than its own (see
+  // `SidebarHandle`), on this device.
+  const [sidebarScale, setSidebarScale] = useState(() => (Number(localStorage.getItem(SIDEBAR_SCALE_KEY)) > 1 ? WIDE : 1))
+  useEffect(() => localStorage.setItem(SIDEBAR_SCALE_KEY, String(sidebarScale)), [sidebarScale])
 
   const [side, setSide] = useState<Side>(null)
   const terminalOpen = side === "terminal"
@@ -344,7 +355,7 @@ function App() {
     if (!walking) return
     // A dialog the walk opened (deleting, asks first) is still part of it.
     const away = (e: MouseEvent) => {
-      if ((e.target as Element | null)?.closest?.(".modal")) return
+      if ((e.target as Element | null)?.closest?.("[role=dialog], [role=alertdialog]")) return
       setListCursor(null)
       setTreeWalk(false)
     }
@@ -375,6 +386,7 @@ function App() {
     setTreeWalk(false)
     setFull(false)
     setSidebarOpen(true)
+    if (compact) setSide(null)
     setListCursor(activeId ?? ids[0] ?? null)
   }
   const toTree = () => {
@@ -464,9 +476,29 @@ function App() {
   useGlobalKey(keysOn, (e) => e.ctrlKey && e.code === "Backquote", () => void toggleTerminal())
 
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
-  if (!loaded) return <div className="loading">connecting…</div>
+  if (!loaded)
+    return (
+      <div className="flex h-full items-center justify-center bg-background font-sans text-muted-foreground">
+        Connecting…
+      </div>
+    )
 
   const active = sessions.find((s) => s.id === activeId) ?? null
+
+  // The right-hand column: the terminals stacked top to bottom, the canvas,
+  // the browser or the apps — one at a time; a 16:9 screen has no room for
+  // two beside the chat. 6 of 10 to the chat's 4, or even halves when the
+  // sidebar gave way for it (`compact`). Deliberately not scrolling: a
+  // scrollbar would narrow the column when it appeared, which re-fits every
+  // terminal, which reflows their content — a loop that shows up as flicker.
+  // Panes share the height instead; past a handful they get small, which is
+  // the cue to close one. On a touch screen in a card it keeps its content
+  // clear of the round bottom corners; on a phone, where it covers the
+  // screen, clear of the status bar and the home indicator.
+  const column =
+    "flex min-h-0 min-w-0 flex-col overflow-hidden sm:pointer-coarse:pb-3 max-sm:absolute max-sm:inset-0 max-sm:z-10 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)] " +
+    (maximized ? "flex-1" : compact ? "flex-[0_0_50%]" : "flex-[0_0_60%]") +
+    CARD
 
   const sidebar = (
     <Sidebar
@@ -492,7 +524,6 @@ function App() {
       onOrderDirectories={orderDirectories}
       narrow={narrow}
       onSearch={() => openOver(setSearching)}
-      onCollapse={() => (narrow ? setDrawerOpen(false) : setSidebarOpen(false))}
       browserOpen={side === "browser"}
       onToggleBrowser={() => {
         if (narrow) setDrawerOpen(false)
@@ -507,33 +538,45 @@ function App() {
   )
 
   return (
-    <div className={"app" + (side !== null ? " side-open" : "") + (maximized ? " maximized" : "")}>
-      {narrow ? (
-        // Always mounted so it can slide rather than pop. Over the chat, not
-        // beside it: a phone has no width to give a second column.
-        <div
-          className={"drawer" + (drawerOpen ? " open" : "")}
-          inert={!drawerOpen}
-        >
-          <div className="drawer-scrim" onClick={() => setDrawerOpen(false)} />
-          {sidebar}
-        </div>
-      ) : (
-        sidebarOpen && !maximized && sidebar
-      )}
+    // On a desktop the sidebar and the columns are cards on the sidebar's
+    // colour; on a phone the sidebar is a drawer over the chat, which has the
+    // whole screen. Its open states are kept here: see `SidebarProvider`.
+    <SidebarProvider
+      // Short of room, the sidebar and the column take turns: the column
+      // pushes it shut while open, and opening it closes the column (which
+      // stays mounted, as it was). It comes back when the column closes.
+      open={sidebarOpen && !maximized && !(compact && side !== null)}
+      onOpenChange={(open) => {
+        if (open && compact) setSide(null)
+        setSidebarOpen(open)
+      }}
+      openMobile={drawerOpen}
+      onOpenMobileChange={setDrawerOpen}
+      style={{ "--sidebar-width": `calc(17rem * ${sidebarScale})` } as React.CSSProperties}
+      className={
+        // `app`, `side-open` and `maximized` are for the title-bar rules in
+        // App.css, which follow whichever column is outermost.
+        "app bg-sidebar font-sans text-foreground" + (side !== null ? " side-open" : "") + (maximized ? " maximized" : "")
+      }
+    >
+      {sidebar}
+      {!maximized && <SidebarHandle scale={sidebarScale} onScale={setSidebarScale} />}
 
-      <main className="main">
-        <div className="main-chat">
+      {/* sidebar | chat | column — always side by side, at every width. The
+          target device is a foldable, so a narrow viewport is a tall one
+          rather than a reason to restack: a terminal under the chat would
+          leave both halves too short to be useful. The sidebar collapses
+          instead, and on a phone the column covers the chat. */}
+      <main className="relative flex min-h-0 min-w-0 flex-1 sm:gap-2 sm:p-2 sm:peer-data-[state=expanded]:pl-0">
+        {/* Maximized, the column takes the window; the chat stays mounted,
+            so its channel is still joined when it comes back. */}
+        <div className={"flex min-h-0 min-w-0 flex-1" + (maximized ? " hidden" : "") + CARD}>
           {active ? (
             // Keyed by id so switching sessions rebuilds the channel and the
             // transcript rather than mixing two conversations.
             <Chat
               key={active.id}
               session={active}
-              sidebarOpen={!narrow && sidebarOpen}
-              onToggleSidebar={() =>
-                narrow ? setDrawerOpen(true) : setSidebarOpen((open) => !open)
-              }
               terminalOpen={terminalOpen}
               terminalCount={ptyIds.length}
               onToggleTerminal={toggleTerminal}
@@ -546,27 +589,15 @@ function App() {
               }}
             />
           ) : (
-            <div className="placeholder">
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 font-sans text-muted-foreground">
               <p>No session selected.</p>
-              <div className="backend-choice">
-                <button
-                  className="text-btn"
-                  onClick={() => create("claude_code")}
-                >
-                  new Claude Code session
-                </button>
-                <button
-                  className="text-btn"
-                  onClick={() => create("codex")}
-                >
-                  new Codex session
-                </button>
-                <button
-                  className="text-btn"
-                  onClick={() => create("kiro")}
-                >
-                  new Kiro session
-                </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                {(["claude_code", "codex", "kiro"] as const).map((backend) => (
+                  <Button key={backend} variant="outline" onClick={() => create(backend)}>
+                    <BackendIcon backend={backend} />
+                    New {BACKEND_NAMES[backend]} session
+                  </Button>
+                ))}
               </div>
             </div>
           )}
@@ -574,7 +605,7 @@ function App() {
 
         {/* Kept mounted, so a page keeps its state (a video its position)
             while the terminals are shown instead. */}
-        <div className="side-column" style={{ display: side === "canvas" ? "flex" : "none" }}>
+        <div className={column} style={{ display: side === "canvas" ? "flex" : "none" }}>
           <Canvas
             sessionId={active?.id ?? null}
             item={active ? (canvases[active.id] ?? null) : null}
@@ -593,7 +624,7 @@ function App() {
         </div>
 
         {side === "browser" && (
-          <div className="side-column">
+          <div className={column}>
             <Suspense fallback={null}>
               <Browser
                 narrow={narrow}
@@ -606,7 +637,7 @@ function App() {
         )}
 
         {appsUsed && (
-          <div className="side-column" style={{ display: side === "apps" ? "flex" : "none" }}>
+          <div className={column} style={{ display: side === "apps" ? "flex" : "none" }}>
             <Apps
               apps={apps}
               narrow={narrow}
@@ -622,55 +653,43 @@ function App() {
             either way. */}
         {ptyIds.length > 0 && (
           <div
-            className="side-column terminal-column"
+            className={column}
             style={{ display: terminalOpen ? "flex" : "none" }}
           >
             {ptyIds.map((id, index) => (
-              <div className="terminal-pane" key={id}>
-                <div className="pane-head">
-                  <span className="pane-title">
-                    {/* On a phone the terminals cover the chat, and the
-                        header's toggle with it. */}
-                    {narrow && index === 0 && (
-                      <button
-                        className="pane-btn"
-                        onClick={() => setTerminalOpen(false)}
-                        title="Back to the chat"
-                      >
-                        <ChevronLeft />
-                      </button>
-                    )}
-                    terminal {index + 1}
-                  </span>
-                  <span className="pane-actions">
-                    {/* On every pane rather than once, so they do not move
-                        around as terminals are closed. */}
-                    {!narrow && (
-                      <button
-                        className="pane-btn"
-                        onClick={toggleFull}
-                        title={maximized ? "Back beside the chat (Esc outside a shell)" : "Full window"}
-                      >
-                        {maximized ? <Minimize /> : <Maximize />}
-                      </button>
-                    )}
-                    <button
-                      className="pane-btn"
-                      onClick={addTerminal}
-                      title="New terminal"
-                    >
-                      <Plus />
-                    </button>
-                    <button
-                      className="pane-btn"
-                      onClick={() => closeTerminal(id)}
-                      title="Close this terminal"
-                    >
-                      <X />
-                    </button>
-                  </span>
-                </div>
-                <div className="pane-body">
+              <div className="terminal-pane flex min-h-0 flex-1 basis-0 flex-col overflow-hidden border-t first:border-t-0" key={id}>
+                <PaneHead
+                  main={index === 0}
+                  title={
+                    <>
+                      {/* On a phone the terminals cover the chat, and the
+                          header's toggle with it. */}
+                      {narrow && index === 0 && (
+                        <PaneButton
+                          icon={ArrowLeft01Icon}
+                          onClick={() => setTerminalOpen(false)}
+                          title="Back to the chat"
+                        />
+                      )}
+                      <PaneTitle>Terminal {index + 1}</PaneTitle>
+                    </>
+                  }
+                >
+                  {/* On every pane rather than once, so they do not move
+                      around as terminals are closed. */}
+                  {!narrow && (
+                    <PaneButton
+                      icon={maximized ? Minimize01Icon : Maximize01Icon}
+                      onClick={toggleFull}
+                      title={maximized ? "Back beside the chat (Esc outside a shell)" : "Full window"}
+                    />
+                  )}
+                  <PaneButton icon={PlusSignIcon} onClick={addTerminal} title="New terminal" />
+                  <PaneButton icon={Cancel01Icon} onClick={() => closeTerminal(id)} title="Close this terminal" />
+                </PaneHead>
+                {/* Terminal positions itself absolutely, so this has to be a
+                    positioning context or it escapes the pane. */}
+                <div className="relative min-h-0 flex-1">
                   <Terminal sessionId={id} active={terminalOpen} />
                 </div>
               </div>
@@ -705,6 +724,7 @@ function App() {
           onClose={() => setDeleting(null)}
         />
       )}
+      <ViewportReadout />
       <WhichKey pending={pending} keymap={keymap} groups={{ "Space n": "new session" }} />
       {help && (
         <KeyHelp
@@ -713,8 +733,18 @@ function App() {
           onClose={() => setHelp(false)}
         />
       )}
-    </div>
+    </SidebarProvider>
   )
 }
+
+const BACKEND_NAMES = { claude_code: "Claude Code", codex: "Codex", kiro: "Kiro" } as const
+
+// The conversation and the column beside it, each a card beside the floating
+// sidebar, as shadcn's inset layout has its content; not on a phone, where
+// each has the screen to itself. Their corners stay a card's even on a touch
+// screen: only the sidebar's outer side follows the display's round corners
+// (ui/sidebar.tsx), as rounder cards read as too soft.
+const CARD =
+  " bg-background sm:overflow-hidden sm:rounded-xl sm:shadow-sm sm:ring-1 sm:ring-sidebar-border"
 
 export default App

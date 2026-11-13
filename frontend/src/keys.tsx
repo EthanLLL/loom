@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { Kbd } from "@/components/ui/kbd"
 
 /**
  * Vim-style keys for the desktop layout.
@@ -147,13 +149,11 @@ export function WhichKey({
     next.set(key, rest.length === 1 ? binding.desc : (groups[prefix + key] ?? "…"))
   }
   return (
-    <div className="which-key">
-      <div className="which-key-head">{show(pending.join(" "))}</div>
+    // Out of the way in the corner, as a popover.
+    <div className="fixed right-4 bottom-4 z-50 min-w-56 rounded-xl bg-popover p-3 font-sans text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10">
+      <div className="mb-1.5 text-muted-foreground">{show(pending.join(" "))}</div>
       {[...next].map(([key, desc]) => (
-        <div className="which-key-row" key={key}>
-          <span className="which-key-key">{show(key)}</span>
-          <span>{desc}</span>
-        </div>
+        <KeyRow key={key} keys={show(key)} desc={desc} />
       ))}
     </div>
   )
@@ -169,31 +169,39 @@ export function KeyHelp({
   extra: [string, string][]
   onClose: () => void
 }) {
-  // The keymap is off while a dialog is up, this one too.
+  // The keymap is off while a dialog is up, this one too; Esc is the dialog's.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "?") onClose()
+      if (e.key === "?") onClose()
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
   }, [onClose])
   const rows = [...extra, ...Object.entries(keymap).map(([k, b]) => [show(k), b.desc])]
   return (
-    <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal key-help" role="dialog" aria-label="Keys">
-        <div className="modal-head">
-          <span>Keys</span>
-          <span className="key-help-hint">Esc to close</span>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[min(40rem,calc(100dvh-2rem))] flex-col gap-0 p-0 font-sans sm:max-w-md">
+        <div className="flex shrink-0 items-baseline gap-2 border-b px-4 py-3 pr-10">
+          <DialogTitle>Keys</DialogTitle>
+          <DialogDescription className="text-xs">Esc to close</DialogDescription>
         </div>
-        <div className="key-help-body">
+        <div className="overflow-y-auto px-4 py-3 text-sm">
           {rows.map(([key, desc]) => (
-            <div className="which-key-row" key={key}>
-              <span className="which-key-key">{key}</span>
-              <span>{desc}</span>
-            </div>
+            <KeyRow key={key} keys={key} desc={desc} />
           ))}
         </div>
-      </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function KeyRow({ keys, desc }: { keys: string; desc: string }) {
+  return (
+    <div className="flex items-center gap-3 py-0.5">
+      <span className="min-w-14">
+        <Kbd>{keys}</Kbd>
+      </span>
+      <span>{desc}</span>
     </div>
   )
 }

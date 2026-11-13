@@ -1,4 +1,5 @@
-import { Square as SquareIcon, SquareCheck } from "lucide-react"
+import { CheckmarkSquare02Icon, SquareIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { createContext, useContext, useMemo, type ReactNode } from "react"
 import { marked, type Token, type Tokens } from "marked"
 import {
@@ -126,7 +127,7 @@ function Block({ token }: { token: Token }): ReactNode {
             <li key={i} className={"my-1 " + (item.task ? "-ml-5 list-none" : "")}>
               {item.task ? (
                 <span className="mr-1.5 inline-block align-[-0.125em] text-primary">
-                  {item.checked ? <SquareCheck /> : <SquareIcon />}
+                  {item.checked ? <HugeiconsIcon icon={CheckmarkSquare02Icon} /> : <HugeiconsIcon icon={SquareIcon} />}
                 </span>
               ) : null}
               {blocks(item.tokens)}

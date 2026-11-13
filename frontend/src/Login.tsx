@@ -1,7 +1,10 @@
-import { Fingerprint } from "lucide-react"
+import { FingerPrintIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import { authOptions, login, passkeyLogin, passkeysSupported, type AuthOptions } from "./api"
-import "./Login.css"
 
 type Props = {
   onSuccess: () => void
@@ -69,30 +72,42 @@ export function Login({ onSuccess }: Props) {
   const offerPasskey = options?.passkey && passkeysSupported()
 
   return (
-    <div className="login">
-      <form className="login-box" onSubmit={submit}>
-        <div className="login-title">loom</div>
+    // A card in the middle, as shadcn's login blocks have it.
+    <div className="flex h-full items-center justify-center bg-background p-4 font-sans">
+      <form
+        className="flex w-full max-w-xs flex-col gap-3 rounded-xl bg-card p-6 text-card-foreground ring-1 ring-foreground/10"
+        onSubmit={submit}
+      >
+        <div className="mb-2 text-center">
+          <h1 className="text-xl font-semibold">Loom</h1>
+          <p className="text-sm text-muted-foreground">Sign in to continue</p>
+        </div>
         {offerPasskey && (
           <>
-            <button type="button" className="login-btn login-passkey" onClick={withPasskey} disabled={busy}>
-              <Fingerprint />
+            <Button type="button" size="lg" onClick={withPasskey} disabled={busy}>
+              <HugeiconsIcon icon={FingerPrintIcon} />
               Sign in with passkey
-            </button>
-            <div className="login-or">or</div>
+            </Button>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <Separator className="flex-1" />
+              or
+              <Separator className="flex-1" />
+            </div>
           </>
         )}
-        <input
+        {/* 16px everywhere: iOS zooms the page into any smaller field. */}
+        <Input
           type="password"
-          className="login-input"
-          placeholder="password"
+          className={FIELD}
+          placeholder="Password"
           value={password}
           autoFocus={!offerPasskey}
           autoComplete="current-password"
           onChange={(e) => setPassword(e.target.value)}
         />
         {options?.totp && (
-          <input
-            className="login-input"
+          <Input
+            className={FIELD}
             placeholder="6-digit code"
             value={code}
             inputMode="numeric"
@@ -104,15 +119,20 @@ export function Login({ onSuccess }: Props) {
             onChange={(e) => setCode(e.target.value)}
           />
         )}
-        {error && <div className="login-error">{error}</div>}
-        <button
-          className={offerPasskey ? "login-btn login-secondary" : "login-btn"}
+        {error && <div className="text-center text-sm text-destructive">{error}</div>}
+        {/* With a passkey on offer, the password is the way in on other
+            devices, so it is the quieter button. */}
+        <Button
           type="submit"
+          size="lg"
+          variant={offerPasskey ? "outline" : "default"}
           disabled={busy || !password || (options?.totp === true && !code.trim())}
         >
-          {busy ? "…" : "Enter"}
-        </button>
+          {busy ? "…" : "Sign in"}
+        </Button>
       </form>
     </div>
   )
 }
+
+const FIELD = "h-9 text-base! pointer-coarse:h-[44px]"

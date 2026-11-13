@@ -1,7 +1,10 @@
-import { X } from "lucide-react"
+import { Cancel01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import qrcode from "qrcode-generator"
-import { useCallback, useEffect, useState } from "react"
-import { createPortal } from "react-dom"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   authOverview,
   deletePasskey,
@@ -17,10 +20,10 @@ import {
 import { ago } from "./format"
 
 /**
- * How this Loom is signed in to, from Settings: passkeys, the authenticator
- * app, and the devices signed in now. See `Loom.Auth`.
+ * How this Loom is signed in to, a section of Settings: passkeys, the
+ * authenticator app, and the devices signed in now. See `Loom.Auth`.
  */
-export function SecurityDialog({ onClose }: { onClose: () => void }) {
+export function SecurityPanel() {
   const [overview, setOverview] = useState<AuthOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,12 +34,6 @@ export function SecurityDialog({ onClose }: { onClose: () => void }) {
   }, [])
 
   useEffect(reload, [reload])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
-    document.addEventListener("keydown", onKey)
-    return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
 
   const run = async (action: () => Promise<unknown>) => {
     setError(null)
@@ -49,76 +46,90 @@ export function SecurityDialog({ onClose }: { onClose: () => void }) {
     reload()
   }
 
-  return createPortal(
-    <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal devices security" role="dialog" aria-label="Sign-in">
-        <div className="modal-head">
-          <span>Sign-in</span>
-          <button className="icon-btn" onClick={onClose} title="Close">
-            <X />
-          </button>
-        </div>
-
-        <div className="device-list">
-          {overview && (
-            <>
-              <Passkeys overview={overview} run={run} />
-              <Authenticator overview={overview} run={run} />
-              <Logins overview={overview} run={run} />
-            </>
-          )}
-        </div>
-
-        {error && <div className="device-error">{error}</div>}
-      </div>
-    </div>,
-    document.body,
+  return (
+    <>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {overview && (
+        <>
+          <Passkeys overview={overview} run={run} />
+          <Authenticator overview={overview} run={run} />
+          <Logins overview={overview} run={run} />
+        </>
+      )}
+    </>
   )
 }
 
 type Section = { overview: AuthOverview; run: (action: () => Promise<unknown>) => Promise<void> }
 
+/** A part of the panel: its name and action over a bordered list. */
+function Part({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Entry({ name, meta, onRemove, removeTitle }: { name: ReactNode; meta: string; onRemove: () => void; removeTitle: string }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center gap-2 truncate text-sm font-medium">{name}</span>
+        <span className="truncate text-xs text-muted-foreground">{meta}</span>
+      </div>
+      <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" title={removeTitle} onClick={onRemove}>
+        <HugeiconsIcon icon={Cancel01Icon} />
+      </Button>
+    </div>
+  )
+}
+
+const note = "text-sm text-muted-foreground"
+const list = "flex flex-col divide-y rounded-xl border"
+
 function Passkeys({ overview, run }: Section) {
   return (
-    <section className="security-section">
-      <div className="security-head">
-        <span>Passkeys</span>
-        <button
-          className="device-action"
+    <Part
+      title="Passkeys"
+      action={
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => run(registerPasskey)}
           disabled={!passkeysSupported()}
           title="Face ID, Touch ID or Windows Hello on this device, or a phone nearby"
         >
-          add
-        </button>
-      </div>
-      {overview.passkeys.length === 0 && (
-        <div className="device-empty">
+          Add passkey
+        </Button>
+      }
+    >
+      {overview.passkeys.length === 0 ? (
+        <p className={note}>
           None yet. Add one to sign in with Face ID, Touch ID or Windows Hello; on Apple devices it
           syncs through iCloud Keychain, so one is enough for all of them.
+        </p>
+      ) : (
+        <div className={list}>
+          {overview.passkeys.map((p) => (
+            <Entry
+              key={p.id}
+              name={p.name}
+              meta={[`added ${day(p.created_at)}`, p.last_used_at ? `used ${since(p.last_used_at)}` : "never used"].join(" · ")}
+              removeTitle="Remove passkey"
+              onRemove={() =>
+                confirm(`Remove the passkey made on ${p.name}? It stops working here; delete it from the device's passwords too.`) &&
+                run(() => deletePasskey(p.id))
+              }
+            />
+          ))}
         </div>
       )}
-      {overview.passkeys.map((p) => (
-        <div className="device" key={p.id}>
-          <div className="device-body">
-            <span className="device-name">{p.name}</span>
-            <span className="device-meta">
-              {[`added ${day(p.created_at)}`, p.last_used_at ? `used ${since(p.last_used_at)}` : "never used"].join(" · ")}
-            </span>
-          </div>
-          <button
-            className="session-del device-del"
-            title="Remove passkey"
-            onClick={() =>
-              confirm(`Remove the passkey made on ${p.name}? It stops working here; delete it from the device's passwords too.`) &&
-              run(() => deletePasskey(p.id))
-            }
-          >
-            <X />
-          </button>
-        </div>
-      ))}
-    </section>
+    </Part>
   )
 }
 
@@ -132,34 +143,36 @@ function Authenticator({ overview, run }: Section) {
 
   const totp = overview.totp
   return (
-    <section className="security-section">
-      <div className="security-head">
-        <span>Authenticator app</span>
-        {totp ? (
-          <button
-            className="device-action"
+    <Part
+      title="Authenticator app"
+      action={
+        totp ? (
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() =>
               confirm("Remove the authenticator? The password alone will sign in again.") && run(totpRemove)
             }
           >
-            remove
-          </button>
+            Remove
+          </Button>
         ) : (
           !secret && (
-            <button className="device-action" onClick={() => run(async () => setSecret(await totpBegin()))}>
-              set up
-            </button>
+            <Button variant="outline" size="sm" onClick={() => run(async () => setSecret(await totpBegin()))}>
+              Set up
+            </Button>
           )
-        )}
-      </div>
-      <div className="device-empty">
+        )
+      }
+    >
+      <p className={note}>
         {totp
           ? `On: the password needs a code from the app. ${totp.recovery_left} recovery codes left.`
           : "Off: the password alone signs in. Set one up and the password needs a 6-digit code too."}
-      </div>
+      </p>
       {secret && !totp && (
         <form
-          className="install-box totp-setup"
+          className="flex flex-col gap-3 rounded-xl bg-muted p-4"
           onSubmit={(e) => {
             e.preventDefault()
             void run(async () => {
@@ -169,31 +182,35 @@ function Authenticator({ overview, run }: Section) {
             })
           }}
         >
-          <div className="install-hint">
+          <p className="text-xs text-muted-foreground">
             Scan with an authenticator app (iPhone Passwords, Google Authenticator, 1Password…), or on
-            this phone <a href={otpauth(secret)}>open it in the app</a>. Then enter the code it shows.
-          </div>
-          <img className="totp-qr" src={qr(otpauth(secret))} alt="QR code for the authenticator" />
-          <code className="install-command">{secret.replace(/(.{4})/g, "$1 ").trim()}</code>
-          <div className="install-actions">
-            <input
-              className="device-name-input"
+            this phone{" "}
+            <a className="underline" href={otpauth(secret)}>
+              open it in the app
+            </a>
+            . Then enter the code it shows.
+          </p>
+          <img className="size-40 self-center rounded-md bg-white p-1" src={qr(otpauth(secret))} alt="QR code for the authenticator" />
+          <code className="self-center font-mono text-xs select-all">{secret.replace(/(.{4})/g, "$1 ").trim()}</code>
+          <div className="flex gap-2">
+            <Input
+              className="max-sm:text-base"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="6-digit code"
               inputMode="numeric"
               autoComplete="one-time-code"
             />
-            <button type="submit" className="text-btn" disabled={code.trim().length < 6}>
+            <Button type="submit" disabled={code.trim().length < 6}>
               Confirm
-            </button>
-            <button type="button" className="text-btn" onClick={() => setSecret(null)}>
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setSecret(null)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       )}
-    </section>
+    </Part>
   )
 }
 
@@ -201,19 +218,17 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   const [copied, setCopied] = useState(false)
   const text = codes.join("\n")
   return (
-    <section className="security-section">
-      <div className="security-head">
-        <span>Authenticator app</span>
-      </div>
-      <div className="install-box">
-        <div className="install-hint">
+    <Part title="Authenticator app">
+      <div className="flex flex-col gap-3 rounded-xl bg-muted p-4">
+        <p className="text-xs text-muted-foreground">
           Set up. Keep these recovery codes somewhere safe: each one stands in for a code once, if
           the phone is lost. They are not shown again.
-        </div>
-        <code className="install-command recovery-codes">{text}</code>
-        <div className="install-actions">
-          <button
-            className="text-btn"
+        </p>
+        <code className="font-mono text-sm whitespace-pre select-all">{text}</code>
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() =>
               navigator.clipboard
                 .writeText(text)
@@ -222,13 +237,13 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
             }
           >
             {copied ? "Copied" : "Copy"}
-          </button>
-          <button className="text-btn" onClick={onDone}>
+          </Button>
+          <Button size="sm" onClick={onDone}>
             Saved them
-          </button>
+          </Button>
         </div>
       </div>
-    </section>
+    </Part>
   )
 }
 
@@ -242,30 +257,27 @@ function Logins({ overview, run }: Section) {
   }
 
   return (
-    <section className="security-section">
-      <div className="security-head">
-        <span>Signed in</span>
+    <Part title="Signed in">
+      <div className={list}>
+        {overview.logins.map((l) => (
+          <Entry
+            key={l.id}
+            name={
+              <>
+                <span className="truncate">{l.name}</span>
+                {l.id === overview.current && <Badge variant="secondary">this device</Badge>}
+              </>
+            }
+            meta={[l.method, l.ip, `active ${since(l.last_seen_at)}`, `since ${day(l.created_at)}`]
+              .filter(Boolean)
+              .join(" · ")}
+            removeTitle="Sign out"
+            onRemove={() => revoke(l)}
+          />
+        ))}
       </div>
-      {overview.logins.map((l) => (
-        <div className="device" key={l.id}>
-          <div className="device-body">
-            <span className="device-name">
-              {l.name}
-              {l.id === overview.current && <span className="security-this">this device</span>}
-            </span>
-            <span className="device-meta">
-              {[l.method, l.ip, `active ${since(l.last_seen_at)}`, `since ${day(l.created_at)}`]
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          </div>
-          <button className="session-del device-del" title="Sign out" onClick={() => revoke(l)}>
-            <X />
-          </button>
-        </div>
-      ))}
-      <div className="device-empty">A device unused for {overview.idle_days} days is signed out.</div>
-    </section>
+      <p className="text-xs text-muted-foreground">A device unused for {overview.idle_days} days is signed out.</p>
+    </Part>
   )
 }
 

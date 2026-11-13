@@ -16,7 +16,7 @@ body,
   /* Set while an iOS keyboard is up; see viewport.ts. */
   height: var(--app-height, 100dvh);
   margin: 0;
-  background: var(--bg);
+  background: var(--background);
   overflow: hidden;
 }
 
@@ -35,7 +35,17 @@ html {
   }
 }
 
-@media (min-width: 1600px) {
+/* A touch screen reads at iOS's body size, 17px, phone or tablet alike:
+   the conversation, the sidebar and the menus all scale from it. Touch
+   targets are in px (button.tsx), so they stay a finger's size whatever this
+   is. */
+@media (pointer: coarse) {
+  html {
+    font-size: 106.25%;
+  }
+}
+
+@media (min-width: 1600px) and (pointer: fine) {
   html {
     font-size: 100%; /* 16px */
   }
@@ -47,11 +57,13 @@ html {
   }
 }
 
-/* Icons are Lucide's, sized by the font-size of what holds them, so a button
-   sets its icon's size the way it would set a glyph's. */
+/* Icons are Hugeicons, sized by the font-size of what holds
+   them, so a button sets its icon's size the way it would set a glyph's.
+   `HugeiconsIcon` marks its svg with nothing but a `color` attribute, so that
+   is what finds it. */
 @layer base {
   /* In the base layer so a utility (`size-4`, shadcn's own) still wins. */
-  svg.lucide {
+  svg[color="currentColor"] {
     flex: none;
     width: 1em;
     height: 1em;

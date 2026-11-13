@@ -263,7 +263,8 @@ export function Terminal({ sessionId, active }: Props) {
   return (
     <div
       ref={containerRef}
-      className="terminal-container"
+      // Its own padding, so the text keeps off the pane's edges.
+      className="absolute inset-0 bg-background p-1.5 [&_.xterm]:size-full"
       style={{ display: active ? "block" : "none" }}
     />
   )

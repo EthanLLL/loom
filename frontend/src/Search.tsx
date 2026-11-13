@@ -1,10 +1,14 @@
-import { Search as SearchIcon } from "lucide-react"
+import { Search01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import type { AgentInfo, SearchHit } from "./api"
 import { join } from "./directories"
 import { ago } from "./format"
 import { fuzzyScore } from "./fuzzy"
 import { isComposing } from "./ime"
+import { WORKING } from "./Sidebar"
 import { lastActive } from "./useLobby"
 
 // Long enough to let a word be typed, short enough to feel live.
@@ -22,7 +26,8 @@ type Row = { kind: "title"; session: AgentInfo } | { kind: "hit"; session: Agent
  * (`Loom.Search`), a pause after the last keystroke and never mid-composition:
  * the half-typed pinyin is not what is being looked for.
  *
- * Arrows or C-n / C-p choose, Enter opens, Esc closes.
+ * Arrows or C-n / C-p choose, Enter opens, Esc closes. The rows look like the
+ * composer's `/` menu: the same list, the same highlight.
  */
 /**
  * Titles matched as the whole key, S3-style — `aws/billing` for "billing" in
@@ -61,8 +66,6 @@ export function Search({
   const input = useRef<HTMLInputElement>(null)
   // Which request is the newest: an older answer arriving late is dropped.
   const latest = useRef(0)
-
-  useEffect(() => input.current?.focus(), [])
 
   useEffect(() => {
     if (composing) return
@@ -107,50 +110,71 @@ export function Search({
   }
 
   return (
-    <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal search" role="dialog" aria-label="Search">
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        initialFocus={input}
+        // Sized to what is visible, which with a keyboard up is less than the
+        // screen (--app-height, viewport.ts), and centred in that.
+        className="top-[calc(var(--app-height,100dvh)/2)] flex max-h-[min(36rem,calc(var(--app-height,100dvh)-2rem))] flex-col gap-2 p-2 font-sans sm:max-w-xl"
+      >
+        <DialogTitle className="sr-only">Search</DialogTitle>
+        <DialogDescription className="sr-only">Search session titles and what was said in them.</DialogDescription>
         {/* Reversed, so the first row sits right above the prompt. */}
-        <div className="search-results">
-          {rows.map((row, i) => (
-            <div
-              key={row.kind === "hit" ? `${row.hit.id}:${row.hit.seq}` : row.session.id}
-              ref={i === sel ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
-              className={"search-row" + (i === sel ? " selected" : "")}
-              onMouseEnter={() => setSel(i)}
-              onClick={() => open(row)}
-            >
-              <div className="search-row-head">
-                <span className={"dot " + row.session.status} />
-                <span className="session-label">{row.session.title ?? row.session.id}</span>
-                {row.session.directory && <span className="search-dir">{row.session.directory}</span>}
-                <span className="session-when">
-                  {ago(row.kind === "hit" ? row.hit.at : lastActive(row.session))}
-                </span>
-              </div>
-              {row.kind === "hit" && (
-                <div className={"search-snippet " + row.hit.kind}>
-                  {row.hit.kind === "user" ? "› " : ""}
-                  {row.hit.before}
-                  <mark>{row.hit.match}</mark>
-                  {row.hit.after}
+        <div role="listbox" className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto">
+          {rows.map((row, i) => {
+            const working = row.session.status === "running" || row.session.status === "starting"
+            return (
+              <div
+                key={row.kind === "hit" ? `${row.hit.id}:${row.hit.seq}` : row.session.id}
+                role="option"
+                aria-selected={i === sel}
+                ref={i === sel ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+                className="flex cursor-pointer flex-col gap-0.5 rounded-lg px-2.5 py-1.5 text-sm aria-selected:bg-accent pointer-coarse:py-2.5 pointer-coarse:text-base"
+                onMouseEnter={() => setSel(i)}
+                onClick={() => open(row)}
+              >
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <span className={"min-w-0 truncate" + (working ? WORKING : "")}>
+                    {row.session.title ?? row.session.id}
+                  </span>
+                  {row.session.directory && (
+                    <span className="shrink-0 text-xs text-muted-foreground">{row.session.directory}</span>
+                  )}
+                  <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {ago(row.kind === "hit" ? row.hit.at : lastActive(row.session))}
+                  </span>
                 </div>
-              )}
-            </div>
-          ))}
-          {rows.length === 0 && <div className="search-empty">Nothing found.</div>}
+                {row.kind === "hit" && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {row.hit.kind === "user" ? "› " : ""}
+                    {row.hit.before}
+                    <mark className="rounded-sm bg-primary/20 px-0.5 text-foreground">{row.hit.match}</mark>
+                    {row.hit.after}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {rows.length === 0 && <div className="px-2.5 py-6 text-center text-sm text-muted-foreground">Nothing found.</div>}
         </div>
         {/* Without ripgrep on the server only titles can be searched: said
             plainly, as a note rather than an error. */}
         {error === "no_rg" ? (
-          <div className="search-note">Titles only: searching what was said needs ripgrep (rg) on the server.</div>
+          <div className="px-2.5 text-xs text-muted-foreground">
+            Titles only: searching what was said needs ripgrep (rg) on the server.
+          </div>
         ) : (
-          error && <div className="picker-error">Search failed: {error}</div>
+          error && <div className="px-2.5 text-xs text-destructive">Search failed: {error}</div>
         )}
-        <label className="search-prompt">
-          <SearchIcon />
-          <input
+        <InputGroup className="h-10 shrink-0 rounded-xl pointer-coarse:h-[44px]">
+          <InputGroupAddon>
+            <HugeiconsIcon icon={Search01Icon} />
+          </InputGroupAddon>
+          <InputGroupInput
             ref={input}
-            className="picker-input"
+            // 16px or more, or iOS zooms the page when it is focused.
+            className="text-base"
             placeholder="Search titles and what was said"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -167,14 +191,11 @@ export function Search({
               } else if (e.key === "Enter") {
                 e.preventDefault()
                 open(rows[sel])
-              } else if (e.key === "Escape") {
-                e.preventDefault()
-                onClose()
               }
             }}
           />
-        </label>
-      </div>
-    </div>
+        </InputGroup>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,16 +1,5 @@
-import {
-  BotIcon,
-  BrainIcon,
-  FilePenIcon,
-  FileTextIcon,
-  GlobeIcon,
-  ListChecksIcon,
-  SearchIcon,
-  SparklesIcon,
-  TerminalIcon,
-  WrenchIcon,
-  type LucideIcon,
-} from "lucide-react"
+import { BrainIcon, ComputerTerminal01Icon, FileEditIcon, FileViewIcon, Globe02Icon, Robot01Icon, Search01Icon, SparklesIcon, TaskDone01Icon, Wrench01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { useState, type ReactNode } from "react"
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block"
 import {
@@ -31,21 +20,21 @@ type Thought = Extract<TimelineItem, { kind: "thinking" }>
 type Run = Extract<TimelineItem, { kind: "tools" }>
 
 // What a tool does, by name, across the backends.
-const ICONS: Record<string, LucideIcon> = {
-  Bash: TerminalIcon,
-  shell: TerminalIcon,
-  Read: FileTextIcon,
-  Write: FilePenIcon,
-  Edit: FilePenIcon,
-  NotebookEdit: FilePenIcon,
-  apply_patch: FilePenIcon,
-  Glob: SearchIcon,
-  Grep: SearchIcon,
-  WebFetch: GlobeIcon,
-  WebSearch: GlobeIcon,
-  web_search: GlobeIcon,
-  Task: BotIcon,
-  Agent: BotIcon,
+const ICONS: Record<string, IconSvgElement> = {
+  Bash: ComputerTerminal01Icon,
+  shell: ComputerTerminal01Icon,
+  Read: FileViewIcon,
+  Write: FileEditIcon,
+  Edit: FileEditIcon,
+  NotebookEdit: FileEditIcon,
+  apply_patch: FileEditIcon,
+  Glob: Search01Icon,
+  Grep: Search01Icon,
+  WebFetch: Globe02Icon,
+  WebSearch: Globe02Icon,
+  web_search: Globe02Icon,
+  Task: Robot01Icon,
+  Agent: Robot01Icon,
   Skill: SparklesIcon,
 }
 
@@ -88,7 +77,7 @@ export function ToolRun({ item }: { item: Run }) {
   ) : (
     <TraceLine>
       <TraceIcon>
-        <ListChecksIcon />
+        <HugeiconsIcon icon={TaskDone01Icon} />
       </TraceIcon>
       <TraceTitle>
         Used {item.tools} tool{item.tools === 1 ? "" : "s"}
@@ -147,7 +136,7 @@ function StepLine({
     return (
       <TraceLine status={step.streaming ? "running" : undefined} className={className}>
         <TraceIcon>
-          <BrainIcon />
+          <HugeiconsIcon icon={BrainIcon} />
         </TraceIcon>
         <TraceTitle>{step.streaming ? "Thinking" : "Thought"}</TraceTitle>
         {after}
@@ -156,13 +145,13 @@ function StepLine({
   }
   if (step.kind !== "tool") return null
 
-  const Icon = ICONS[step.name] ?? WrenchIcon
+  const icon = ICONS[step.name] ?? Wrench01Icon
   const summary = toolSummary(step.name, step.input)
   const failed = step.result !== null && !step.result.ok
   return (
     <TraceLine status={step.result ? (failed ? "error" : undefined) : "running"} className={className}>
       <TraceIcon>
-        <Icon />
+        <HugeiconsIcon icon={icon} />
       </TraceIcon>
       <TraceTitle>
         <span className="font-medium">{step.name}</span>
@@ -244,7 +233,7 @@ export function Thinking({ item }: { item: Thought }) {
   const line = (
     <TraceLine status={item.streaming ? "running" : undefined}>
       <TraceIcon>
-        <BrainIcon />
+        <HugeiconsIcon icon={BrainIcon} />
       </TraceIcon>
       <TraceTitle>{item.streaming ? "Thinking" : text ? "Thought" : "Thought for a moment"}</TraceTitle>
     </TraceLine>

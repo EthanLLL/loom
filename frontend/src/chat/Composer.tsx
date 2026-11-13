@@ -1,4 +1,5 @@
-import { ArrowUpIcon, ChevronDownIcon, PlusIcon, SquareIcon } from "lucide-react"
+import { ArrowDown01Icon, ArrowUp02Icon, PlusSignIcon, StopIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react"
 import {
   DropdownMenu,
@@ -97,7 +98,6 @@ export function Composer({
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
 
     if (text === "") {
-      // The placeholder can wrap too, and is not worth a second line.
       wrappedAt.current = 0
       setMultiline(false)
       el.style.height = ""
@@ -124,6 +124,12 @@ export function Composer({
   // pressing send, with nothing typed, is a normal way to ask about it.
   const sendable = (text.trim() !== "" || attachments.ready.length > 0) && !attachments.uploading
 
+  const hint = busy
+    ? "Steer the agent mid-turn…"
+    : interrupted
+      ? "Stopped — type to continue"
+      : "Message the agent…"
+
   const send = () => {
     if (!sendable) return
     onSubmit(text.trim())
@@ -132,9 +138,11 @@ export function Composer({
 
   return (
     // Clears the home indicator on a phone (see viewport-fit in index.html);
-    // the keyboard covers it, so then the padding is just a gap.
-    <div className="composer mx-auto w-full max-w-3xl shrink-0 px-4 pt-1.5 pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:px-3 in-[.keyboard]:pb-2">
-      <InputGroup className="relative h-auto flex-col items-stretch rounded-3xl bg-card p-1.5 shadow-xs dark:bg-card">
+    // the keyboard covers it, so then the padding is just a gap. Not in a
+    // card: the card already stands clear of the screen's edge, and the
+    // indicator's inset on top of that left the box floating high.
+    <div className="composer mx-auto w-full max-w-3xl shrink-0 px-4 pt-1.5 pb-4 max-sm:px-3 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] in-[.keyboard]:pb-2!">
+      <InputGroup className="relative h-auto flex-col items-stretch rounded-3xl sm:pointer-coarse:rounded-[1.875rem] bg-card p-1.5 shadow-xs dark:bg-card">
         {selected && (
           <ul
             role="listbox"
@@ -187,19 +195,13 @@ export function Composer({
               "composer-input field-sizing-fixed min-h-0 flex-none text-base leading-normal [grid-area:input] md:text-base " +
               // On one line the box is exactly a button's height (2rem, or
               // 2.75rem on touch) so the text and the buttons share a centre.
-              (multiline ? "px-2.5 pt-2 pb-1.5" : "px-1.5 py-1 pointer-coarse:py-2.5")
+              (multiline ? "px-2.5 pt-2 pb-1.5" : "px-1.5 py-1 pointer-coarse:py-[calc((44px-1.5rem)/2)]")
             }
             value={text}
             rows={1}
             // Enter sends, so the phone keyboard should say so.
             enterKeyHint="send"
-            placeholder={
-              busy
-                ? "Steer the agent mid-turn…"
-                : interrupted
-                  ? "Stopped — type to continue"
-                  : "Message the agent…"
-            }
+            aria-label={hint}
             onChange={(e) => {
               setText(e.target.value)
               setPick(0)
@@ -254,6 +256,18 @@ export function Composer({
               send()
             }}
           />
+          {/* The placeholder, drawn rather than the textarea's own: that one
+              wraps onto a second line when the box is narrow, and a
+              textarea's cannot be cut short with an ellipsis. Over the text's
+              place in the grid, with the same padding. */}
+          {text === "" && (
+            <span
+              aria-hidden
+              className="pointer-events-none min-w-0 truncate self-center px-1.5 text-base text-muted-foreground [grid-area:input]"
+            >
+              {hint}
+            </span>
+          )}
 
           <input
             ref={picker}
@@ -275,7 +289,7 @@ export function Composer({
             aria-label="Attach files"
             onClick={() => picker.current?.click()}
           >
-            <PlusIcon />
+            <HugeiconsIcon icon={PlusSignIcon} />
           </InputGroupButton>
 
           <div className="flex items-center gap-1 [grid-area:actions]">
@@ -290,7 +304,7 @@ export function Composer({
                 title="Stop the turn"
                 aria-label="Stop the turn"
               >
-                <SquareIcon className="fill-current" />
+                <HugeiconsIcon icon={StopIcon} className="fill-current" />
               </InputGroupButton>
             )}
             {/* While the agent works, an empty box has nothing to send and the
@@ -313,7 +327,7 @@ export function Composer({
                         : "Send"
                 }
               >
-                <ArrowUpIcon />
+                <HugeiconsIcon icon={ArrowUp02Icon} />
               </InputGroupButton>
             )}
           </div>
@@ -364,7 +378,7 @@ function ModelPicker({
         }
       >
         {current.label}
-        <ChevronDownIcon />
+        <HugeiconsIcon icon={ArrowDown01Icon} />
       </DropdownMenuTrigger>
       {/* Back to the box when it closes, which keeps a phone's keyboard up
           when the pick was made with it showing. Kiro lists twenty-odd

@@ -1,4 +1,15 @@
 import { useEffect, useRef, useState } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Kbd } from "@/components/ui/kbd"
 import { isComposing } from "./ime"
 
 /**
@@ -52,23 +63,23 @@ export function Confirm({
   }, [])
 
   return (
-    <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal confirm" role="alertdialog" aria-label={title}>
-        <div className="modal-head">{title}</div>
-        <div className="confirm-body">
-          {detail && <p>{detail}</p>}
-          {error && <p className="confirm-error">{error}</p>}
-          <div className="confirm-actions">
-            <button className="text-btn" onClick={onClose}>
-              Cancel <kbd>n</kbd>
-            </button>
-            <button className="text-btn danger" onClick={() => void yes()}>
-              {action} <kbd>y</kbd>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
+      <AlertDialogContent className="font-sans">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="wrap-anywhere">{title}</AlertDialogTitle>
+          {detail && <AlertDialogDescription className="wrap-anywhere">{detail}</AlertDialogDescription>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            Cancel <Kbd className="max-sm:hidden">n</Kbd>
+          </AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => void yes()}>
+            {action} <Kbd className="bg-transparent text-current max-sm:hidden">y</Kbd>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -126,10 +137,11 @@ export function RenameInput({
   }
 
   return (
-    <span className={"rename " + (className ?? "")}>
+    // 16px and up on a touch screen, where iOS would zoom into anything less.
+    <span className={"flex min-w-0 flex-1 flex-col " + (className ?? "")}>
       <input
         ref={ref}
-        className="rename-input"
+        className="h-6 min-w-0 rounded-md border border-ring bg-background px-1.5 text-sm text-foreground ring-3 ring-ring/30 outline-none pointer-coarse:h-9 pointer-coarse:text-base"
         value={draft}
         onChange={(e) => {
           setDraft(e.target.value)
@@ -150,7 +162,7 @@ export function RenameInput({
           }
         }}
       />
-      {error && <span className="rename-error">{error}</span>}
+      {error && <span className="text-xs whitespace-normal text-destructive">{error}</span>}
     </span>
   )
 }

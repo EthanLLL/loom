@@ -1,72 +1,21 @@
-import { Folder, FolderPlus, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { Cancel01Icon, Folder01Icon, FolderAddIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Separator } from "@/components/ui/separator"
 import { isComposing } from "./ime"
 
 /** A directory name as one: no slashes, so directories stay one level deep. */
 export const dirName = (typed: string) => typed.replaceAll("/", " ").trim().replace(/\s+/g, " ")
 
 /**
- * Where a session can go: a new directory, named in the box, or one there is
- * already. Making a directory is just moving something into it — they are
- * only prefixes, see `directories.ts`.
- *
- * The desktop's row menu shows it beside "Move to directory"; a phone shows it
- * in `MovePicker`. The box is never focused for you, so a phone's keyboard
- * comes up only when a new name is wanted.
+ * "Move to directory" on a phone, where a submenu has no room: where a session
+ * can go, nearly the whole screen. A box for a new directory, then the ones
+ * there are already, as rows. Making a directory is just moving something into
+ * it — they are only prefixes, see `directories.ts`. The box is never focused
+ * for you, so the keyboard comes up only when a new name is wanted.
  */
-export function MoveTargets({
-  dirs,
-  current,
-  onPick,
-}: {
-  dirs: string[]
-  // Where it is now, left out.
-  current: string
-  onPick: (dir: string) => Promise<void>
-}) {
-  const [typed, setTyped] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const pick = async (dir: string) => {
-    if (dir === "" || dir === current) return
-    try {
-      await onPick(dir)
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
-  const others = dirs.filter((d) => d !== current)
-
-  return (
-    <div className="move-targets">
-      <label className="move-new">
-        <FolderPlus />
-        <input
-          placeholder="New directory"
-          value={typed}
-          onChange={(e) => {
-            setTyped(e.target.value)
-            setError(null)
-          }}
-          onKeyDown={(e) => {
-            if (isComposing(e) || e.key !== "Enter") return
-            e.preventDefault()
-            void pick(dirName(typed))
-          }}
-        />
-      </label>
-      {error && <div className="picker-error">{error}</div>}
-      {others.length > 0 && <hr className="row-menu-rule" />}
-      {others.map((d) => (
-        <button key={d} onClick={() => void pick(d)}>
-          <Folder />
-          <span>{d}</span>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-/** "Move to directory" on a phone: `MoveTargets`, nearly the whole screen. */
 export function MovePicker({
   title,
   dirs,
@@ -76,34 +25,71 @@ export function MovePicker({
 }: {
   title: string
   dirs: string[]
+  // Where it is now, left out.
   current: string
   onPick: (dir: string) => Promise<void>
   onClose: () => void
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
-    document.addEventListener("keydown", onKey)
-    return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
+  const [typed, setTyped] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const pick = async (dir: string) => {
+    if (dir === "" || dir === current) return
+    try {
+      await onPick(dir)
+      onClose()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  const others = dirs.filter((d) => d !== current)
 
   return (
-    <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal picker" role="dialog" aria-label={title}>
-        <div className="modal-head">
-          <span className="modal-title">{title}</span>
-          <button className="pane-btn" onClick={onClose} title="Close">
-            <X />
-          </button>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        initialFocus={false}
+        showCloseButton={false}
+        className="flex max-h-[min(28rem,calc(100dvh-2rem))] flex-col gap-0 p-0 font-sans max-sm:h-[calc(100dvh-2rem)] max-sm:max-h-none"
+      >
+        <div className="flex shrink-0 items-center gap-2 border-b py-1.5 pr-1.5 pl-4">
+          <DialogTitle className="min-w-0 flex-1 truncate">{title}</DialogTitle>
+          <DialogClose render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground" />}>
+            <HugeiconsIcon icon={Cancel01Icon} />
+            <span className="sr-only">Close</span>
+          </DialogClose>
         </div>
-        <MoveTargets
-          dirs={dirs}
-          current={current}
-          onPick={async (dir) => {
-            await onPick(dir)
-            onClose()
-          }}
-        />
-      </div>
-    </div>
+        <div className="flex min-h-0 flex-col overflow-y-auto p-1.5">
+          <label className="flex h-[44px] shrink-0 items-center gap-2.5 rounded-lg px-2.5 focus-within:bg-muted">
+            <HugeiconsIcon icon={FolderAddIcon} className="size-5 shrink-0 text-muted-foreground" />
+            {/* 16px and up: iOS zooms into a smaller field. */}
+            <input
+              className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+              placeholder="New directory"
+              value={typed}
+              onChange={(e) => {
+                setTyped(e.target.value)
+                setError(null)
+              }}
+              onKeyDown={(e) => {
+                if (isComposing(e) || e.key !== "Enter") return
+                e.preventDefault()
+                void pick(dirName(typed))
+              }}
+            />
+          </label>
+          {error && <div className="px-2.5 py-1.5 text-sm text-destructive">{error}</div>}
+          {others.length > 0 && <Separator className="my-1.5" />}
+          {others.map((d) => (
+            <button
+              key={d}
+              className="flex h-[44px] shrink-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-base hover:bg-muted active:bg-muted"
+              onClick={() => void pick(d)}
+            >
+              <HugeiconsIcon icon={Folder01Icon} className="size-5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">{d}</span>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

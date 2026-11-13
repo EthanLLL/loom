@@ -1,4 +1,5 @@
-import { XIcon } from "lucide-react"
+import { Cancel01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { Button } from "@/components/ui/button"
 
 /**
@@ -44,7 +45,7 @@ export function QueuePanel({
               aria-label="Discard this message"
               onClick={() => onDrop(i)}
             >
-              <XIcon />
+              <HugeiconsIcon icon={Cancel01Icon} />
             </Button>
           </div>
         ))}
