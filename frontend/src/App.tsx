@@ -407,6 +407,7 @@ function App() {
     "Space f": { desc: "full window", run: () => side !== null && toggleFull() },
     "Space n c": { desc: "new Claude Code session", run: () => void create("claude_code") },
     "Space n x": { desc: "new Codex session", run: () => void create("codex") },
+    "Space n k": { desc: "new Kiro session", run: () => void create("kiro") },
   }
   const keymap: Keymap = treeWalk
     ? {
@@ -559,6 +560,12 @@ function App() {
                   onClick={() => create("codex")}
                 >
                   new Codex session
+                </button>
+                <button
+                  className="text-btn"
+                  onClick={() => create("kiro")}
+                >
+                  new Kiro session
                 </button>
               </div>
             </div>

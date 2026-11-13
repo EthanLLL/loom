@@ -1,6 +1,6 @@
-# Backends: Claude Code and Codex
+# Backends: Claude Code, Codex and Kiro
 
-Loom hands the agent itself to these two CLIs. Everything below was measured,
+Loom hands the agent itself to these CLIs; Kiro is in §9. Everything below was measured,
 not read from docs. Measured with Claude Code 2.1.296 and Codex 0.162.1, on
 2026-10-14, on a macOS arm64 laptop unless noted. Loom's own structure is in [architecture.md](architecture.md).
 
@@ -328,4 +328,132 @@ codex app-server
 # {"id":1,"method":"initialize","params":{"clientInfo":{"name":"loom","version":"0"}}}
 # {"id":2,"method":"thread/start","params":{"cwd":"…","sandbox":"danger-full-access","approvalPolicy":"never"}}
 # {"id":3,"method":"turn/start","params":{"threadId":"…","input":[{"type":"text","text":"…"}]}}
+```
+
+## 9. Kiro (ACP)
+
+Measured with kiro-cli 3.2.0 and its default v3 engine, on 2026-11-11, on an
+Ubuntu 24.04 EC2 instance. Adapter: `Loom.Agent.Backend.Kiro`.
+
+`kiro-cli acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com):
+newline-delimited JSON-RPC 2.0 over stdio, plus Kiro's `_kiro/…` and
+`_session/…` extensions.
+
+### 9.1 State model: Claude Code's, on Codex's wire
+
+One process per session, spawned on the first turn and released after the idle
+timer like CC. One ACP process could hold several sessions, but each is ~580 MB
+(a 108 MB Rust relay and a 475 MB Node engine, plus the MCP servers it starts)
+and `session/load` reattaches in about 0.9 s across processes, so sharing buys
+little and would put every Kiro session in one failure domain.
+
+```
+initialize          0.6–0.9 s
+session/new         0.85 s     (or session/load: 0.84 s)
+first prompt        ~6 s for a one-line answer
+```
+
+The handshake runs inside `decode/2` (phases `:initializing → :opening →
+:ready`); the prompt typed meanwhile waits in the handle. The session id
+(`sess_…`) comes from `session/new` and is persisted as `kiro_session_id`.
+
+### 9.2 Pitfalls
+
+Everything here was measured unless it says otherwise. Kiro's `_kiro/…`,
+`_session/…` and `_meta.kiro` extensions are not part of ACP and not
+documented, so they are the part most likely to change between releases.
+
+- **Spawn** with `--agent-engine v3 --auth-method cli`, so a release that
+  changes the default engine cannot switch the adapter silently.
+- **`session/load` replays history** as ordinary `session/update`
+  notifications unless `_meta.kiro.noReplay: true` (none with it). Frames
+  before `:ready`, and any marked `_meta.kiro.replay: true`, are dropped
+  anyway. A failed load opens a new session: one that never ran a prompt was
+  never written. A load reply without `modes` is treated as failed
+  (defensive, not seen).
+- **No system-prompt slot.** `_meta.kiro.steering: [{name, inclusion:
+  "always", content}]` on `session/new` and `session/load` is added to Kiro's
+  own prompt: Kiro kept its identity and tools and knew a codeword given only
+  there, again after a load. It is not kept with the session, so it is sent
+  on every load.
+- **Permissions.** v3 has no trust-all flag (`--trust-all-tools` and the other
+  v2-only flags silently select the v2 engine). `_meta.kiro.policyPreset:
+  ["allow-all"]` on new and load approves every tool call for the session: no
+  `session/request_permission` at all, and the user's config untouched, which
+  answering `allow_always` would not leave (`_kiro/policy/changed`). A
+  request that arrives anyway gets the `allow_once` option.
+- **`.kiro/settings` is write-protected.** A file-tool write under it (home
+  or workspace) is refused outright, `allow-all` notwithstanding, with no
+  prompt; `kiro-cli mcp add/remove` run in the shell worked. Loom's
+  instructions for Kiro point it at `kiro-cli mcp …` and `/reload`.
+- **Questions for the user.** The client declares
+  `clientCapabilities._meta.kiro.userInput: true`, so a question the model
+  asks comes as the request `_kiro/userInput {sessionId, question,
+  options}` rather than as a permission request that allow-once would answer
+  "yes". Loom answers `{action: "answered", answer: <nobody is here, use your
+  judgement>}` (not seen yet). Other requests (`fs/*`, `terminal/*`; neither
+  capability is declared) get a `-32601` error, never silence.
+- **A second `session/prompt` cancels the running one** (the first replied
+  `cancelled` the moment the second arrived). So steering uses
+  `_session/steer {sessionId, message, messageId}`, which replies
+  `{queued: true, messageId: "steer-<ours>"}` and is injected at the next
+  boundary (`session_info_update` kind `steering_injected`), even into a pure
+  text answer. A steer still pending when the prompt replies is sent as the
+  next prompt.
+- **Interrupt** is the `session/cancel` notification; the prompt replies
+  `stopReason: "cancelled"`, which is swallowed. With no reply within 10 s
+  the process is killed (defensive).
+- **`/compact`** sent as text is just read by the model. It becomes
+  `_kiro/session/compact {sessionId}`, which replies `{success: bool}` after
+  ~12 s; kind `summarization_completed` is `:compacted`. An automatic one
+  runs at `summarizationThreshold` (80 %). After kind `summarization_failed`,
+  60 s with no reply fails the turn with the engine's reason (defensive, not
+  seen).
+- **Context.** `session/prompt` with `_meta.kiro.contextBreakdown: "summary"`
+  makes `turn_completion` carry `contextBreakdown.window {sizeTokens,
+  usagePercentage}` (1,000,000 here). Between turns, kind `context_usage`
+  gives only `usagePercentage`, and a `breakdown` whose per-item tokens and
+  percents disagree; the window is inferred from it until the first turn
+  completes. Cost is in credits, not shown.
+- **Sub-agents.** Frames marked `_meta.kiro.agentSubtaskId` are dropped, so
+  a sub-agent's text does not land in the main reply (not seen yet).
+- **Text has no block id.** Chunks carry `_meta.kiro.replayId`; a change of
+  kind or replayId, a tool call, or the prompt's reply closes a block. Loom
+  mints the block ids.
+- **Tool output** arrives only with the final `tool_call_update`
+  (`content` text, else `rawOutput`) on v3; v2 streams `content` chunks while
+  `in_progress`, which become `:tool_output`.
+- **Errors.** An error's `data.errorType`, when there is one, is kept in the
+  reason. A `model_fallback` info update is logged.
+- **Model.** `kiro-cli acp --model` is v2-only too, and v3 ignores Kiro's own
+  `chat.defaultModel`. On v3 the model is the `model` config option:
+  `session/set_config_option {sessionId, configId: "model", value}`
+  (`session/set_model` fails: `-32603 … has no persistence classification`).
+  Loom sends `model` and `effortLevel` after every new/load from
+  `~/.loom/backends/kiro.json` (`Loom.Agent.BackendConfig`), falling back to
+  `LOOM_KIRO_MODEL` for the model.
+- **Teardown** kills the tree (`kiro-cli → node → MCP servers`) as for CC.
+  Closing stdin alone makes the relay wait 5 s for the engine
+  (`the v3 engine did not exit within 5 seconds after ACP stdin closed`).
+- kiro-cli logs to stderr (`[INFO] [KRS] …`), which is not redirected.
+
+| Kiro | Loom |
+|---|---|
+| `session/new` / `session/load` reply | `:running` (if a prompt waits) |
+| first `session/update` of a prompt | `:running` |
+| `agent_message_chunk` / `agent_thought_chunk` | `:block_start`, `:text` / `:thinking` deltas; `:assistant_text` / `:thinking` on close |
+| `tool_call` | `:tool_use_start` delta + `:tool_use` |
+| `tool_call_update` `completed` / `failed` | `:tool_result` |
+| `session_info_update` `context_usage` | context size |
+| `session_info_update` `summarization_completed` | `:compacted` |
+| `session/prompt` reply | `:turn_done`, or nothing if cancelled |
+| `session/prompt` error | `:turn_failed` |
+
+### 9.3 Reproduce
+
+```sh
+kiro-cli acp --agent-engine v3 --auth-method cli
+# {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{},"clientInfo":{"name":"loom","version":"0"}}}
+# {"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/home/ubuntu","mcpServers":[],"_meta":{"kiro":{"policyPreset":["allow-all"],"steering":[{"name":"loom","inclusion":"always","content":"…"}]}}}}
+# {"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"sess_…","prompt":[{"type":"text","text":"hi"}]}}
 ```

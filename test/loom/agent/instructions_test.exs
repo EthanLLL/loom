@@ -47,4 +47,15 @@ defmodule Loom.Agent.InstructionsTest do
     assert text =~ "(output/"
     assert text =~ "#{dir}/<name>/index.html"
   end
+
+  test "Kiro is told what it is" do
+    kiro = Instructions.for_session("a_in", :kiro)
+    assert kiro =~ "Loom runs you as Kiro"
+    assert kiro =~ "`kiro-cli mcp add`"
+    assert kiro =~ "/reload"
+    refute Instructions.for_session("a_in", :claude_code) =~ "kiro-cli mcp"
+    refute kiro =~ "32 MB"
+    refute kiro =~ "run_in_background"
+    assert kiro =~ "#{Store.session_dir("a_in")}/files/transcripts/"
+  end
 end

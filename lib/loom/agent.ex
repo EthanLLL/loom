@@ -6,7 +6,7 @@ defmodule Loom.Agent do
   @doc """
   Start a new agent session (or return the existing one for `id`).
 
-  `:backend` is required and permanent: `:claude_code` or `:codex`. The
+  `:backend` is required and permanent: `:claude_code`, `:codex` or `:kiro`. The
   conversation lives in that engine's own store, so there is nothing to migrate
   if it changes.
   """
@@ -37,7 +37,7 @@ defmodule Loom.Agent do
 
   @doc """
   `new_session/3` with its arguments in a JSON file — `{"title", "prompt"}`,
-  optionally `"backend": "codex"` — for programs: an app's job hands work to
+  optionally `"backend": "codex"` or `"kiro"` — for programs: an app's job hands work to
   an agent with `bin/loom rpc 'Loom.Agent.new_session_file("…")'`. Text spliced
   into rpc code instead would run any `\#{…}` in it as Elixir.
   """
@@ -45,7 +45,13 @@ defmodule Loom.Agent do
     with {:ok, body} <- File.read(path),
          {:ok, %{"title" => title, "prompt" => prompt} = req}
          when is_binary(title) and is_binary(prompt) <- Jason.decode(body) do
-      backend = if req["backend"] == "codex", do: :codex, else: :claude_code
+      backend =
+        case req["backend"] do
+          "codex" -> :codex
+          "kiro" -> :kiro
+          _ -> :claude_code
+        end
+
       new_session(title, prompt, backend: backend, origin: "app")
     else
       {:error, %Jason.DecodeError{} = e} -> {:error, Exception.message(e)}
@@ -147,7 +153,8 @@ defmodule Loom.Agent do
 
   Every session is told to let its backend process go (now if idle, after its
   turn if not), which is what Claude Code needs: the next turn starts a fresh
-  `claude --resume`. Codex has one shared app-server, which restarts itself once
+  `claude --resume`, and the same for Kiro (`session/load` in a fresh
+  `kiro-cli acp`). Codex has one shared app-server, which restarts itself once
   no codex turn is running. Fire and forget: nothing waits on either.
   """
   def reload_backends do

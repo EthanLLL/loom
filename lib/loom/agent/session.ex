@@ -250,6 +250,7 @@ defmodule Loom.Agent.Session do
       cc_cwd: Keyword.get(opts, :cwd),
       codex_cwd: Keyword.get(opts, :cwd),
       cc_profile: Keyword.get(opts, :profile),
+      kiro_cwd: Keyword.get(opts, :cwd),
       instructions: Instructions.for_session(id, backend)
     }
   end

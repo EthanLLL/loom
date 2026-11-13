@@ -1,6 +1,6 @@
 defmodule Loom.Agent.Backend do
   @moduledoc """
-  The agent engine behind one session: Claude Code or Codex.
+  The agent engine behind one session: Claude Code, Codex or Kiro.
 
   Loom does not run an agent loop of its own. A session binds to one backend
   conversation for life and this module is the only thing that knows how to talk
@@ -49,6 +49,11 @@ defmodule Loom.Agent.Backend do
       codex session on the node, addressed by `threadId`. Starting a turn is a
       JSON-RPC call into that shared process, not a spawn.
 
+    * **Kiro** is Claude Code's model on Codex's wire: one `kiro-cli acp`
+      process per session, released on idle, speaking ACP (JSON-RPC). The
+      conversation comes back with `session/load`. See
+      `Loom.Agent.Backend.Kiro`.
+
   So `handle` is opaque, and `decode/2` — not a port message pattern in the
   session — is what turns backend output into events. A session forwards any
   message it does not recognise; the backend claims what is its own and returns
@@ -71,7 +76,7 @@ defmodule Loom.Agent.Backend do
   """
 
   @typedoc "Which engine a session is bound to. Chosen at creation, never changed."
-  @type kind :: :claude_code | :codex
+  @type kind :: :claude_code | :codex | :kiro
 
   @typedoc """
   Backend-private state. Holds whatever identifies the live conversation and any
@@ -235,13 +240,14 @@ defmodule Loom.Agent.Backend do
       config :loom, Loom.Agent, backends: %{claude_code: MyStub}
   """
   @spec impl(kind) :: module()
-  def impl(kind) when kind in [:claude_code, :codex] do
+  def impl(kind) when kind in [:claude_code, :codex, :kiro] do
     configured = Application.get_env(:loom, Loom.Agent, [])[:backends] || %{}
     Map.get(configured, kind, default_impl(kind))
   end
 
   defp default_impl(:claude_code), do: Loom.Agent.Backend.ClaudeCode
   defp default_impl(:codex), do: Loom.Agent.Backend.Codex
+  defp default_impl(:kiro), do: Loom.Agent.Backend.Kiro
 
   @doc """
   Parse a persisted or user-supplied backend name.
@@ -251,15 +257,17 @@ defmodule Loom.Agent.Backend do
   lives in that engine's own store, so there is nothing to migrate).
   """
   @spec parse(term()) :: {:ok, kind} | :error
-  def parse(kind) when kind in [:claude_code, :codex], do: {:ok, kind}
+  def parse(kind) when kind in [:claude_code, :codex, :kiro], do: {:ok, kind}
   def parse("claude_code"), do: {:ok, :claude_code}
   def parse("codex"), do: {:ok, :codex}
+  def parse("kiro"), do: {:ok, :kiro}
   def parse(_other), do: :error
 
   @doc "Human-facing label for the session list."
   @spec label(kind) :: String.t()
   def label(:claude_code), do: "Claude Code"
   def label(:codex), do: "Codex"
+  def label(:kiro), do: "Kiro"
 
   @doc "The label, naming the profile when the session has one."
   @spec label(kind, String.t() | nil) :: String.t()

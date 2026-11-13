@@ -20,7 +20,7 @@ defmodule LoomWeb.AgentSessionControllerTest do
       Loom.Agent,
       previous
       |> Keyword.put(:data_dir, data_dir)
-      |> Keyword.put(:backends, %{claude_code: BackendStub, codex: BackendStub})
+      |> Keyword.put(:backends, %{claude_code: BackendStub, codex: BackendStub, kiro: BackendStub})
     )
 
     start_supervised!({BackendStub, notify: self()})
@@ -53,6 +53,11 @@ defmodule LoomWeb.AgentSessionControllerTest do
     test "codex works the same way", %{conn: conn} do
       conn = post(conn, ~p"/api/agents", %{backend: "codex"})
       assert %{"backend" => "codex"} = json_response(conn, 201)
+    end
+
+    test "and so does kiro", %{conn: conn} do
+      conn = post(conn, ~p"/api/agents", %{backend: "kiro"})
+      assert %{"backend" => "kiro"} = json_response(conn, 201)
     end
 
     test "refuses to pick a backend when none is given", %{conn: conn} do

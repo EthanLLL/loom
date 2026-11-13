@@ -9,7 +9,7 @@
 
 <p align="center">
   <b>Your agent doesn't stop when you do.</b><br>
-  Claude Code and Codex on your server, from any browser.
+  Claude Code, Codex and Kiro on your server, from any browser.
 </p>
 
 <p align="center">
@@ -31,18 +31,18 @@ server, not in a tab:
 
 Under the hood: Elixir / Phoenix, one GenServer per session and per PTY,
 streamed over Phoenix Channels, state on disk under `~/.loom`. The frontend is
-Vite + React + xterm.js in `frontend/`. The `claude` and `codex` CLIs do the
-work; Loom makes no model requests of its own.
+Vite + React + xterm.js in `frontend/`. The `claude`, `codex` and `kiro-cli`
+CLIs do the work; Loom makes no model requests of its own.
 
 ## What it does
 
 **Sessions**
-- Claude Code or Codex, chosen per session and fixed for its life.
+- Claude Code, Codex or Kiro, chosen per session and fixed for its life.
 - Every device sees the same session; a reconnecting tab replays only what it
   missed. A message sent mid-turn joins the running turn.
 - Attachments (images scaled to 2000 px in the browser, EXIF kept). The
   composer keeps a draft per session.
-- `/compact`, `/reload` (new CC / Codex config, no restart), `/cron`.
+- `/compact`, `/reload` (new CC / Codex / Kiro config, no restart), `/cron`.
 - Directories, one level deep, in the sidebar; search over titles and over
   what was said (ripgrep). A deleted session goes to a trash on disk.
 
@@ -83,14 +83,14 @@ slides) and `node/SKILL.md`, copied to both backends on deploy.
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md): how Loom is built
-- [docs/backends.md](docs/backends.md): the Claude Code and Codex protocols, as measured
+- [docs/backends.md](docs/backends.md): the Claude Code, Codex and Kiro (ACP) protocols, as measured
 - [docs/deploy.md](docs/deploy.md): EC2 + Cloudflare Tunnel + systemd
 - [docs/keys.md](docs/keys.md): the keyboard
 
 ## Requirements
 
 - Elixir / Erlang (see `mix.exs`), Node.js + pnpm, Go (for `loom-node`)
-- `claude` and `codex` on `PATH`, both logged in
+- `claude`, `codex` and/or `kiro-cli` on `PATH`, logged in (only the ones you use)
 - Optional: `rg` for search; Caddy and systemd user units for apps
 
 ## Development

@@ -3,11 +3,20 @@ import type { AgentBackend } from "./api"
 
 /**
  * Which engine runs a conversation, as its own mark: Claude Code's pixel
- * critter, Codex's cloud with a prompt (lobe-icons). The binding is permanent and the two
- * behave differently, so the chat's header always says which one it is.
+ * critter, Codex's cloud with a prompt and Kiro's ghost (both lobe-icons). The binding is permanent
+ * and they behave differently, so the chat's header always says which one it is.
  */
 export function BackendIcon({ backend }: { backend: AgentBackend }) {
   const gradient = useId()
+
+  if (backend === "kiro") {
+    return (
+      <svg className="backend-icon" viewBox="0 0 24 24" role="img" aria-label="Kiro">
+        <title>Kiro</title>
+        <path fill="#9046FF" fillRule="evenodd" d="M4.594 6.677C6.67-2.226 18.746-2.211 21.16 6.632c.353 1.297 1.725 7.582-1.673 13.747-1.545 2.797-5.841 5.49-6.99 1.883C8.6 25.477 3.315 24.1 5.789 18.609l-.318.143c-3.57 1.305-3.863-1.208-3.173-2.513.45-.84.727-1.335.937-1.897.353-.975.458-1.568.593-2.498.27-1.837.277-3.607.765-5.167zm8.37.01a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.214-.705 1.214-1.89 0-.622-.127-1.125-.367-1.455a1.014 1.014 0 00-.855-.435zm4.08 0a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.215-.705 1.215-1.89 0-.622-.128-1.125-.368-1.455a1.014 1.014 0 00-.855-.435z" />
+      </svg>
+    )
+  }
 
   if (backend === "codex") {
     return (

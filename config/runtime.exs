@@ -27,14 +27,18 @@ config :loom, LoomWeb.Endpoint, http: [port: String.to_integer(System.get_env("P
 # because a deploy replaces `priv/`.
 config :loom, :home, System.get_env("LOOM_HOME") || Path.expand("~/.loom")
 
-# Agent sessions run Claude Code or Codex as a child process; loom runs no
-# model requests of its own, so there is no API key or region here. Both CLIs
+# Agent sessions run Claude Code, Codex or Kiro as a child process; loom runs no
+# model requests of its own, so there is no API key or region here. The CLIs
 # must be on PATH and already logged in — they decide which model and which
 # credentials to use. Applies to every environment.
 config :loom, Loom.Agent,
   # Override only to pin a specific binary (an absolute path, a wrapper).
   claude_cli: System.get_env("LOOM_CLAUDE_CLI") || "claude",
   codex_cli: System.get_env("LOOM_CODEX_CLI") || "codex",
+  kiro_cli: System.get_env("LOOM_KIRO_CLI") || "kiro-cli",
+  # Kiro's model when `~/.loom/backends/kiro.json` sets none
+  # (`Loom.Agent.BackendConfig`). Unset, Kiro picks (`auto`).
+  kiro_model: System.get_env("LOOM_KIRO_MODEL"),
   # Working directory for new sessions. Sessions have no project root of their
   # own: which project is being worked on is a fact in the conversation, and
   # the model composes absolute paths from it.

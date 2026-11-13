@@ -10,7 +10,7 @@ defmodule LoomWeb.AgentSessionController do
 
   # POST /api/agents — start a session.
   #
-  # `backend` is required: `claude_code` or `codex`. There is no default,
+  # `backend` is required: `claude_code`, `codex` or `kiro`. There is no default,
   # because the choice is permanent — the conversation lives in that engine's
   # own store, so switching later would mean abandoning the history. Better to
   # make the caller say which one than to quietly pick for them.
@@ -73,7 +73,7 @@ defmodule LoomWeb.AgentSessionController do
     conn
     |> put_status(:unprocessable_entity)
     |> json(%{
-      error: "`backend` must be \"claude_code\" or \"codex\"",
+      error: "`backend` must be \"claude_code\", \"codex\" or \"kiro\"",
       given: given
     })
   end
