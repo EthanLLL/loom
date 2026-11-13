@@ -29,7 +29,7 @@ if command -v go >/dev/null 2>&1; then
   # Renamed into place, so a CLI call already running keeps its binary.
   cp "priv/node/loom-node-linux-$arch" "$HOME/.local/bin/.loom-node.new"
   mv "$HOME/.local/bin/.loom-node.new" "$HOME/.local/bin/loom-node"
-  for skills in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+  for skills in "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.kiro/skills"; do
     mkdir -p "$skills/loom-nodes"
     cp node/SKILL.md "$skills/loom-nodes/SKILL.md"
   done
@@ -37,8 +37,8 @@ else
   echo "deploy: no Go toolchain; skipping loom-node (devices cannot be installed from this host)" >&2
 fi
 
-# Skills that are not tied to loom-node, for both backends.
-for skills in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+# Skills that are not tied to loom-node, for every backend.
+for skills in "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.kiro/skills"; do
   for skill in skills/*/; do
     mkdir -p "$skills/$(basename "$skill")"
     cp "$skill"SKILL.md "$skills/$(basename "$skill")/SKILL.md"

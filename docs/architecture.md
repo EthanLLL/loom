@@ -360,8 +360,8 @@ fails instantly cannot crash-loop the application. `loom.service` sets
 `OOMPolicy=continue`: an OOM kill takes its victim, not every session.
 
 Skills ship in the repo (`skills/*/SKILL.md`, `node/SKILL.md`) and
-`rel/deploy.sh` copies them into both backends' skill directories. They hold
-platform facts only.
+`rel/deploy.sh` copies them into each backend's skill directory (`~/.claude`,
+`~/.codex`, `~/.kiro`). They hold platform facts only.
 
 ## 8. Terminals
 
