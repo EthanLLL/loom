@@ -34,11 +34,12 @@ defmodule Loom.Agent.Session do
 
   ## The backend is kept warm, then let go
 
-  Claude Code holds a ~275 MB process so that later turns start in 0.02 s instead
-  of 6 s. That is worth paying while someone is working and pure waste once they
-  walk away, so a timer releases it after `@idle_release_ms` with no turn. The
-  conversation is unaffected — it lives in the backend's own store — the next
-  turn just pays the cold start again. For Codex this is a no-op.
+  Claude Code holds a ~275 MB process, Kiro ~500 MB, so that later turns skip a
+  cold start of about 4 s. That is worth paying while someone is working and
+  pure waste once they walk away, so a timer releases it after
+  `LOOM_IDLE_RELEASE_MINUTES` (default 5) with no turn. The conversation is
+  unaffected — it lives in the backend's own store — the next turn just pays
+  the cold start again. For Codex this is a no-op.
 
   `/reload` (`Loom.Agent.reload_backends/0`) lets every session's backend go at
   once instead of on the timer, so changed config is read on the next turn. A
@@ -95,10 +96,10 @@ defmodule Loom.Agent.Session do
 
   @title_limit 80
 
-  # How long a finished session keeps its backend warm. Long enough to cover
-  # reading the output and typing a follow-up; short enough that a session left
-  # open overnight costs nothing.
-  @idle_release_ms :timer.minutes(15)
+  # How long a finished session keeps its backend warm, unless configured
+  # (`LOOM_IDLE_RELEASE_MINUTES`): enough for a quick follow-up. Past it a turn
+  # pays a ~4 s cold start, cheap beside a warm process's memory.
+  @idle_release_ms :timer.minutes(5)
 
   # What counts as the session being used, for `last_active_at`. Not `:status`:
   # a restart restores every session, and must not make them all "just now".
@@ -823,8 +824,11 @@ defmodule Loom.Agent.Session do
 
   defp schedule_release(state) do
     state = cancel_release(state)
-    %{state | release_timer: Process.send_after(self(), :release_backend, @idle_release_ms)}
+    %{state | release_timer: Process.send_after(self(), :release_backend, idle_release_ms())}
   end
+
+  defp idle_release_ms,
+    do: Application.get_env(:loom, Loom.Agent, [])[:idle_release_ms] || @idle_release_ms
 
   defp record_usage(state, payload) do
     %{

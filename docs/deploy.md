@@ -35,6 +35,9 @@ Optional settings:
 - `LOOM_HOME` (default `~/.loom`)
 - `LOOM_WORKSPACE`
 - `LOOM_CLAUDE_CLI`, `LOOM_CODEX_CLI` and `LOOM_KIRO_CLI`
+- `LOOM_KIRO_MODEL`: the model a new Kiro session starts on (unset: `auto`)
+- `LOOM_IDLE_RELEASE_MINUTES` (default 5): how long a session keeps its
+  Claude Code or Kiro process after its last turn
 - `LOOM_APPS_URL` and `LOOM_APPS_PORT` (default 5000): the apps' own origin,
   e.g. `https://<machine>-apps.example.com`, served on that port by Caddy
   (§3). Apps never run on Loom's origin; unset, they are at

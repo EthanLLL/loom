@@ -26,7 +26,7 @@ turn 2         init 0.02s  done 1.93s
 turn 3         init 0.01s  done 1.76s
 ```
 
-So the process is kept, and released after 15 idle minutes.
+So the process is kept, and released after 5 idle minutes (`LOOM_IDLE_RELEASE_MINUTES`).
 
 **Codex: one shared `codex app-server` for every session.** It speaks
 newline-delimited JSON-RPC over stdio. Threads run concurrently and stay
@@ -447,7 +447,7 @@ documented, so they are the part most likely to change between releases.
   `session/set_config_option {sessionId, configId: "model", value}`
   (`session/set_model` fails: `-32603 … has no persistence classification`).
   It is the composer's model (§6.15): set after every new/load and before a
-  turn when it changed; `auto` when none is picked. `models/0` is
+  turn when it changed. A new session starts on `LOOM_KIRO_MODEL`, else `auto`. `models/0` is
   `kiro-cli chat --list-models --format json` (~2.5 s), kept 10 minutes.
 - **Teardown** kills the tree (`kiro-cli → node → MCP servers`) as for CC.
   Closing stdin alone makes the relay wait 5 s for the engine

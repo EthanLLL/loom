@@ -106,7 +106,14 @@ defmodule Loom.Agent.Backend.Kiro do
   @models_ttl_ms :timer.minutes(10)
 
   @impl Backend
-  def start(loom_id, meta), do: {:ok, new(loom_id, nil, meta)}
+  # A new session starts on `LOOM_KIRO_MODEL` if set (any id of `models/0`),
+  # else on Kiro's `auto`; the composer can switch it either way.
+  def start(loom_id, meta) do
+    meta = if Backend.meta_get(meta, :model), do: meta, else: Map.put(meta, :model, default_model())
+    {:ok, new(loom_id, nil, meta)}
+  end
+
+  defp default_model, do: Application.get_env(:loom, Loom.Agent, [])[:kiro_model]
 
   @impl Backend
   def resume(loom_id, meta) do

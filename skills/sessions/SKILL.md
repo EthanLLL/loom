@@ -8,7 +8,7 @@ description: Run work in parallel as new Loom sessions the user can watch in the
 Default to working in the foreground. When the user asks for parallel work, start
 new Loom sessions rather than background agents: they show up in the sidebar,
 the user can read and steer them, and they survive this process. A background
-agent or shell task does not — Loom releases an idle backend 15 minutes after
+agent or shell task does not — Loom releases an idle backend a few minutes after
 its last turn, and anything it was waiting on is lost.
 
 The exception is a short subagent job run in the foreground, such as

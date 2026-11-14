@@ -27,6 +27,14 @@ config :loom, LoomWeb.Endpoint, http: [port: String.to_integer(System.get_env("P
 # because a deploy replaces `priv/`.
 config :loom, :home, System.get_env("LOOM_HOME") || Path.expand("~/.loom")
 
+# Minutes a session keeps its Claude Code or Kiro process after its last turn.
+# A cold start is ~4 s; a warm process is 275–500 MB, more as it ages.
+idle_release_minutes =
+  case Integer.parse(System.get_env("LOOM_IDLE_RELEASE_MINUTES", "5")) do
+    {n, ""} when n > 0 -> n
+    _ -> raise "LOOM_IDLE_RELEASE_MINUTES is not a whole number of minutes above 0"
+  end
+
 # Agent sessions run Claude Code, Codex or Kiro as a child process; loom runs no
 # model requests of its own, so there is no API key or region here. The CLIs
 # must be on PATH and already logged in — they decide which model and which
@@ -36,10 +44,13 @@ config :loom, Loom.Agent,
   claude_cli: System.get_env("LOOM_CLAUDE_CLI") || "claude",
   codex_cli: System.get_env("LOOM_CODEX_CLI") || "codex",
   kiro_cli: System.get_env("LOOM_KIRO_CLI") || "kiro-cli",
+  # The model a new Kiro session starts on, e.g. claude-opus-5.5; unset, `auto`.
+  kiro_model: System.get_env("LOOM_KIRO_MODEL"),
   # Working directory for new sessions. Sessions have no project root of their
   # own: which project is being worked on is a fact in the conversation, and
   # the model composes absolute paths from it.
-  workspace: System.get_env("LOOM_WORKSPACE")
+  workspace: System.get_env("LOOM_WORKSPACE"),
+  idle_release_ms: :timer.minutes(idle_release_minutes)
 
 # Parses `LOOM_BIND`, defaulting to loopback. A hostname is not accepted: a
 # typo there would silently fall back to all interfaces in most parsers, which

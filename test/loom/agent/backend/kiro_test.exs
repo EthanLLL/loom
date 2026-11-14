@@ -199,6 +199,17 @@ defmodule Loom.Agent.Backend.KiroTest do
       assert Kiro.persist(handle).model == nil
     end
 
+    test "a new session starts on LOOM_KIRO_MODEL; a resumed one keeps its own" do
+      previous = Application.get_env(:loom, Loom.Agent, [])
+      on_exit(fn -> Application.put_env(:loom, Loom.Agent, previous) end)
+
+      assert {:ok, %{model: nil}} = Kiro.start("a_x", %{})
+      Application.put_env(:loom, Loom.Agent, Keyword.put(previous, :kiro_model, "claude-opus-5.5"))
+      assert {:ok, %{model: "claude-opus-5.5"}} = Kiro.start("a_x", %{})
+      assert {:ok, %{model: "claude-haiku-5.5"}} = Kiro.start("a_x", %{model: "claude-haiku-5.5"})
+      assert {:ok, %{model: nil}} = Kiro.resume("a_x", %{kiro_session_id: "sess_1"})
+    end
+
     test "a refused option is only logged" do
       handle = ready(%{requests: %{7 => :prompt, 8 => :set_model}})
 
