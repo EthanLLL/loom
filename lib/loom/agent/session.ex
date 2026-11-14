@@ -168,6 +168,18 @@ defmodule Loom.Agent.Session do
   """
   def attach(id, since_seq \\ 0), do: GenServer.call(via(id), {:attach, since_seq})
 
+  @doc """
+  Delete the session: answered at once, the slow part after.
+
+  The header is marked `:deleting` and the session leaves every device's list
+  before the reply; then the process stops, takes its backend down (killing a
+  CLI's process tree waits for it to die) and moves its directory to the trash
+  as it exits. It is the only writer of its directory, so nothing can recreate
+  the directory after the move, and anything sent meanwhile is never handled.
+  A restart that finds the mark finishes the move instead of restoring.
+  """
+  def delete(id), do: GenServer.call(via(id), :delete)
+
   @doc "Session metadata without the transcript."
   def info(id), do: GenServer.call(via(id), :info)
 
@@ -191,6 +203,11 @@ defmodule Loom.Agent.Session do
     # after a crash. Treating the second as new would bind a second backend
     # conversation to a session that already has one.
     case Store.read_meta(id) do
+      {:ok, %{status: "deleting"}} ->
+        # Stopped between the mark and the move: finish the delete.
+        Store.delete_session(id)
+        {:stop, :deleted}
+
       {:ok, meta} ->
         restore(id, meta)
 
@@ -505,6 +522,13 @@ defmodule Loom.Agent.Session do
 
   def handle_call(:info, _from, state), do: {:reply, meta(state), state}
 
+  def handle_call(:delete, _from, state) do
+    state = %{state | status: :deleting}
+    write_meta(state)
+    Phoenix.PubSub.broadcast(Loom.PubSub, Loom.Agent.lobby_topic(), {:agent_removed, state.id})
+    {:stop, :normal, :ok, state}
+  end
+
   # ── Backend output ──────────────────────────────────────────────────────
 
   @impl true
@@ -542,6 +566,15 @@ defmodule Loom.Agent.Session do
   end
 
   @impl true
+  def terminate(_reason, %{status: :deleting} = state) do
+    if state.handle, do: Backend.impl(state.backend).stop(state.handle)
+    Store.close_logs(state.logs)
+    Store.delete_session(state.id)
+    :ok
+  catch
+    _, _ -> :ok
+  end
+
   def terminate(_reason, state) do
     # Take the backend down with us: a `claude` process left running would keep
     # editing files for a conversation nobody is watching, and a codex thread

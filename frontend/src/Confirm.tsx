@@ -9,6 +9,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Loading03Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { Kbd } from "@/components/ui/kbd"
 import { isComposing } from "./ime"
 
@@ -31,16 +33,20 @@ export function Confirm({
   onClose: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
+  // Until the server has answered: the button spins and cannot be pressed twice.
+  const [pending, setPending] = useState(false)
   const busy = useRef(false)
   const yes = async () => {
     if (busy.current) return
     busy.current = true
+    setPending(true)
     try {
       await onYes()
       onClose()
     } catch (e) {
       setError((e as Error).message)
       busy.current = false
+      setPending(false)
     }
   }
   const latest = useRef({ yes, onClose })
@@ -74,7 +80,8 @@ export function Confirm({
           <AlertDialogCancel>
             Cancel <Kbd className="max-sm:hidden">n</Kbd>
           </AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={() => void yes()}>
+          <AlertDialogAction variant="destructive" disabled={pending} onClick={() => void yes()}>
+            {pending && <HugeiconsIcon icon={Loading03Icon} className="animate-spin" />}
             {action} <Kbd className="bg-transparent text-current max-sm:hidden">y</Kbd>
           </AlertDialogAction>
         </AlertDialogFooter>

@@ -357,4 +357,39 @@ defmodule Loom.Agent.RestoreTest do
 
     assert Agent.info(id).last_active_at == active
   end
+
+  describe "deleting" do
+    test "answers once marked; the process stops and the directory goes to the trash" do
+      id = new_session()
+      Phoenix.PubSub.subscribe(Loom.PubSub, Agent.lobby_topic())
+
+      assert :ok = Agent.delete_session(id)
+      assert_receive {:agent_removed, ^id}
+      refute Enum.any?(Agent.list_sessions(), &(&1.id == id))
+
+      assert_receive :stub_stopped, 1_000
+      assert_eventually(fn -> not Agent.exists?(id) and not File.exists?(Store.session_dir(id)) end)
+      assert Enum.any?(File.ls!(Store.trash_dir()), &String.starts_with?(&1, id <> "."))
+      assert {:error, {:no_such_session, ^id}} = Agent.restore_session(id)
+    end
+
+    test "a restart between the mark and the move finishes the delete" do
+      id = new_session()
+      stop_and_wait(id)
+      {:ok, meta} = Store.read_meta(id)
+      Store.write_meta(id, %{meta | status: "deleting"})
+
+      assert {:error, :deleted} = Agent.restore_session(id)
+      refute File.exists?(Store.session_dir(id))
+      assert Enum.any?(File.ls!(Store.trash_dir()), &String.starts_with?(&1, id <> "."))
+    end
+
+    test "a session with no process is moved at once" do
+      id = new_session()
+      stop_and_wait(id)
+
+      assert :ok = Agent.delete_session(id)
+      refute File.exists?(Store.session_dir(id))
+    end
+  end
 end

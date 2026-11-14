@@ -174,7 +174,10 @@ Whoever is signed in has a shell, so the door is guarded (`Loom.Auth`):
 
 The base is `~/.loom` (or `LOOM_HOME`), not `priv/`, which a deploy replaces.
 Deleting a session is a rename into `.trash`; nothing is ever removed, and an
-id that is not one plain path segment is refused.
+id that is not one plain path segment is refused. The request returns once the
+header says `deleting` and the session is off every list; the process then
+stops its backend and makes the move as it exits, and a restart in between
+finishes it.
 
 There is no message log. The conversation belongs to the backend (CC's
 `~/.claude/projects/…`, Codex's thread store, Kiro's `~/.kiro/sessions`); `events.jsonl` is only the

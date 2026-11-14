@@ -93,10 +93,24 @@ defmodule Loom.Agent do
     end
   end
 
-  @doc "Stop a session and move its persisted history to the trash."
+  @doc """
+  Delete a session: its history goes to the trash. Returns once it is marked
+  and gone from the list; a live session finishes stopping on its own (see
+  `Session.delete/1`).
+  """
   def delete_session(id) do
-    stop_session(id)
-    Loom.Agent.Store.delete_session(id)
+    case Registry.lookup(Loom.Agent.Registry, id) do
+      [{_pid, _}] ->
+        try do
+          Session.delete(id)
+        catch
+          # It stopped between the lookup and the call: nothing left to stop.
+          :exit, _ -> Loom.Agent.Store.delete_session(id)
+        end
+
+      [] ->
+        Loom.Agent.Store.delete_session(id)
+    end
   end
 
   @doc """
@@ -136,7 +150,7 @@ defmodule Loom.Agent do
     Loom.Agent.Registry
     |> Registry.select([{{:"$1", :_, :_}, [], [:"$1"]}])
     |> Enum.map(&safe_info/1)
-    |> Enum.reject(&is_nil/1)
+    |> Enum.reject(&(is_nil(&1) or &1.status == :deleting))
     |> Enum.sort_by(& &1.created_at)
   end
 

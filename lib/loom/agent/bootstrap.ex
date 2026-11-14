@@ -52,6 +52,10 @@ defmodule Loom.Agent.Bootstrap do
           {:ok, _pid} ->
             true
 
+          # A delete the restart cut short, finished now.
+          {:error, :deleted} ->
+            false
+
           {:error, reason} ->
             Logger.warning("Loom.Agent cannot restore #{meta[:id]}: #{inspect(reason)}")
             false
