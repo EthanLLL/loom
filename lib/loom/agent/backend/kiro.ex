@@ -109,7 +109,9 @@ defmodule Loom.Agent.Backend.Kiro do
   # A new session starts on `LOOM_KIRO_MODEL` if set (any id of `models/0`),
   # else on Kiro's `auto`; the composer can switch it either way.
   def start(loom_id, meta) do
-    meta = if Backend.meta_get(meta, :model), do: meta, else: Map.put(meta, :model, default_model())
+    meta =
+      if Backend.meta_get(meta, :model), do: meta, else: Map.put(meta, :model, default_model())
+
     {:ok, new(loom_id, nil, meta)}
   end
 
@@ -706,15 +708,44 @@ defmodule Loom.Agent.Backend.Kiro do
 
   @doc false
   # Public only so a test can see what new/load send.
-  def session_params(handle, nil), do: %{"cwd" => handle.cwd, "mcpServers" => []}
+  def session_params(handle, nil),
+    do: with_settings(%{"cwd" => handle.cwd, "mcpServers" => []}, %{})
 
   def session_params(handle, id) do
-    %{
-      "sessionId" => id,
-      "cwd" => handle.cwd,
-      "mcpServers" => [],
-      "_meta" => %{"kiro" => %{"noReplay" => true}}
-    }
+    with_settings(
+      %{"sessionId" => id, "cwd" => handle.cwd, "mcpServers" => []},
+      %{"noReplay" => true}
+    )
+  end
+
+  defp with_settings(params, kiro) do
+    kiro =
+      case compaction() do
+        nil -> kiro
+        compaction -> Map.put(kiro, "settings", %{"compaction" => compaction})
+      end
+
+    if kiro == %{}, do: params, else: Map.put(params, "_meta", %{"kiro" => kiro})
+  end
+
+  # Over ACP the engine ignores `~/.kiro/settings/cli.json` and takes the
+  # compaction threshold only from `_meta.kiro.settings` on new/load. So the
+  # file `kiro-cli settings compaction.autoCompactionThreshold N` writes is
+  # read at every spawn and handed over; a value out of range (0–80) is the
+  # engine's to reject, and the session fails to open with its message.
+  defp compaction do
+    with {:ok, body} <- File.read(settings_file()),
+         {:ok, %{"compaction.autoCompactionThreshold" => n}} when is_number(n) <-
+           Jason.decode(body) do
+      %{"enabled" => true, "autoCompactionThreshold" => n}
+    else
+      _ -> nil
+    end
+  end
+
+  defp settings_file do
+    Application.get_env(:loom, Loom.Agent, [])[:kiro_settings_file] ||
+      Path.join(System.user_home!(), ".kiro/settings/cli.json")
   end
 
   defp ready(handle) do

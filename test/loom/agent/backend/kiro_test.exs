@@ -151,6 +151,20 @@ defmodule Loom.Agent.Backend.KiroTest do
       assert Kiro.session_params(handle, @sid)["_meta"] == %{"kiro" => %{"noReplay" => true}}
     end
 
+    test "new and load hand over the compaction threshold kiro-cli settings wrote" do
+      file = Application.get_env(:loom, Loom.Agent)[:kiro_settings_file]
+      File.mkdir_p!(Path.dirname(file))
+      File.write!(file, ~s({"compaction.autoCompactionThreshold": 30, "chat.defaultModel": "x"}))
+      on_exit(fn -> File.rm(file) end)
+
+      handle = booting(nil)
+      compaction = %{"compaction" => %{"enabled" => true, "autoCompactionThreshold" => 30}}
+      assert Kiro.session_params(handle, nil)["_meta"] == %{"kiro" => %{"settings" => compaction}}
+
+      assert Kiro.session_params(handle, @sid)["_meta"] ==
+               %{"kiro" => %{"noReplay" => true, "settings" => compaction}}
+    end
+
     test "the session's agent file holds Loom's instructions and allows everything" do
       file = Kiro.agent_file(booting(nil))
       assert file =~ ~r/\A---\nname: loom-a_test\n/
@@ -204,7 +218,13 @@ defmodule Loom.Agent.Backend.KiroTest do
       on_exit(fn -> Application.put_env(:loom, Loom.Agent, previous) end)
 
       assert {:ok, %{model: nil}} = Kiro.start("a_x", %{})
-      Application.put_env(:loom, Loom.Agent, Keyword.put(previous, :kiro_model, "claude-opus-5.5"))
+
+      Application.put_env(
+        :loom,
+        Loom.Agent,
+        Keyword.put(previous, :kiro_model, "claude-opus-5.5")
+      )
+
       assert {:ok, %{model: "claude-opus-5.5"}} = Kiro.start("a_x", %{})
       assert {:ok, %{model: "claude-haiku-5.5"}} = Kiro.start("a_x", %{model: "claude-haiku-5.5"})
       assert {:ok, %{model: nil}} = Kiro.resume("a_x", %{kiro_session_id: "sess_1"})

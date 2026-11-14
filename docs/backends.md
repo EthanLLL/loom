@@ -426,6 +426,14 @@ documented, so they are the part most likely to change between releases.
   runs at `summarizationThreshold` (80 %). After kind `summarization_failed`,
   60 s with no reply fails the turn with the engine's reason (defensive, not
   seen).
+- **The auto-compaction threshold ignores `~/.kiro/settings/cli.json`** over
+  ACP: the engine reads it only from `_meta.kiro.settings.compaction
+  {enabled: true, autoCompactionThreshold: 0–80}` on `session/new` and
+  `session/load`, and a load without it is back at 80 (measured on 3.3.0).
+  So Loom reads `compaction.autoCompactionThreshold` from that file at every
+  spawn and passes it on both; `kiro-cli settings` stays the one place to
+  set it. An out-of-range value is the engine's to reject: the session then
+  fails to open with its message.
 - **Context.** `session/prompt` with `_meta.kiro.contextBreakdown: "summary"`
   makes `turn_completion` carry `contextBreakdown.window {sizeTokens,
   usagePercentage}` (1,000,000 here). Between turns, kind `context_usage`
