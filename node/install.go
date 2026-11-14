@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -37,11 +38,22 @@ func runInstall(args []string) int {
 		return 2
 	}
 
-	cfg := config{URL: strings.TrimRight(*origin, "/"), Token: *token, Shell: *shell}
-	if err := writeConfig(cfg); err != nil {
+	// Added to the looms already here, or replacing this one's old token.
+	cfg, err := readConfig()
+	if err != nil {
+		return die("%v", err)
+	}
+	url := strings.TrimRight(*origin, "/")
+	cfg.Looms = slices.DeleteFunc(cfg.Looms, func(l loom) bool { return l.URL == url })
+	cfg.Looms = append(cfg.Looms, loom{URL: url, Token: *token})
+	cfg.Shell = *shell
+	if err := writeConfig(*cfg); err != nil {
 		return die("%v", err)
 	}
 	fmt.Println("wrote", configPath())
+	for _, l := range cfg.Looms {
+		fmt.Println("  serves", l.URL)
+	}
 
 	exe, err := os.Executable()
 	if err == nil {
@@ -212,6 +224,35 @@ func installDetached(exe string) error {
 // ── uninstall ───────────────────────────────────────────────────────────
 
 func runUninstall(args []string) int {
+	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
+	origin := fs.String("url", "", "stop serving only this loom; the others stay")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	if *origin != "" {
+		cfg, err := readConfig()
+		if err != nil {
+			return die("%v", err)
+		}
+		url := strings.TrimRight(*origin, "/")
+		n := len(cfg.Looms)
+		cfg.Looms = slices.DeleteFunc(cfg.Looms, func(l loom) bool { return l.URL == url })
+		if len(cfg.Looms) == n {
+			return die("%s does not name %s", configPath(), url)
+		}
+		if len(cfg.Looms) > 0 {
+			if err := writeConfig(*cfg); err != nil {
+				return die("%v", err)
+			}
+			if err := restartService(); err != nil {
+				return die("%v", err)
+			}
+			fmt.Println("loom-node no longer serves", url, "and its token is removed; remove the device in that loom too")
+			return 0
+		}
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
 		exec.Command("launchctl", "bootout", fmt.Sprintf("gui/%d/%s", os.Getuid(), launchdLabel)).Run()
@@ -222,6 +263,25 @@ func runUninstall(args []string) int {
 		exec.Command("systemctl", "--user", "daemon-reload").Run()
 	}
 	os.Remove(configPath())
-	fmt.Println("loom-node stopped and its service and token removed; remove the device in loom too")
+	fmt.Println("loom-node stopped and its service and tokens removed; remove the device in loom too")
 	return 0
+}
+
+// restartService makes the daemon read the config again, so a loom taken out
+// of it is dropped.
+func restartService() error {
+	switch runtime.GOOS {
+	case "darwin":
+		return run("launchctl", "kickstart", "-k", fmt.Sprintf("gui/%d/%s", os.Getuid(), launchdLabel))
+	case "linux":
+		if exec.Command("systemctl", "--user", "show-environment").Run() == nil {
+			return run("systemctl", "--user", "restart", systemdUnit)
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		return installDetached(exe)
+	}
+	return nil
 }

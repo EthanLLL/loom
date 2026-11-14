@@ -30,8 +30,8 @@ On the loom host (for agents):
 
 On a device:
   loom-node daemon                          stay connected to loom (what the service runs)
-  loom-node install --url URL --token TOKEN [--shell SHELL]
-  loom-node uninstall
+  loom-node install --url URL --token TOKEN [--shell SHELL]   adds this loom to any already served
+  loom-node uninstall [--url URL]           all looms, or only this one
   loom-node version
 `
 

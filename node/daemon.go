@@ -31,11 +31,22 @@ const (
 	revokedWait = 10 * time.Minute
 )
 
-// config is what `loom-node install` writes: where loom is and who we are.
+// config is what `loom-node install` writes: the looms this device serves,
+// each with the token it was given there, and the shell commands run in. One
+// device may serve several looms (a family Mac on two people's); each gets its
+// own connection, and an install for one leaves the others alone.
 type config struct {
+	Looms []loom `json:"looms"`
+	Shell string `json:"shell"`
+
+	// Before several looms: the one loom, at the top level. Still read.
+	URL   string `json:"url,omitempty"`
+	Token string `json:"token,omitempty"`
+}
+
+type loom struct {
 	URL   string `json:"url"`
 	Token string `json:"token"`
-	Shell string `json:"shell"`
 }
 
 // One place on every system, macOS included, so it is easy to find and explain.
@@ -47,17 +58,38 @@ func configPath() string {
 	return filepath.Join(home, ".config", "loom-node", "config.json")
 }
 
-func loadConfig() (*config, error) {
+// readConfig is the file as it is, or an empty config when there is none.
+func readConfig() (*config, error) {
+	var c config
 	b, err := os.ReadFile(configPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return &c, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	var c config
 	if err := json.Unmarshal(b, &c); err != nil {
 		return nil, fmt.Errorf("%s: %w", configPath(), err)
 	}
-	if c.URL == "" || c.Token == "" {
-		return nil, fmt.Errorf("%s has no url or token; reinstall from loom's Devices", configPath())
+	if c.URL != "" {
+		c.Looms = append([]loom{{URL: c.URL, Token: c.Token}}, c.Looms...)
+		c.URL, c.Token = "", ""
+	}
+	return &c, nil
+}
+
+func loadConfig() (*config, error) {
+	c, err := readConfig()
+	if err != nil {
+		return nil, err
+	}
+	if len(c.Looms) == 0 {
+		return nil, fmt.Errorf("%s names no loom; install from loom's Devices", configPath())
+	}
+	for _, l := range c.Looms {
+		if l.URL == "" || l.Token == "" {
+			return nil, fmt.Errorf("%s has a loom without url or token; reinstall from loom's Devices", configPath())
+		}
 	}
 	if c.Shell == "" {
 		c.Shell = os.Getenv("SHELL")
@@ -65,7 +97,17 @@ func loadConfig() (*config, error) {
 	if c.Shell == "" {
 		c.Shell = "/bin/sh"
 	}
-	return &c, nil
+	return c, nil
+}
+
+// find is the loom at url, if the config still names it.
+func (c *config) find(url string) (loom, bool) {
+	for _, l := range c.Looms {
+		if l.URL == url {
+			return l, true
+		}
+	}
+	return loom{}, false
 }
 
 func runDaemon(args []string) int {
@@ -79,40 +121,75 @@ func runDaemon(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Install and uninstall restart the service, so the looms read here are
+	// the ones to serve until then.
+	var cfg *config
+	for ctx.Err() == nil {
+		var err error
+		if cfg, err = loadConfig(); err == nil {
+			break
+		}
+		log.Printf("cannot start: %v", err)
+		sleep(ctx, time.Minute)
+	}
+	if ctx.Err() != nil {
+		return 0
+	}
+
+	var wg sync.WaitGroup
+	for _, l := range cfg.Looms {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			serveLoom(ctx, l.URL)
+		}()
+	}
+	wg.Wait()
+	return 0
+}
+
+// serveLoom stays connected to one loom until the daemon stops or the config
+// no longer names it.
+func serveLoom(ctx context.Context, url string) {
 	hostname, _ := os.Hostname()
 	backoff := time.Second
 
 	for ctx.Err() == nil {
-		// Read every time, so a reinstall takes effect without a restart.
+		// Read every time, so a token renewed by a reinstall is used.
 		cfg, err := loadConfig()
 		if err != nil {
-			log.Printf("cannot start: %v", err)
+			log.Printf("%s: %v", url, err)
 			sleep(ctx, time.Minute)
 			continue
+		}
+		l, ok := cfg.find(url)
+		if !ok {
+			log.Printf("%s is no longer in %s; not connecting", url, configPath())
+			return
 		}
 
 		info := map[string]string{
 			"os": runtime.GOOS, "arch": runtime.GOARCH,
 			"hostname": hostname, "version": version,
 		}
-		c, err := dial(ctx, cfg.URL, cfg.Token, info)
+		c, err := dial(ctx, l.URL, l.Token, info)
 		if errors.Is(err, errRevoked) {
-			log.Printf("%v; retrying in %s", err, revokedWait)
+			log.Printf("%s: %v; retrying in %s", url, err, revokedWait)
 			sleep(ctx, revokedWait)
 			continue
 		}
 		if err != nil {
 			wait := backoff + rand.N(backoff/2+1)
-			log.Printf("cannot reach %s: %v; retrying in %s", cfg.URL, err, wait.Round(time.Second))
+			log.Printf("cannot reach %s: %v; retrying in %s", url, err, wait.Round(time.Second))
 			sleep(ctx, wait)
 			backoff = min(backoff*2, maxBackoff)
 			continue
 		}
 
-		log.Printf("connected to %s as %q", cfg.URL, c.name)
+		log.Printf("connected to %s as %q", url, c.name)
 		started := time.Now()
-		err = newSession(c, cfg).serve(ctx)
-		log.Printf("disconnected: %v", err)
+		err = newSession(c, cfg, url).serve(ctx)
+		log.Printf("disconnected from %s: %v", url, err)
 
 		// A connection that held for a while was a real one; start over.
 		if time.Since(started) > time.Minute {
@@ -120,7 +197,6 @@ func runDaemon(args []string) int {
 		}
 		sleep(ctx, backoff)
 	}
-	return 0
 }
 
 func sleep(ctx context.Context, d time.Duration) {
@@ -134,9 +210,10 @@ func sleep(ctx context.Context, d time.Duration) {
 // everything still running is killed: nobody is left to see its output, and a
 // retry from the agent would otherwise run it twice.
 type session struct {
-	c   *conn
-	cfg *config
-	ctx context.Context
+	c    *conn
+	cfg  *config
+	loom string // its url, for the audit log
+	ctx  context.Context
 
 	mu     sync.Mutex
 	execs  map[string]*job
@@ -144,8 +221,8 @@ type session struct {
 	wg     sync.WaitGroup
 }
 
-func newSession(c *conn, cfg *config) *session {
-	return &session{c: c, cfg: cfg, execs: map[string]*job{}, writes: map[string]*upload{}}
+func newSession(c *conn, cfg *config, url string) *session {
+	return &session{c: c, cfg: cfg, loom: url, execs: map[string]*job{}, writes: map[string]*upload{}}
 }
 
 func (s *session) serve(parent context.Context) error {
@@ -298,7 +375,7 @@ func (s *session) exec(r request) {
 	cmd.WaitDelay = pipeLinger
 
 	j := &job{cmd: cmd}
-	audit("exec %s cwd=%s timeout=%s session=%s: %s", r.ID, cwd, timeout, r.Session, r.Cmd)
+	s.audit("exec %s cwd=%s timeout=%s session=%s: %s", r.ID, cwd, timeout, r.Session, r.Cmd)
 
 	if err := cmd.Start(); err != nil {
 		s.fail(r.ID, err)
@@ -337,7 +414,7 @@ func (s *session) exec(r request) {
 		truncated := total > outputCap
 		mu.Unlock()
 
-		audit("exit %s code=%d after %s%s", r.ID, code, time.Since(started).Round(time.Millisecond),
+		s.audit("exit %s code=%d after %s%s", r.ID, code, time.Since(started).Round(time.Millisecond),
 			map[bool]string{true: " (" + j.reason + ")", false: ""}[j.reason != ""])
 		s.c.push(s.ctx, "exit", map[string]any{
 			"id": r.ID, "code": code, "timed_out": timedOut, "truncated": truncated, "bytes": total,
@@ -366,7 +443,7 @@ func (s *session) read(r request) {
 		s.fail(r.ID, fmt.Errorf("%s is a directory; use exec with ls", path))
 		return
 	}
-	audit("read %s %s", r.ID, path)
+	s.audit("read %s %s", r.ID, path)
 
 	buf := make([]byte, fileChunk)
 	var size int64
@@ -452,7 +529,7 @@ func (s *session) write(r request) {
 		err = s.finish(u)
 		delete(s.writes, r.ID)
 		if err == nil {
-			audit("write %s %s (%d bytes)", r.ID, u.path, u.size)
+			s.audit("write %s %s (%d bytes)", r.ID, u.path, u.size)
 			s.c.push(s.ctx, "written", map[string]any{"id": r.ID, "size": u.size, "path": u.path})
 			return
 		}
@@ -513,8 +590,13 @@ func expand(path string) (string, error) {
 }
 
 // audit keeps a record on the device of everything loom had it do, apart from
-// loom's own transcript. Rotated at 5 MB, one old file kept.
+// loom's own transcript, each line naming the loom that asked. Rotated at 5 MB,
+// one old file kept; one file for all looms.
 var auditMu sync.Mutex
+
+func (s *session) audit(format string, args ...any) {
+	audit("%s %s", s.loom, fmt.Sprintf(format, args...))
+}
 
 func audit(format string, args ...any) {
 	auditMu.Lock()

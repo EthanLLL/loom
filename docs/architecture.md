@@ -253,6 +253,11 @@ agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
   SHA-256, replacing any old one), downloads the binary for the OS/arch, writes
   `~/.config/loom-node/config.json`, installs a launchd or systemd user
   service. Removing the device revokes the token.
+- **One device, several looms.** The config is a list of `{url, token}`; an
+  install adds its loom or renews that loom's token and leaves the others, and
+  the daemon keeps one connection per loom. `loom-node uninstall --url URL`
+  drops one. The audit log on the device names the loom on every line. Agents
+  of every loom listed run as the same user there.
 - **The CLI's routes** (`/api/node/*`) need the key in mode-600
   `~/.loom/node-cli.json`, and refuse anything carrying `cf-ray`.
 - **Online** while the channel is alive; joins and drops are pushed.
