@@ -63,8 +63,9 @@ defmodule Loom.Apps do
   require Logger
 
   @name __MODULE__
-  @persisted ~w(name title order proxy port server idle job schedule created_at)a
-  @settable ~w(title proxy port server idle job schedule)a
+  @persisted ~w(name title order proxy port server idle memory job schedule created_at)a
+  @settable ~w(title proxy port server idle memory job schedule)a
+  @memory "256M"
   @proxies ~w(api all)
 
   def start_link(opts) do
@@ -73,7 +74,8 @@ defmodule Loom.Apps do
 
   @doc """
   Create or change an app. `attrs` takes `:title`, `:proxy`, `:port`,
-  `:server`, `:idle`, `:job` and `:schedule`, atom or string keys; a key given
+  `:server`, `:idle`, `:memory` (the server's cap, a size like `"2G"`; default
+  #{@memory}), `:job` and `:schedule`, atom or string keys; a key given
   as `nil` clears it, one not given is left as it was. A new app goes last. Its
   directory must already hold `web/index.html`, unless its `proxy` is `"all"`.
   Returns `{:ok, app}` or `{:error, reason}`.
@@ -236,6 +238,7 @@ defmodule Loom.Apps do
               (state.apps |> Map.values() |> Enum.map(& &1.order) |> Enum.max(fn -> 0 end)) + 1,
             server: nil,
             idle: nil,
+            memory: nil,
             job: nil,
             schedule: nil,
             created_at: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
@@ -260,6 +263,9 @@ defmodule Loom.Apps do
 
         app.port in taken ->
           {:error, "port #{app.port} is another app's"}
+
+        app.memory != nil and not (app.memory =~ ~r/\A[1-9][0-9]*[KMG]\z/) ->
+          {:error, "memory: a size like 512M or 2G"}
 
         app.job != nil and app.schedule == nil ->
           {:error, "a job needs a schedule"}
@@ -467,7 +473,7 @@ defmodule Loom.Apps do
            ExecStart=/bin/sh -c #{shell_quote("exec " <> app.server)}
            # Ready once it listens: the proxy connects as soon as this returns.
            ExecStartPost=/bin/bash -c 'i=0; until #{ready}; do i=$$((i+1)); [ $$i -lt 1500 ] || exit 1; sleep 0.02; done'
-           MemoryMax=256M
+           MemoryMax=#{app.memory || @memory}
            """}
         ]
       else

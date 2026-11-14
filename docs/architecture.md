@@ -280,7 +280,7 @@ being the rest; `"all"` every request, for a whole site such as one cloned
 from elsewhere, which then needs no `web/`.
 
 **Loom is the registry, not the data plane.** `Loom.Apps` is one GenServer
-over `~/.loom/apps.json` (title, order, proxy, port, server, idle, job,
+over `~/.loom/apps.json` (title, order, proxy, port, server, idle, memory, job,
 schedule), pushed whole on the lobby channel. From it, on every change and at
 boot, it writes the units that run the apps and Caddy's config, and steps out
 of the way: nothing an app serves passes through the BEAM, and the apps stay

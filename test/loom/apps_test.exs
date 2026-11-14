@@ -75,6 +75,11 @@ defmodule Loom.AppsTest do
     assert server =~ "WorkingDirectory=#{Apps.dir(a)}"
     assert File.read!(Path.join(units, "app-#{a}.service")) =~ "BindsTo=app-#{a}_server.service"
     assert File.read!(Path.join(units, "app-#{a}_job.timer")) =~ "OnCalendar=*-*-* 00/4:00:00"
+    assert server =~ "MemoryMax=256M\n"
+
+    assert {:error, "memory: a size like 512M or 2G"} = Apps.put(a, %{memory: "lots"}, s)
+    {:ok, %{memory: "2G"}} = Apps.put(a, %{memory: "2G"}, s)
+    assert File.read!(Path.join(units, "app-#{a}_server.service")) =~ "MemoryMax=2G\n"
 
     {:ok, _} = Apps.put(a, %{server: nil}, s)
     refute File.exists?(Path.join(units, "app-#{a}.socket"))

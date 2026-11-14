@@ -34,8 +34,9 @@ lowercase letters, digits, `-`; it is also the URL):
 The server listens on the unix socket `$APP_SOCKET`, or on `$PORT` if the app
 declares a `port`. systemd starts it on the first request (~0.1 s) and stops
 it after `idle` with no connection (default `"10min"`), so anything kept only
-in memory is lost. Its working directory is the app's directory, and it is
-capped at 256 MB of memory.
+in memory is lost. Its working directory is the app's directory. Its memory
+is capped at 256 MB by default; past the cap the kernel kills it. A server that
+needs more (a database, big queries) sets `memory`, e.g. `"1G"` or `"2G"`.
 
 The proxy is plain HTTP: every method, header, cookie and body passes through
 in both directions, with no time limit; streaming, SSE and WebSocket work.
@@ -99,6 +100,7 @@ $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory t
   - `server` (a shell command, run in the app's directory)
   - `port` (an integer, 1024–65535, one per app)
   - `idle`
+  - `memory` (the server's cap: `"512M"`, `"1G"`, `"2G"`; default `"256M"`)
   - `job`
   - `schedule`
 
@@ -137,6 +139,9 @@ $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory t
   while the host was down happens at boot.
 - It runs in the app's directory, with the service's PATH (`~/.venv` Python
   and Node among it).
+- A run is killed after 30 minutes, so a job that waits for something (a
+  file, a sheet, a retry) must give up well before that, and say so where the
+  app records it. Unlike the server, it has no memory cap.
 - Nothing wakes a model by itself. A failure shows only where the app records
   it, and in the journal.
 - **Run now**: the server can start the job without waiting for the next tick,
