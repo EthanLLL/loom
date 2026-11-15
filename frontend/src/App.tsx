@@ -15,6 +15,7 @@ import { MovePicker } from "./MovePicker"
 import { PaneButton, PaneHead, PaneTitle } from "./Pane"
 import { usePush, useVisible } from "./push"
 import { Search } from "./Search"
+import { SettingsDialog } from "./Settings"
 import { Sidebar, SidebarHandle, WIDE } from "./Sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { Terminal } from "./Terminal"
@@ -23,6 +24,7 @@ const Browser = lazy(() => import("./Browser").then((m) => ({ default: m.Browser
 import { useLobby } from "./useLobby"
 import { ViewportReadout } from "./ViewportReadout"
 import { useCompact, useNarrow } from "./useNarrow"
+import { native, useNativeAction, useNativeLayout, useTellNative } from "./native"
 import {
   createAgent,
   createSession,
@@ -117,6 +119,7 @@ function App() {
   useEffect(() => localStorage.setItem(SIDEBAR_SCALE_KEY, String(sidebarScale)), [sidebarScale])
 
   const [side, setSide] = useState<Side>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const terminalOpen = side === "terminal"
   // Mounted once first opened, so an app keeps its state while the canvas or
   // the terminals are shown instead.
@@ -475,6 +478,42 @@ function App() {
   const pending = useKeys(keysOn, keymap)
   useGlobalKey(keysOn, (e) => e.ctrlKey && e.code === "Backquote", () => void toggleTerminal())
 
+  // The browser and the apps are opened from the sidebar's foot, or, in the
+  // iOS app, from its vertical bar with the terminals and the canvas.
+  const toggleBrowser = () => {
+    if (narrow) setDrawerOpen(false)
+    setSide((s) => (s === "browser" ? null : "browser"))
+  }
+  const toggleApps = () => {
+    if (narrow) setDrawerOpen(false)
+    setSide((s) => (s === "apps" ? null : "apps"))
+  }
+  useTellNative({ side, terminals: ptyIds.length })
+  // What the sidebar shows, as `SidebarProvider` below is told it.
+  const sidebarShown = narrow ? drawerOpen : sidebarOpen && !maximized && !(compact && side !== null)
+  useNativeLayout(
+    [sidebarShown, side, maximized, narrow, compact, sidebarScale, activeId],
+    // The chat's bar goes while something covers the chat: the column on a
+    // phone, the drawer, or the column maximized.
+    maximized || (narrow && (side !== null || drawerOpen)),
+  )
+  useNativeAction("sidebar", () => {
+    if (narrow) return setDrawerOpen((o) => !o)
+    if (!sidebarShown && compact) setSide(null)
+    if (!sidebarShown) setFull(false)
+    setSidebarOpen(!sidebarShown)
+  })
+  useNativeAction("search", () => openOver(setSearching))
+  useNativeAction("new", (backend) => {
+    if (backend === "claude_code" || backend === "codex" || backend === "kiro") void create(backend)
+  })
+  useNativeAction("terminal", () => void toggleTerminal())
+  useNativeAction("canvas", toggleCanvas)
+  useNativeAction("browser", toggleBrowser)
+  useNativeAction("apps", toggleApps)
+  // A second press of the app's button closes it again.
+  useNativeAction("settings", () => setSettingsOpen((open) => !open))
+
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
   if (!loaded)
     return (
@@ -496,16 +535,15 @@ function App() {
   // clear of the round bottom corners; on a phone, where it covers the
   // screen, clear of the status bar and the home indicator.
   const column =
-    "flex min-h-0 min-w-0 flex-col overflow-hidden sm:pointer-coarse:pb-3 max-sm:absolute max-sm:inset-0 max-sm:z-10 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)] " +
+    "flex min-h-0 min-w-0 flex-col overflow-hidden " +
+    (native ? "" : "sm:pointer-coarse:pb-3 ") +
+    "max-sm:absolute max-sm:inset-0 max-sm:z-10 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)] " +
     (maximized ? "flex-1" : compact ? "flex-[0_0_50%]" : "flex-[0_0_60%]") +
     CARD
 
   const sidebar = (
     <Sidebar
       sessions={sessions}
-      devices={devices}
-      onUpsertDevice={upsertDevice}
-      push={push}
       vim={narrow ? null : { on: vim, toggle: () => setVim((v) => !v) }}
       activeId={activeId}
       cursorId={listCursor}
@@ -525,15 +563,10 @@ function App() {
       narrow={narrow}
       onSearch={() => openOver(setSearching)}
       browserOpen={side === "browser"}
-      onToggleBrowser={() => {
-        if (narrow) setDrawerOpen(false)
-        setSide((s) => (s === "browser" ? null : "browser"))
-      }}
+      onToggleBrowser={toggleBrowser}
       appsOpen={side === "apps"}
-      onToggleApps={() => {
-        if (narrow) setDrawerOpen(false)
-        setSide((s) => (s === "apps" ? null : "apps"))
-      }}
+      onToggleApps={toggleApps}
+      onSettings={() => setSettingsOpen(true)}
     />
   )
 
@@ -560,6 +593,16 @@ function App() {
       }
     >
       {sidebar}
+      {/* Here rather than in the sidebar, which a phone's drawer unmounts
+          while shut: the iOS app opens it from its own bar. */}
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        push={push}
+        vim={narrow ? null : { on: vim, toggle: () => setVim((v) => !v) }}
+        devices={devices}
+        onUpsertDevice={upsertDevice}
+      />
       {!maximized && <SidebarHandle scale={sidebarScale} onScale={setSidebarScale} />}
 
       {/* sidebar | chat | column — always side by side, at every width. The
@@ -567,10 +610,15 @@ function App() {
           rather than a reason to restack: a terminal under the chat would
           leave both halves too short to be useful. The sidebar collapses
           instead, and on a phone the column covers the chat. */}
-      <main className="relative flex min-h-0 min-w-0 flex-1 sm:gap-2 sm:p-2 sm:peer-data-[state=expanded]:pl-0">
+      <main
+        className={
+          "relative flex min-h-0 min-w-0 flex-1 " +
+          (native ? "sm:divide-x" : "sm:gap-2 sm:p-2 sm:peer-data-[state=expanded]:pl-0")
+        }
+      >
         {/* Maximized, the column takes the window; the chat stays mounted,
             so its channel is still joined when it comes back. */}
-        <div className={"flex min-h-0 min-w-0 flex-1" + (maximized ? " hidden" : "") + CARD}>
+        <div className={"chat-card flex min-h-0 min-w-0 flex-1" + (maximized ? " hidden" : "") + CARD}>
           {active ? (
             // Keyed by id so switching sessions rebuilds the channel and the
             // transcript rather than mixing two conversations.
@@ -744,7 +792,10 @@ const BACKEND_NAMES = { claude_code: "Claude Code", codex: "Codex", kiro: "Kiro"
 // each has the screen to itself. Their corners stay a card's even on a touch
 // screen: only the sidebar's outer side follows the display's round corners
 // (ui/sidebar.tsx), as rounder cards read as too soft.
-const CARD =
-  " bg-background sm:overflow-hidden sm:rounded-xl sm:shadow-sm sm:ring-1 sm:ring-sidebar-border"
+// In the iOS app the columns are flat, edge to edge with a rule between them,
+// as the glass over them expects; elsewhere they are cards.
+const CARD = native
+  ? " bg-background sm:overflow-hidden"
+  : " bg-background sm:overflow-hidden sm:rounded-xl sm:shadow-sm sm:ring-1 sm:ring-sidebar-border"
 
 export default App

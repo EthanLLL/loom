@@ -44,15 +44,14 @@ import {
   SidebarMenuSub,
   useSidebar,
 } from "@/components/ui/sidebar"
-import type { AgentBackend, AgentInfo, Device } from "./api"
+import type { AgentBackend, AgentInfo } from "./api"
 import { listProfiles } from "./api"
 import { RenameInput } from "./Confirm"
 import { filed, ROOT } from "./directories"
 import { ago } from "./format"
 import { isComposing } from "./ime"
 import { dirName } from "./MovePicker"
-import type { Push } from "./push"
-import { SettingsDialog } from "./Settings"
+import { native } from "./native"
 import { useDragOrder } from "./useDragOrder"
 import { lastActive } from "./useLobby"
 
@@ -63,9 +62,6 @@ const DIRS_OPEN_KEY = "loom.dirsOpen"
 
 type Props = {
   sessions: AgentInfo[]
-  devices: Device[]
-  onUpsertDevice: (device: Device) => void
-  push: Push
   // Desktop only, so null on a phone; see keys.tsx.
   vim: { on: boolean; toggle: () => void } | null
   activeId: string | null
@@ -91,6 +87,7 @@ type Props = {
   onToggleBrowser: () => void
   appsOpen: boolean
   onToggleApps: () => void
+  onSettings: () => void
 }
 
 /**
@@ -101,9 +98,6 @@ type Props = {
  */
 export function Sidebar({
   sessions,
-  devices,
-  onUpsertDevice,
-  push,
   vim,
   activeId,
   cursorId,
@@ -123,6 +117,7 @@ export function Sidebar({
   onToggleBrowser,
   appsOpen,
   onToggleApps,
+  onSettings,
 }: Props) {
   // Ages are relative, so they go stale without any new data. A local clock,
   // not a poll: nothing is fetched.
@@ -131,7 +126,6 @@ export function Sidebar({
     const timer = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(timer)
   }, [])
-  const [settingsOpen, setSettingsOpen] = useState(false)
   // Directories first, in the order dragged into, each folded or unfolded as
   // last left on this device; then Recents, what is in none. The sessions in a
   // directory go by activity, like Recents; only the directories are dragged.
@@ -177,11 +171,13 @@ export function Sidebar({
   )
 
   return (
-    <Bar variant="floating">
+    <Bar variant={native ? "sidebar" : "floating"}>
       {/* The top row is the conversation bar's height, so the two line up
           across the window. On a touch screen everything sits further in
           from the card's edge, clear of its round corners. */}
-      <SidebarHeader className="sidebar-head gap-1 pt-0 sm:pointer-coarse:px-3">
+      {/* In the iOS app the head is the app's glass: the name, search, and
+          a new-chat button at the foot. */}
+      {!native && <SidebarHeader className="sidebar-head gap-1 pt-0 sm:pointer-coarse:px-3">
         <div className="flex h-[44px] items-center justify-between border-b border-transparent pl-2 sm:h-(--head-h)">
           <span className="text-sm font-semibold tracking-tight pointer-coarse:text-[17px]">Loom</span>
           <Button
@@ -198,7 +194,7 @@ export function Sidebar({
         <SidebarMenu>
           <NewChat onCreate={onCreate} />
         </SidebarMenu>
-      </SidebarHeader>
+      </SidebarHeader>}
 
       <SidebarContent>
         {dirs.length > 0 && (
@@ -279,44 +275,39 @@ export function Sidebar({
       </SidebarContent>
 
       <SidebarFooter className="sm:pointer-coarse:px-3 sm:pointer-coarse:pb-4">
-        <SidebarMenu>
-          {/* What the agents distilled into programs, in ~/apps/: no model runs
-              when one is opened. */}
-          <SidebarMenuItem>
-            <SidebarMenuButton isActive={appsOpen} onClick={onToggleApps}>
-              <HugeiconsIcon icon={DashboardSquare01Icon} />
-              <span>Apps</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          {/* Loom's own browser, the one agents drive: taking it over is how a
-              site gets logged in to once and stays logged in. */}
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              isActive={browserOpen}
-              onClick={onToggleBrowser}
-              title="Loom's browser: log in to a site, or get past a check for the agents"
-            >
-              <HugeiconsIcon icon={Globe02Icon} />
-              <span>Browser</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          {/* This device's preferences, the user's machines, and how this
-              Loom is signed in to. */}
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => setSettingsOpen(true)}>
-              <HugeiconsIcon icon={Settings01Icon} />
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <SettingsDialog
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-          push={push}
-          vim={vim}
-          devices={devices}
-          onUpsertDevice={onUpsertDevice}
-        />
+        {/* In the iOS app these three are in its vertical bar instead. */}
+        {!native && (
+          <SidebarMenu>
+            {/* What the agents distilled into programs, in ~/apps/: no model runs
+                when one is opened. */}
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={appsOpen} onClick={onToggleApps}>
+                <HugeiconsIcon icon={DashboardSquare01Icon} />
+                <span>Apps</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {/* Loom's own browser, the one agents drive: taking it over is how a
+                site gets logged in to once and stays logged in. */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={browserOpen}
+                onClick={onToggleBrowser}
+                title="Loom's browser: log in to a site, or get past a check for the agents"
+              >
+                <HugeiconsIcon icon={Globe02Icon} />
+                <span>Browser</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {/* This device's preferences, the user's machines, and how this
+                Loom is signed in to. */}
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={onSettings}>
+                <HugeiconsIcon icon={Settings01Icon} />
+                <span>Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </SidebarFooter>
     </Bar>
   )

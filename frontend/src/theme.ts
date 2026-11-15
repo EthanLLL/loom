@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react"
+import { tellNativeTheme } from "./native"
 
 /**
  * Light or dark, per device. "system" follows the OS (and changes with it, as
@@ -22,11 +23,24 @@ function resolve(p: ThemePref): Theme {
   return p === "system" ? (dark.matches ? "dark" : "light") : p
 }
 
+// Any CSS colour as #rrggbb, by painting one pixel with it.
+function hex(color: string): string {
+  const ctx = document.createElement("canvas").getContext("2d")
+  if (!ctx) return color
+  ctx.fillStyle = color
+  ctx.fillRect(0, 0, 1, 1)
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+  return "#" + [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")
+}
+
 function apply() {
   const theme = resolve(pref())
   document.documentElement.dataset.theme = theme
-  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim()
+  // The backdrop the cards sit on (`bg-sidebar`), as #rrggbb: the variable
+  // is oklch(), which neither theme-color nor the iOS app reads.
+  const bg = hex(getComputedStyle(document.documentElement).getPropertyValue("--sidebar").trim())
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bg)
+  tellNativeTheme(bg, theme !== "light")
   listeners.forEach((f) => f())
 }
 

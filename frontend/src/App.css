@@ -82,3 +82,54 @@
     padding-right: calc(var(--wco-right) + 6px);
   }
 }
+
+/* In the iOS app (native.ts) its glass bars float over the page: the
+   conversation's at the top of the chat card, the sidebar's head and its
+   new-chat button, and on a tall screen the toolbar at the bottom. What
+   scrolls goes under them, starting clear of them. */
+html.native .timeline > div {
+  padding-top: calc(var(--native-top, 0px) + 0.5rem);
+}
+
+html.native [data-slot="sidebar-content"] {
+  padding-top: var(--native-top, 0px);
+  padding-bottom: 5.5rem;
+}
+
+html.native .app {
+  padding-bottom: var(--native-bottom, 0px);
+}
+
+/* Along the top of the bottom toolbar's strip, under the sidebar and the chat
+   alike, so the columns end together rather than running into the bar. No
+   strip, no line: it is at most as tall as the strip. */
+html.native .app::after {
+  content: "";
+  position: fixed;
+  z-index: 20;
+  inset-inline: 0;
+  bottom: var(--native-bottom, 0px);
+  height: min(1px, var(--native-bottom, 0px));
+  background: var(--border);
+  pointer-events: none;
+}
+
+html.native.keyboard .app::after {
+  display: none;
+}
+
+html.native.keyboard .app {
+  padding-bottom: 0;
+}
+
+/* Dialogs keep clear of the glass: below the top bar, above the new-chat
+   button and the bottom toolbar, never the whole screen. */
+html.native [data-slot="dialog-content"] {
+  top: calc(var(--native-top, 0px) + 0.5rem);
+  --tw-translate-y: 0;
+  height: min(34rem, calc(100dvh - var(--native-top, 0px) - var(--native-bottom, 0px) - 6rem));
+  max-width: min(46rem, calc(100% - 1rem));
+  padding-top: 0;
+  padding-bottom: 0;
+  border-radius: var(--radius-xl);
+}

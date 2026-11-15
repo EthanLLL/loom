@@ -99,6 +99,21 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener)
 }
 
+/**
+ * The file's bytes, read now. A file dragged in on iOS from another app (a
+ * screenshot's thumbnail) can be a promise of data WebKit fails to deliver
+ * while the upload streams it, which sends a cut-off body the server answers
+ * with 400. Read up front, that fails here instead, with a reason.
+ */
+async function readable(file: File): Promise<File> {
+  try {
+    const bytes = await file.arrayBuffer()
+    return new File([bytes], file.name || "dropped", { type: file.type, lastModified: file.lastModified })
+  } catch {
+    throw new Error("could not read the dropped file; attach it with + instead")
+  }
+}
+
 export function useAttachments(sessionId: string | null): Attachments {
   const items = useSyncExternalStore(subscribe, () => (sessionId ? tray(sessionId) : EMPTY))
 
@@ -121,7 +136,8 @@ export function useAttachments(sessionId: string | null): Attachments {
       // batching would let an oversized fourth file void three good ones.
       // An image is scaled down first; see shrink.ts.
       files.forEach((file, i) => {
-        shrinkImage(file)
+        readable(file)
+          .then(shrinkImage)
           .then((small) => {
             if (small !== file) patch(sessionId, rows[i].key, { name: small.name, size: small.size })
             return uploadAgentFiles(sessionId, [small])

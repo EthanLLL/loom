@@ -1,0 +1,3 @@
+"NSCameraUsageDescription" = "用於拍照或錄影作為附件。";
+"NSMicrophoneUsageDescription" = "用於為附件影片錄製聲音。";
+"NSPhotoLibraryAddUsageDescription" = "用於把 Loom 裡的圖片存到照片。";

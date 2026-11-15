@@ -8,6 +8,7 @@ import type { Transcript } from "../agent"
 import type { AgentBackend, AgentInfo } from "../api"
 import { BackendIcon } from "../BackendIcon"
 import { isComposing } from "../ime"
+import { native } from "../native"
 import { contextPressure, formatTokens } from "./format"
 
 /**
@@ -33,6 +34,8 @@ export function ChatHeader({
   onToggleCanvas: () => void
   onRename: (title: string) => void
 }) {
+  // The iOS app draws this bar itself, in glass over the page; see native.ts.
+  if (native) return null
   const pressure = contextPressure(transcript)
 
   return (
