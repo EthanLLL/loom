@@ -329,11 +329,16 @@ function App() {
     setPtyIds((ids) => [...ids, session.id])
   }
 
-  const closeTerminal = async (id: string) => {
+  // Off the column, and the column off once nothing is left in it rather
+  // than leave a gap.
+  const dropTerminal = (id: string) => {
     const next = ptyIds.filter((p) => p !== id)
     setPtyIds(next)
-    // Nothing left to show, so drop the column rather than leave a gap.
     if (next.length === 0) setTerminalOpen(false)
+  }
+
+  const closeTerminal = async (id: string) => {
+    dropTerminal(id)
     await deleteSession(id).catch(() => {})
   }
 
@@ -535,7 +540,7 @@ function App() {
   // clear of the round bottom corners; on a phone, where it covers the
   // screen, clear of the status bar and the home indicator.
   const column =
-    "flex min-h-0 min-w-0 flex-col overflow-hidden " +
+    "side-column flex min-h-0 min-w-0 flex-col overflow-hidden " +
     (native ? "" : "sm:pointer-coarse:pb-3 ") +
     "max-sm:absolute max-sm:inset-0 max-sm:z-10 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)] " +
     (maximized ? "flex-1" : compact ? "flex-[0_0_50%]" : "flex-[0_0_60%]") +
@@ -738,7 +743,7 @@ function App() {
                 {/* Terminal positions itself absolutely, so this has to be a
                     positioning context or it escapes the pane. */}
                 <div className="relative min-h-0 flex-1">
-                  <Terminal sessionId={id} active={terminalOpen} />
+                  <Terminal sessionId={id} active={terminalOpen} onClosed={() => dropTerminal(id)} />
                 </div>
               </div>
             ))}

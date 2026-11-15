@@ -51,10 +51,15 @@ function terminalFontSize(): number {
 type Props = {
   sessionId: string
   active: boolean
+  // The session ended on the server: its shell exited, or it was closed on
+  // another device.
+  onClosed: () => void
 }
 
-export function Terminal({ sessionId, active }: Props) {
+export function Terminal({ sessionId, active, onClosed }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const closed = useRef(onClosed)
+  closed.current = onClosed
   const fitRef = useRef<FitAddon | null>(null)
   const termRef = useRef<Xterm | null>(null)
 
@@ -150,6 +155,8 @@ export function Terminal({ sessionId, active }: Props) {
         // it self-cleans without user action.
         scheduleRefresh()
       })
+
+      channel.on("closed", () => closed.current())
 
       channel
         .join()

@@ -1,0 +1,10 @@
+# Passes 127.0.0.1:9222 on to the browser's own port, 9223, and exits
+# after a while without a connection, which lets the browser stop.
+[Unit]
+Description=loom browser CDP proxy
+Requires=loom-browser.service loom-browser-cdp.socket
+After=loom-browser.service loom-browser-cdp.socket
+
+[Service]
+User=ubuntu
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=10min 127.0.0.1:9223

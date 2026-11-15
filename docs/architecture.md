@@ -344,6 +344,14 @@ bridges to x11vnc (`LoomWeb.VncSocket`). On a phone it shows 1:1 with drag to
 pan and a field to type into the page. The `browser` skill says to use an own
 tab and when to hand over to the user.
 
+It runs on demand: systemd holds `9222` and `5900` (`loom-browser-*.socket`),
+the first connection to either starts the browser, and a
+`systemd-socket-proxyd` per port passes it on to Chromium and x11vnc on `9223`
+and `5901`. A proxy exits after 10 minutes without a connection; with both
+gone the browser is stopped (`StopWhenUnneeded`), which gives back its
+~400 MB. Open tabs go with it; the profile, and so the logins, stay. An open
+Browser pane is a connection, so it keeps the browser up.
+
 ## 7. Supervision tree
 
 ```

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# A Chromium that stays up on a virtual display, for the agents to drive over CDP
+# A Chromium on a virtual display, for the agents to drive over CDP
 # (127.0.0.1:9222) and for the user to take over through loom's Browser view
-# (x11vnc on 127.0.0.1:5900, bridged by LoomWeb.VncSocket). Its profile keeps
+# (VNC on 127.0.0.1:5900, bridged by LoomWeb.VncSocket). Its profile keeps
 # cookies, so a site the user logged in to once stays logged in.
+#
+# Started on demand: systemd holds those two ports (loom-browser-*.socket) and
+# starts this on the first connection, proxied to Chromium and x11vnc on the
+# ports below; with neither used for a while, it is stopped again.
 #
 # Everything listens on loopback only. If Chromium exits (someone closed its
 # last window), it is started again; if the display or VNC dies, so does this
@@ -11,6 +15,8 @@ set -u
 DISPLAY_NUM=${LOOM_BROWSER_DISPLAY:-99}
 SIZE=${LOOM_BROWSER_SIZE:-1280x800}
 PROFILE=${LOOM_BROWSER_PROFILE:-$HOME/.local/share/loom-browser/profile}
+CDP_PORT=${LOOM_BROWSER_CDP_PORT:-9223}
+VNC_PORT=${LOOM_BROWSER_VNC_PORT:-5901}
 export DISPLAY=:$DISPLAY_NUM
 
 # Google Chrome if installed: it updates with apt, plays H.264, and doesn't look
@@ -24,7 +30,7 @@ Xvfb "$DISPLAY" -screen 0 "${SIZE}x24" -nolisten tcp &
 xvfb=$!
 for _ in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.1; done
 
-x11vnc -display "$DISPLAY" -localhost -rfbport 5900 -forever -shared -nopw -quiet -noxdamage &
+x11vnc -display "$DISPLAY" -localhost -rfbport "$VNC_PORT" -forever -shared -nopw -quiet -noxdamage &
 vnc=$!
 
 trap 'kill $xvfb $vnc 2>/dev/null; kill $(jobs -p) 2>/dev/null' EXIT
@@ -33,7 +39,7 @@ w=${SIZE%x*}; h=${SIZE#*x}
 while kill -0 $xvfb 2>/dev/null && kill -0 $vnc 2>/dev/null; do
   # A clean exit flag, so the next start doesn't offer to "restore pages".
   sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' "$PROFILE/Default/Preferences" 2>/dev/null
-  "$chrome" --user-data-dir="$PROFILE" --remote-debugging-port=9222 \
+  "$chrome" --user-data-dir="$PROFILE" --remote-debugging-port="$CDP_PORT" \
     --no-first-run --no-default-browser-check --disable-gpu \
     --window-position=0,0 --window-size="$w,$h" --start-maximized about:blank &
   wait $!

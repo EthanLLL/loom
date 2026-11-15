@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Confirm } from "./Confirm"
 import { isComposing } from "./ime"
 import {
   createDevice,
@@ -33,6 +34,7 @@ export function DevicesPanel({
   const [error, setError] = useState<string | null>(null)
   // The device whose install command is on screen, and the command.
   const [install, setInstall] = useState<{ id: string; command: string } | null>(null)
+  const [removing, setRemoving] = useState<Device | null>(null)
 
   const add = async () => {
     const value = name.trim()
@@ -58,15 +60,12 @@ export function DevicesPanel({
     }
   }
 
+  // Asked in a dialog of the page's own rather than `confirm()`, which the
+  // iOS app's web view has no sheet for; a refusal shows in the dialog.
   const remove = async (device: Device) => {
-    if (!confirm(`Remove ${device.name}? Its loom-node stops working until it is added and installed again.`)) return
-    try {
-      await deleteDevice(device.id)
-      if (install?.id === device.id) setInstall(null)
-      setError(null)
-    } catch (e) {
-      setError((e as Error).message)
-    }
+    await deleteDevice(device.id)
+    if (install?.id === device.id) setInstall(null)
+    setError(null)
   }
 
   const rename = async (device: Device, value: string) => {
@@ -94,7 +93,7 @@ export function DevicesPanel({
                 device={d}
                 onRename={(value) => rename(d, value)}
                 onReinstall={() => reinstall(d)}
-                onRemove={() => remove(d)}
+                onRemove={() => setRemoving(d)}
               />
               {install?.id === d.id && (
                 <InstallBox command={install.command} onDone={() => setInstall(null)} />
@@ -105,6 +104,16 @@ export function DevicesPanel({
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {removing && (
+        <Confirm
+          title={`Remove ${removing.name}?`}
+          detail="Its loom-node stops working until it is added and installed again."
+          action="Remove"
+          onYes={() => remove(removing)}
+          onClose={() => setRemoving(null)}
+        />
+      )}
 
       <form
         className="flex gap-2"

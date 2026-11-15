@@ -74,8 +74,9 @@ private struct Chrome: View {
                     .onChange(of: proxy.containerCornerInsets.topTrailing, initial: true) { _, corner in
                         statusCorner = corner.width < proxy.size.width / 2 ? corner : .zero
                     }
-                    .onChange(of: [rowTop, verticalEdge == nil ? proxy.safeAreaInsets.bottom : 0], initial: true) {
-                        _, inset in page.setInsets(top: inset[0] + Self.barHeight + Self.margin, bottom: inset[1])
+                    .onChange(of: [rowTop, verticalEdge == nil ? proxy.safeAreaInsets.bottom : 0,
+                                   floatingStatus ? statusCorner.height : 0], initial: true) {
+                        _, inset in page.setInsets(top: inset[0] + Self.barHeight + Self.margin, bottom: inset[1], status: inset[2])
                     }
             }
             .ignoresSafeArea(.keyboard)
@@ -221,11 +222,22 @@ private struct Chrome: View {
                     .labelStyle(.iconOnly)
                     .frame(width: 40, height: 40)
                     .background(page.side == action ? Color.primary.opacity(0.16) : .clear, in: .circle)
+                    .overlay(alignment: .topTrailing) {
+                        if badge > 0 {
+                            Text("\(badge)")
+                                .font(.caption2.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .frame(minWidth: 16, minHeight: 16)
+                                .background(.red, in: .capsule)
+                                .offset(x: 4, y: -2)
+                        }
+                    }
             }
-            // Plain, so the bar hosts this view as it is: with the default
-            // style it draws the label itself and the disc is dropped.
+            // Plain, so the bar hosts this view as it is and redraws it with
+            // the page: with the default style it draws the label itself and
+            // drops the disc, and `.badge` waits for the bar's next refresh.
             .buttonStyle(.plain)
-            .badge(badge)
         }
         .axisBehavior(.verticalPreferred)
     }

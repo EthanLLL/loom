@@ -22,7 +22,7 @@ import WebKit
     let webView: WKWebView
     @ObservationIgnored private let onAddress: (String) -> Void
     @ObservationIgnored private var downloads: [ObjectIdentifier: URL] = [:]
-    @ObservationIgnored private var insets = (top: CGFloat(0), bottom: CGFloat(0))
+    @ObservationIgnored private var insets = (top: CGFloat(0), bottom: CGFloat(0), status: CGFloat(0))
 
     init(url: URL?, onAddress: @escaping (String) -> Void) {
         home = url
@@ -74,16 +74,19 @@ import WebKit
         webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('loom-native', { detail: \(detail) }))")
     }
 
-    /// How much of the page the glass covers at the top and the bottom.
-    func setInsets(top: CGFloat, bottom: CGFloat) {
-        insets = (top, bottom)
+    /// How much of the page the glass covers at the top and the bottom, and
+    /// how far down the status bar reaches at the top trailing corner when it
+    /// floats there, over whatever the page has in that corner.
+    func setInsets(top: CGFloat, bottom: CGFloat, status: CGFloat) {
+        insets = (top, bottom, status)
         applyInsets()
     }
 
     private func applyInsets() {
         webView.evaluateJavaScript("""
         document.documentElement.style.setProperty('--native-top', '\(Int(insets.top))px');
-        document.documentElement.style.setProperty('--native-bottom', '\(Int(insets.bottom))px')
+        document.documentElement.style.setProperty('--native-bottom', '\(Int(insets.bottom))px');
+        document.documentElement.style.setProperty('--native-status', '\(Int(insets.status))px')
         """)
     }
 

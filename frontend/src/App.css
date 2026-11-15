@@ -118,6 +118,12 @@ html.native.keyboard .app::after {
   display: none;
 }
 
+/* The right-hand column's head is at the top trailing corner, where the
+   Duo's status bar floats in portrait and takes the taps: start below it. */
+html.native .side-column {
+  padding-top: var(--native-status, 0px);
+}
+
 html.native.keyboard .app {
   padding-bottom: 0;
 }

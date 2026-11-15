@@ -10,6 +10,8 @@ defmodule LoomWeb.TerminalChannel do
 
   Server → client:
     - binary frames  : raw PTY output → xterm.js
+    - "closed" event : the session ended (its shell exited, or it was closed
+                       from another client); the channel stops after it
   """
   use Phoenix.Channel
 
@@ -59,5 +61,10 @@ defmodule LoomWeb.TerminalChannel do
   def handle_info({:pty_output, data}, socket) do
     push(socket, "output", {:binary, data})
     {:noreply, socket}
+  end
+
+  def handle_info(:pty_closed, socket) do
+    push(socket, "closed", %{})
+    {:stop, :normal, socket}
   end
 end

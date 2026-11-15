@@ -1,12 +1,16 @@
-# The persistent browser (see loom-browser.sh). Install:
+# The browser (see loom-browser.sh), started when its ports are first used and
+# stopped when they have not been for a while: see loom-browser-cdp.socket.
+# Install:
 #   sudo apt-get install -y xvfb x11vnc x11-utils
 #   curl -LO https://dl.google.com/linux/direct/google-chrome-stable_current_arm64.deb
 #   sudo apt-get install -y ./google-chrome-stable_current_arm64.deb   (optional)
-#   sudo cp rel/browser/loom-browser.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now loom-browser
+#   sudo cp rel/browser/loom-browser*.service rel/browser/loom-browser*.socket /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now loom-browser-cdp.socket loom-browser-vnc.socket
 [Unit]
 Description=loom browser (Chromium on a virtual display)
 After=network-online.target
+# Up while a proxy needs it; once both have gone idle, stopped.
+StopWhenUnneeded=yes
 
 [Service]
 Type=exec
@@ -14,12 +18,13 @@ User=ubuntu
 Environment=HOME=/home/ubuntu
 Environment=LANG=C.UTF-8
 ExecStart=/home/ubuntu/loom/rel/browser/loom-browser.sh
+# Started only once Chromium and VNC answer, so the proxies, ordered after
+# this, never pass a first connection to a port nobody is on yet.
+ExecStartPost=/bin/bash -c 'for _ in $(seq 300); do (exec 3<>/dev/tcp/127.0.0.1/9223) 2>/dev/null && (exec 3<>/dev/tcp/127.0.0.1/5901) 2>/dev/null && exit 0; sleep 0.1; done; exit 1'
 Restart=always
 RestartSec=3
+TimeoutStopSec=15
 # A host without swap: past this, Chromium loses a tab, not loom or an agent its
 # process. High reclaims first; Max is the wall.
 MemoryHigh=3500M
 MemoryMax=4500M
-
-[Install]
-WantedBy=multi-user.target

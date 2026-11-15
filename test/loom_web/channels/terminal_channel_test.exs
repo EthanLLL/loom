@@ -57,6 +57,23 @@ defmodule LoomWeb.TerminalChannelTest do
     assert out =~ "hello-from-loom"
   end
 
+  test "a shell that exits tells the client the terminal is closed" do
+    socket = join_terminal("test-#{System.unique_integer([:positive])}")
+    push_input(socket, "exit\n")
+
+    assert_push "closed", %{}, 4000
+    ref = Process.monitor(socket.channel_pid)
+    assert_receive {:DOWN, ^ref, :process, _, _}, 1000
+  end
+
+  test "a terminal closed from elsewhere tells the client too" do
+    id = "test-#{System.unique_integer([:positive])}"
+    _socket = join_terminal(id)
+    Loom.Terminal.stop_session(id)
+
+    assert_push "closed", %{}, 4000
+  end
+
   test "reattaching replays prior output so a reconnecting client sees the screen" do
     id = "test-#{System.unique_integer([:positive])}"
     {:ok, _pid} = Loom.Terminal.start_session(id, cols: 80, rows: 24)

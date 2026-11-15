@@ -17,6 +17,7 @@ import {
   type AuthOverview,
   type Login,
 } from "./api"
+import { Confirm } from "./Confirm"
 import { ago } from "./format"
 
 /**
@@ -26,6 +27,9 @@ import { ago } from "./format"
 export function SecurityPanel() {
   const [overview, setOverview] = useState<AuthOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // A removal waiting for its yes. A dialog of the page's own rather than
+  // `confirm()`, which the iOS app's web view has no sheet for.
+  const [asking, setAsking] = useState<Ask | null>(null)
 
   const reload = useCallback(() => {
     authOverview()
@@ -51,16 +55,31 @@ export function SecurityPanel() {
       {error && <p className="text-sm text-destructive">{error}</p>}
       {overview && (
         <>
-          <Passkeys overview={overview} run={run} />
-          <Authenticator overview={overview} run={run} />
-          <Logins overview={overview} run={run} />
+          <Passkeys overview={overview} run={run} ask={setAsking} />
+          <Authenticator overview={overview} run={run} ask={setAsking} />
+          <Logins overview={overview} run={run} ask={setAsking} />
         </>
+      )}
+      {asking && (
+        <Confirm
+          title={asking.title}
+          detail={asking.detail}
+          action={asking.action}
+          onYes={() => run(asking.yes)}
+          onClose={() => setAsking(null)}
+        />
       )}
     </>
   )
 }
 
-type Section = { overview: AuthOverview; run: (action: () => Promise<unknown>) => Promise<void> }
+type Ask = { title: string; detail?: string; action: string; yes: () => Promise<unknown> }
+
+type Section = {
+  overview: AuthOverview
+  run: (action: () => Promise<unknown>) => Promise<void>
+  ask: (ask: Ask) => void
+}
 
 /** A part of the panel: its name and action over a bordered list. */
 function Part({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -92,7 +111,7 @@ function Entry({ name, meta, onRemove, removeTitle }: { name: ReactNode; meta: s
 const note = "text-sm text-muted-foreground"
 const list = "flex flex-col divide-y rounded-xl border"
 
-function Passkeys({ overview, run }: Section) {
+function Passkeys({ overview, run, ask }: Section) {
   return (
     <Part
       title="Passkeys"
@@ -122,8 +141,12 @@ function Passkeys({ overview, run }: Section) {
               meta={[`added ${day(p.created_at)}`, p.last_used_at ? `used ${since(p.last_used_at)}` : "never used"].join(" · ")}
               removeTitle="Remove passkey"
               onRemove={() =>
-                confirm(`Remove the passkey made on ${p.name}? It stops working here; delete it from the device's passwords too.`) &&
-                run(() => deletePasskey(p.id))
+                ask({
+                  title: `Remove the passkey made on ${p.name}?`,
+                  detail: "It stops working here; delete it from the device's passwords too.",
+                  action: "Remove",
+                  yes: () => deletePasskey(p.id),
+                })
               }
             />
           ))}
@@ -133,7 +156,7 @@ function Passkeys({ overview, run }: Section) {
   )
 }
 
-function Authenticator({ overview, run }: Section) {
+function Authenticator({ overview, run, ask }: Section) {
   // The secret being set up, then the recovery codes it produced.
   const [secret, setSecret] = useState<string | null>(null)
   const [code, setCode] = useState("")
@@ -151,7 +174,12 @@ function Authenticator({ overview, run }: Section) {
             variant="outline"
             size="sm"
             onClick={() =>
-              confirm("Remove the authenticator? The password alone will sign in again.") && run(totpRemove)
+              ask({
+                title: "Remove the authenticator?",
+                detail: "The password alone will sign in again.",
+                action: "Remove",
+                yes: totpRemove,
+              })
             }
           >
             Remove
@@ -247,14 +275,15 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   )
 }
 
-function Logins({ overview, run }: Section) {
-  const revoke = (l: Login) => {
-    const self = l.id === overview.current
-    const message = self
-      ? "Sign this device out?"
-      : `Sign out ${l.name}? It has to sign in again to use Loom.`
-    if (confirm(message)) void run(() => revokeLogin(l.id))
-  }
+function Logins({ overview, ask }: Section) {
+  const revoke = (l: Login) =>
+    ask({
+      ...(l.id === overview.current
+        ? { title: "Sign this device out?" }
+        : { title: `Sign out ${l.name}?`, detail: "It has to sign in again to use Loom." }),
+      action: "Sign out",
+      yes: () => revokeLogin(l.id),
+    })
 
   return (
     <Part title="Signed in">

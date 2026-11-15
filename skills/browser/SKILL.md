@@ -5,11 +5,13 @@ description: Use loom's shared, logged-in Chromium (CDP on 127.0.0.1:9222) to se
 
 # Loom's browser
 
-A Chromium that stays running on this host (`loom-browser.service`), with a
+A Chromium on this host (`loom-browser.service`), with a
 persistent profile: sites the user logged in to stay logged in. It looks like a
 normal desktop Chrome, so Google answers it, unlike headless Playwright.
-Check it is there: `curl -s 127.0.0.1:9222/json/version`. If not, this host
-has none; launch Playwright as usual.
+It starts on the first connection and stops after 10 idle minutes, taking its
+tabs with it (logins stay), so a page you left open for the user can be gone
+later. Check it is there: `curl -s 127.0.0.1:9222/json/version` (this also starts
+it). If nothing answers, this host has none; launch Playwright as usual.
 
 Drive it from Python (if `playwright` won't import, run the script with
 `uv run --with playwright python script.py`), in **your own tab**, and close only that tab: other

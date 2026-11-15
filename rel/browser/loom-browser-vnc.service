@@ -1,0 +1,10 @@
+# Passes 127.0.0.1:5900 on to the browser's own port, 5901, and exits
+# after a while without a connection, which lets the browser stop.
+[Unit]
+Description=loom browser VNC proxy
+Requires=loom-browser.service loom-browser-vnc.socket
+After=loom-browser.service loom-browser-vnc.socket
+
+[Service]
+User=ubuntu
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=10min 127.0.0.1:5901

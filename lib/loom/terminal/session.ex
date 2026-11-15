@@ -215,6 +215,10 @@ defmodule Loom.Terminal.Session do
 
   @impl true
   def terminate(_reason, state) do
+    # Whoever is watching: the shell exited, or the terminal was closed from
+    # another device. Their column drops it rather than show a dead screen.
+    for {pid, _} <- state.clients, do: send(pid, :pty_closed)
+
     # Closing a tab/pane calls DynamicSupervisor.terminate_child, which lands
     # here. Without this the PTY + shell (+ any TUI in it) would keep running
     # forever, since ExPTY is unlinked (it uses GenServer.start, not start_link).

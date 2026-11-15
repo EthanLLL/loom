@@ -1,0 +1,10 @@
+# The browser's CDP, for the agents: held by systemd, so the first connection starts
+# loom-browser-cdp.service, and through it the browser. See loom-browser.service.
+[Unit]
+Description=loom browser CDP port
+
+[Socket]
+ListenStream=127.0.0.1:9222
+
+[Install]
+WantedBy=sockets.target
