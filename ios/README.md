@@ -20,11 +20,12 @@ Xcode 27 or later, iOS 27.1 or later. Signing uses your own team, given on the c
 in the project:
 
     xcodebuild -project Loom.xcodeproj -scheme Loom -configuration Debug \
-      -destination 'id=<device udid>' LOOM_TEAM=<team id> -allowProvisioningUpdates build
+      -destination 'id=<device udid>' LOOM_TEAM=<team id> -allowProvisioningUpdates -skipPackagePluginValidation build
     xcrun devicectl device install app --device <udid> <derived data>/Build/Products/Debug-iphoneos/Loom.app
 
 The first build fetches SwiftTerm and the packages its manifest names from GitHub; on a slow link that takes a while,
-once.
+once. `-skipPackagePluginValidation` lets a command-line build run SwiftTerm's build plugin, which Xcode would
+otherwise ask to trust.
 
 `LOOM_BUNDLE_ID` (default `cloud.luozhen.loom`) changes the bundle id, which a free Apple ID needs to be unique.
 With a free Apple ID the build runs for 7 days, then it has to be installed again.
