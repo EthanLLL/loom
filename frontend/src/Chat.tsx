@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
+import { useCallback, useMemo, useRef, type ReactNode } from "react"
 import { buildTimeline, foldTools, isBusy } from "./agent"
 import type { AgentInfo, OutputFile } from "./api"
 import { itemForPath, type CanvasItem } from "./canvasItems"
@@ -9,7 +9,8 @@ import { ChatHeader } from "./chat/Header"
 import { QueuePanel } from "./chat/QueuePanel"
 import { Timeline } from "./chat/Timeline"
 import { OutputLink } from "./markdown"
-import { tellNative, useNativeAction, useTellNative } from "./native"
+import { NativeComposer } from "./ios/Composer"
+import { native } from "./native"
 import { useAgent } from "./useAgent"
 import { useAttachments, useFileDrop } from "./useAttachments"
 
@@ -65,13 +66,6 @@ export function Chat({
     },
   )
   const busy = isBusy(transcript)
-  // In the iOS app the conversation's bar is the app's: its name, engine and
-  // state, and renaming from a long press on it.
-  useTellNative({ chat: { title: session.title ?? session.id, backend: session.backend, status: transcript.status } })
-  useEffect(() => () => tellNative({ chat: null }), [])
-  useNativeAction("rename", (title) => {
-    if (title.trim() !== "") rename(title.trim())
-  })
   // Kept while the transcript is: the timeline follows the end whenever the
   // items change, so a fresh array on every render (the app's keys re-render
   // it) would pull it back down just after `gg` or `k` scrolled it up.
@@ -142,6 +136,17 @@ export function Chat({
           />
         )}
 
+        {/* In the iOS app the composer is the app's own; see ios/Composer.tsx. */}
+        {native ? (
+          <NativeComposer
+            session={session}
+            status={transcript.status}
+            busy={busy}
+            attachments={attachments}
+            onSubmit={send}
+            onInterrupt={interrupt}
+          />
+        ) : (
         <Composer
           sessionId={session.id}
           backend={session.backend}
@@ -152,6 +157,7 @@ export function Chat({
           onSubmit={send}
           onInterrupt={interrupt}
         />
+        )}
       </div>
     </ChatContext.Provider>
   )

@@ -3,6 +3,7 @@ import RFB from "@novnc/novnc"
 import { ArrowLeft01Icon, ArrowRightToLineIcon, ArrowTurnBackwardIcon, Cancel01Icon, DeletePutBackIcon, KeyboardIcon, Maximize01Icon, Minimize01Icon, ReloadIcon, SentIcon, ZoomInAreaIcon, ZoomOutAreaIcon } from "@hugeicons/core-free-icons"
 import { Input } from "@/components/ui/input"
 import { getToken } from "./api"
+import { useNativeAction, usePost } from "./native"
 import { PaneButton, PaneHead, PaneTitle } from "./Pane"
 
 /**
@@ -33,6 +34,12 @@ export function Browser({
   const [fit, setFit] = useState(!narrow)
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState("")
+
+  // The iOS app's glass bar over the pane (ios/Pane.tsx); see Canvas.tsx.
+  useNativeAction("browser-reconnect", () => setAttempt((n) => n + 1))
+  useNativeAction("browser-keyboard", () => setTyping((t) => !t))
+  useNativeAction("browser-fit", () => setFit((f) => !f))
+  usePost({ pane: { kind: "browser", state, typing, fit } })
 
   useEffect(() => {
     const el = screen.current

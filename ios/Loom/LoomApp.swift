@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Loom's web UI in a WKWebView, made for the iPhone Duo: the page gets the
-/// whole safe area, measured by UIKit rather than by Safari's viewport, and the
-/// switches for the right-hand column and the settings are native buttons in
-/// the Duo's vertical bar. See `frontend/src/native.ts` for the page's side.
+/// Loom for iPhone, made for the iPhone Duo: SwiftUI and Liquid Glass for the
+/// layout, the session list, the composer and the terminals, and Loom's own
+/// page for the conversation and the canvas under the glass (Shell.swift).
+/// See `frontend/src/native.ts` for the page's side.
 @main struct LoomApp: App {
     /// `-loomURL https://…` at launch (`devicectl … process launch … -- -loomURL …`)
     /// sets the address without typing it, and keeps it.

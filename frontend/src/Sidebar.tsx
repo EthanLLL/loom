@@ -51,7 +51,6 @@ import { filed, ROOT } from "./directories"
 import { ago } from "./format"
 import { isComposing } from "./ime"
 import { dirName } from "./MovePicker"
-import { native } from "./native"
 import { useDragOrder } from "./useDragOrder"
 import { lastActive } from "./useLobby"
 
@@ -171,13 +170,11 @@ export function Sidebar({
   )
 
   return (
-    <Bar variant={native ? "sidebar" : "floating"}>
+    <Bar variant="floating">
       {/* The top row is the conversation bar's height, so the two line up
           across the window. On a touch screen everything sits further in
           from the card's edge, clear of its round corners. */}
-      {/* In the iOS app the head is the app's glass: the name, search, and
-          a new-chat button at the foot. */}
-      {!native && <SidebarHeader className="sidebar-head gap-1 pt-0 sm:pointer-coarse:px-3">
+      <SidebarHeader className="sidebar-head gap-1 pt-0 sm:pointer-coarse:px-3">
         <div className="flex h-[44px] items-center justify-between border-b border-transparent pl-2 sm:h-(--head-h)">
           <span className="text-sm font-semibold tracking-tight pointer-coarse:text-[17px]">Loom</span>
           <Button
@@ -194,7 +191,7 @@ export function Sidebar({
         <SidebarMenu>
           <NewChat onCreate={onCreate} />
         </SidebarMenu>
-      </SidebarHeader>}
+      </SidebarHeader>
 
       <SidebarContent>
         {dirs.length > 0 && (
@@ -275,39 +272,36 @@ export function Sidebar({
       </SidebarContent>
 
       <SidebarFooter className="sm:pointer-coarse:px-3 sm:pointer-coarse:pb-4">
-        {/* In the iOS app these three are in its vertical bar instead. */}
-        {!native && (
-          <SidebarMenu>
-            {/* What the agents distilled into programs, in ~/apps/: no model runs
-                when one is opened. */}
-            <SidebarMenuItem>
-              <SidebarMenuButton isActive={appsOpen} onClick={onToggleApps}>
-                <HugeiconsIcon icon={DashboardSquare01Icon} />
-                <span>Apps</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {/* Loom's own browser, the one agents drive: taking it over is how a
-                site gets logged in to once and stays logged in. */}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={browserOpen}
-                onClick={onToggleBrowser}
-                title="Loom's browser: log in to a site, or get past a check for the agents"
-              >
-                <HugeiconsIcon icon={Globe02Icon} />
-                <span>Browser</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {/* This device's preferences, the user's machines, and how this
-                Loom is signed in to. */}
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={onSettings}>
-                <HugeiconsIcon icon={Settings01Icon} />
-                <span>Settings</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
+        <SidebarMenu>
+          {/* What the agents distilled into programs, in ~/apps/: no model runs
+              when one is opened. */}
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive={appsOpen} onClick={onToggleApps}>
+              <HugeiconsIcon icon={DashboardSquare01Icon} />
+              <span>Apps</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {/* Loom's own browser, the one agents drive: taking it over is how a
+              site gets logged in to once and stays logged in. */}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={browserOpen}
+              onClick={onToggleBrowser}
+              title="Loom's browser: log in to a site, or get past a check for the agents"
+            >
+              <HugeiconsIcon icon={Globe02Icon} />
+              <span>Browser</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {/* This device's preferences, the user's machines, and how this
+              Loom is signed in to. */}
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={onSettings}>
+              <HugeiconsIcon icon={Settings01Icon} />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Bar>
   )

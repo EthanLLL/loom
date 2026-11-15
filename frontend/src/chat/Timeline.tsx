@@ -1,8 +1,9 @@
 import { ArrowDown02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import type { TimelineItem } from "../agent"
+import { native } from "../native"
 import { Item } from "./Items"
 
 // How many items are rendered at first, and added each time the reader nears
@@ -25,6 +26,8 @@ export function Timeline({
   truncatedBefore: number | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  // What scrolls: this box, or in the iOS app the document itself (App.css).
+  const scroller = () => (native ? (document.scrollingElement as HTMLElement | null) : ref.current)
   const pinnedRef = useRef(true)
   // The ref decides whether to follow; this only drives the button, so a
   // scroll that does not cross the line re-renders nothing.
@@ -42,14 +45,14 @@ export function Timeline({
   const visible = hidden > 0 ? items.slice(hidden) : items
 
   const showMore = () => {
-    const el = ref.current
+    const el = scroller()
     if (!el || hidden === 0 || growFromRef.current !== null) return
     growFromRef.current = el.scrollHeight
     setShown((n) => n + PAGE)
   }
 
   useLayoutEffect(() => {
-    const el = ref.current
+    const el = scroller()
     const from = growFromRef.current
     if (!el || from === null) return
     growFromRef.current = null
@@ -57,7 +60,7 @@ export function Timeline({
   }, [shown])
 
   const onScroll = () => {
-    const el = ref.current
+    const el = scroller()
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     if (el.scrollTop < NEAR_TOP) showMore()
@@ -75,12 +78,30 @@ export function Timeline({
   }
 
   useLayoutEffect(() => {
-    const el = ref.current
+    const el = scroller()
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
   }, [items])
 
+  // The document's own events in the iOS app. A resize there is the keyboard
+  // or the composer growing, which must not leave the end out of sight.
+  useEffect(() => {
+    if (!native) return
+    const onResize = () => {
+      const el = scroller()
+      if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
+    }
+    window.addEventListener("scroll", onScroll)
+    window.addEventListener("touchstart", cancelJump, { passive: true })
+    window.addEventListener("resize", onResize)
+    return () => {
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("touchstart", cancelJump)
+      window.removeEventListener("resize", onResize)
+    }
+  })
+
   const toBottom = () => {
-    const el = ref.current
+    const el = scroller()
     if (!el) return
     // Pinned straight away, not when the smooth scroll lands: output arriving
     // mid-scroll should be followed, not left behind.
@@ -101,9 +122,9 @@ export function Timeline({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         // `.timeline` is how the app's keys find the scroller (App.tsx).
-        className="timeline min-h-0 flex-1 overflow-y-auto"
+        className={native ? "timeline" : "timeline min-h-0 flex-1 overflow-y-auto"}
         ref={ref}
-        onScroll={onScroll}
+        onScroll={native ? undefined : onScroll}
         onWheel={cancelJump}
         onTouchStart={cancelJump}
       >
@@ -142,7 +163,7 @@ export function Timeline({
         <Button
           variant="outline"
           size="icon"
-          className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-background shadow-md dark:bg-background"
+          className={(native ? "fixed" : "absolute") + " bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-background shadow-md dark:bg-background"}
           onClick={toBottom}
           title="Jump to the latest"
           aria-label="Jump to the latest"

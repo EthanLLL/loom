@@ -10,6 +10,7 @@ import {
 import { viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
 import { FileBrowser, type TreeNav } from "./FileBrowser"
 import { Markdown } from "./markdown"
+import { useNativeAction, usePost } from "./native"
 import { PaneButton, PaneHead, PaneNote, PaneTitle } from "./Pane"
 
 /**
@@ -115,6 +116,13 @@ export function Canvas({
       .catch((e: Error) => setError(e.message))
       .finally(() => setDownloading(false))
   }
+
+  // The iOS app draws this head as glass over its pane web view (ios/Pane.tsx):
+  // what it shows comes from here, and its buttons come back as actions.
+  useNativeAction("canvas-reload", () => setReloads((n) => n + 1))
+  useNativeAction("canvas-download", download)
+  useNativeAction("canvas-tree", toggleTree)
+  usePost({ pane: { kind: "canvas", title: item ? item.title : "Canvas", item: item !== null, tree: showTree } })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

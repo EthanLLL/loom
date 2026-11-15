@@ -27,8 +27,8 @@ import { ago } from "./format"
 export function SecurityPanel() {
   const [overview, setOverview] = useState<AuthOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // A removal waiting for its yes. A dialog of the page's own rather than
-  // `confirm()`, which the iOS app's web view has no sheet for.
+  // A removal waiting for its yes, in a dialog of the page's own, as the
+  // rest of the app asks.
   const [asking, setAsking] = useState<Ask | null>(null)
 
   const reload = useCallback(() => {

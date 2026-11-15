@@ -2,6 +2,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import type { ComponentProps, ReactNode } from "react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "cn"
+import { native } from "./native"
 
 /**
  * The bar over each pane of the right-hand column — the canvas, the browser,
@@ -24,6 +25,8 @@ export function PaneHead({
   title: ReactNode
   children?: ReactNode
 }) {
+  // In the iOS app the head is the app's glass; see ios/Pane.tsx.
+  if (native) return null
   return (
     <div
       className={cn(

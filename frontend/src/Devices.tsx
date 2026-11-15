@@ -60,8 +60,8 @@ export function DevicesPanel({
     }
   }
 
-  // Asked in a dialog of the page's own rather than `confirm()`, which the
-  // iOS app's web view has no sheet for; a refusal shows in the dialog.
+  // Asked in a dialog of the page's own, as the rest of the app asks; a
+  // refusal shows in the dialog.
   const remove = async (device: Device) => {
     await deleteDevice(device.id)
     if (install?.id === device.id) setInstall(null)
