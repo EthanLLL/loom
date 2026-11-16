@@ -8,7 +8,7 @@ import type { Attachments } from "../useAttachments"
 const refs = new Map<string, string>()
 
 /**
- * The composer, when the iOS app draws it (`ios/Loom/Composer.swift`): this
+ * The composer, when the iOS app draws it (Composer.swift in loom-ios): this
  * says what it shows — the conversation, whether a turn runs, the models and
  * the attachments on their way — and takes what it sends. The attachments go
  * through the page's own tray, so an upload outlives switching sessions here

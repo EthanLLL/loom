@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 
 /**
- * The iOS app (`ios/` in the repository). SwiftUI owns the whole layout there
+ * The iOS app (its own repository, loom-ios). SwiftUI owns the whole layout there
  * — the session list, every bar and button, the composer, the terminals — and
  * the page renders only what goes under the glass, in one of two web views:
  *

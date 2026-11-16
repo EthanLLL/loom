@@ -85,7 +85,7 @@ export function Chat({
   // Dropping is accepted anywhere in the conversation, not just on the
   // composer: by the time you have dragged a screenshot this far, aiming at a
   // 40-pixel target is the last thing you want to do. In the iOS app the
-  // native composer takes drops instead (ios/Loom/Composer.swift).
+  // native composer takes drops instead.
   const drop = useFileDrop(attachments.add)
   const dropping = native ? { dragging: false, handlers: {} } : drop
 

@@ -20,7 +20,7 @@ import { setThemePref, useThemePref, type ThemePref } from "../theme"
 const THEMES: ThemePref[] = ["system", "light", "dark", "coolnight"]
 
 /**
- * The app's Settings (ios/Loom/Settings.swift) are native; this is what they
+ * The app's Settings (Settings.swift in loom-ios) are native; this is what they
  * read and do, as Settings.tsx, Devices.tsx and Security.tsx do in a browser.
  * The app asks with `settings-*` actions; the state goes back as `settings`
  * whenever it changes. The devices come with the lobby, live.
