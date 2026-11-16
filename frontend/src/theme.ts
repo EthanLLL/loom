@@ -38,9 +38,10 @@ function apply() {
   document.documentElement.dataset.theme = theme
   // The backdrop the cards sit on (`bg-sidebar`), as #rrggbb: the variable
   // is oklch(), which neither theme-color nor the iOS app reads.
-  const bg = hex(getComputedStyle(document.documentElement).getPropertyValue("--sidebar").trim())
+  const style = getComputedStyle(document.documentElement)
+  const bg = hex(style.getPropertyValue("--sidebar").trim())
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", bg)
-  tellNativeTheme(bg, theme !== "light")
+  tellNativeTheme(bg, hex(style.getPropertyValue("--background").trim()), theme !== "light")
   listeners.forEach((f) => f())
 }
 

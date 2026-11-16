@@ -28,6 +28,11 @@ export function Timeline({
   const ref = useRef<HTMLDivElement>(null)
   // What scrolls: this box, or in the iOS app the document itself (App.css).
   const scroller = () => (native ? (document.scrollingElement as HTMLElement | null) : ref.current)
+  // A finger on the screen, or the glide after it: in the iOS app, what tells
+  // the reader's scrolling from WebKit's.
+  const touchingRef = useRef(false)
+  // Where the document was at the last scroll, to tell up from down.
+  const lastTopRef = useRef(0)
   const pinnedRef = useRef(true)
   // The ref decides whether to follow; this only drives the button, so a
   // scroll that does not cross the line re-renders nothing.
@@ -68,6 +73,18 @@ export function Timeline({
       if (!atBottom) return
       jumpingRef.current = false
     }
+    // In the iOS app the document scrolls, and WebKit moves it on its own
+    // whenever the glass over it changes; only a finger leaves the end, and
+    // any way up at all does, so a short drag is not pulled back down.
+    if (native) {
+      const up = el.scrollTop < lastTopRef.current - 1
+      lastTopRef.current = el.scrollTop
+      const leaving = touchingRef.current && up
+      if (leaving === !pinnedRef.current || (!leaving && !atBottom)) return
+      pinnedRef.current = !leaving
+      setPinned(!leaving)
+      return
+    }
     pinnedRef.current = atBottom
     setPinned(atBottom)
   }
@@ -77,26 +94,41 @@ export function Timeline({
     jumpingRef.current = false
   }
 
-  useLayoutEffect(() => {
+  // Not under a finger: following the end then would fight it.
+  const follow = () => {
     const el = scroller()
-    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
-  }, [items])
+    if (el && pinnedRef.current && !touchingRef.current) el.scrollTop = el.scrollHeight
+  }
+
+  useLayoutEffect(follow, [items])
 
   // The document's own events in the iOS app. A resize there is the keyboard
   // or the composer growing, which must not leave the end out of sight.
   useEffect(() => {
     if (!native) return
-    const onResize = () => {
-      const el = scroller()
-      if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
+    let glide = 0
+    const onTouchStart = () => {
+      window.clearTimeout(glide)
+      touchingRef.current = true
+      cancelJump()
+    }
+    const onTouchEnd = () => {
+      window.clearTimeout(glide)
+      glide = window.setTimeout(() => {
+        touchingRef.current = false
+        follow()
+      }, 1500)
     }
     window.addEventListener("scroll", onScroll)
-    window.addEventListener("touchstart", cancelJump, { passive: true })
-    window.addEventListener("resize", onResize)
+    window.addEventListener("touchstart", onTouchStart, { passive: true })
+    window.addEventListener("touchend", onTouchEnd, { passive: true })
+    window.addEventListener("resize", follow)
     return () => {
+      window.clearTimeout(glide)
       window.removeEventListener("scroll", onScroll)
-      window.removeEventListener("touchstart", cancelJump)
-      window.removeEventListener("resize", onResize)
+      window.removeEventListener("touchstart", onTouchStart)
+      window.removeEventListener("touchend", onTouchEnd)
+      window.removeEventListener("resize", follow)
     }
   })
 

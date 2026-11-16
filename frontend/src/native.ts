@@ -56,9 +56,10 @@ export function usePost(message: Record<string, unknown>, on = true): void {
   }, [json, on])
 }
 
-/** Tell the app the theme's background, so the bars around the page match. */
-export function tellNativeTheme(background: string, dark: boolean): void {
-  post({ theme: { background, dark } })
+/** Tell the app the theme's colours, so what is around the page matches:
+ * `background` the backdrop (the sidebar's), `page` the conversation's own. */
+export function tellNativeTheme(background: string, page: string, dark: boolean): void {
+  post({ theme: { background, page, dark } })
 }
 
 /** Run `run` when the app asks for `action`, with what it sent along. */

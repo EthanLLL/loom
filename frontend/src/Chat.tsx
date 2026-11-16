@@ -84,8 +84,10 @@ export function Chat({
   const attachments = useAttachments(session.id)
   // Dropping is accepted anywhere in the conversation, not just on the
   // composer: by the time you have dragged a screenshot this far, aiming at a
-  // 40-pixel target is the last thing you want to do.
+  // 40-pixel target is the last thing you want to do. In the iOS app the
+  // native composer takes drops instead (ios/Loom/Composer.swift).
   const drop = useFileDrop(attachments.add)
+  const dropping = native ? { dragging: false, handlers: {} } : drop
 
   const send = (text: string) => {
     submit(text, attachments.ready)
@@ -97,13 +99,13 @@ export function Chat({
       <div
         className={
           "chat @container flex min-h-0 min-w-0 flex-1 flex-col bg-background font-sans text-foreground" +
-          (drop.dragging ? " outline-1 -outline-offset-2 outline-primary outline-dashed" : "")
+          (dropping.dragging ? " outline-1 -outline-offset-2 outline-primary outline-dashed" : "")
         }
-        {...drop.handlers}
+        {...dropping.handlers}
       >
         {/* A band at the top rather than an overlay: an overlay over the
             transcript would hide what you are attaching the file to. */}
-        {drop.dragging && (
+        {dropping.dragging && (
           <div className="shrink-0 bg-primary px-4 py-1 text-center text-sm text-primary-foreground">
             Drop to attach to this conversation
           </div>

@@ -13,11 +13,10 @@ import { Chat } from "../Chat"
 import { filed } from "../directories"
 import { Login } from "../Login"
 import { obj, post, str, useNativeAction, usePost } from "../native"
-import { usePush } from "../push"
 import { Search } from "../Search"
-import { SettingsDialog } from "../Settings"
 import { dropSocket } from "../socket"
 import { useLobby } from "../useLobby"
+import { useNativeSettings } from "./Settings"
 import { NativeTerminals } from "./Terminals"
 
 const ACTIVE_KEY = "loom_native_session"
@@ -25,16 +24,15 @@ const BACKENDS: AgentBackend[] = ["claude_code", "codex", "kiro"]
 
 /**
  * The iOS app's main web view (native.ts): one conversation, chosen by the
- * app, and the lobby the app's session list is drawn from. Sign-in, search and
- * settings stay pages of their own; everything else on screen is the app's.
+ * app, and the lobby the app's session list is drawn from. Sign-in and search
+ * stay pages of their own; everything else on screen is the app's, Settings
+ * included (./Settings.tsx).
  */
 export function NativeMain() {
   const [authed, setAuthed] = useState(!!getToken())
-  const push = usePush(authed)
   const { sessions, devices, apps, directoryOrder, upsertDevice, loaded, upsert, drop, search } = useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY))
   const [searching, setSearching] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     onUnauthorized(() => {
@@ -57,6 +55,7 @@ export function NativeMain() {
   }, [activeId])
 
   usePost({ auth: authed && loaded })
+  useNativeSettings(devices, upsertDevice, authed && loaded)
   usePost(
     {
       lobby: {
@@ -69,7 +68,9 @@ export function NativeMain() {
           backend: s.backend,
           status: s.status,
           directory: s.directory ?? "",
-          active: s.last_active_at ?? s.created_at,
+          // To the minute, which is all the list shows: a turn's every
+          // message would otherwise redraw the app's whole list.
+          active: Math.floor((s.last_active_at ?? s.created_at) / 60_000) * 60_000,
           queued: s.queued,
         })),
         apps,
@@ -100,7 +101,6 @@ export function NativeMain() {
     drop(str(id))
   })
   useNativeAction("search", () => setSearching(true))
-  useNativeAction("settings", () => setSettingsOpen((open) => !open))
 
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
   if (!loaded)
@@ -131,14 +131,6 @@ export function NativeMain() {
         <div className="m-auto text-muted-foreground">No session yet.</div>
       )}
       <NativeTerminals />
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        push={push}
-        vim={null}
-        devices={devices}
-        onUpsertDevice={upsertDevice}
-      />
       {searching && (
         <Search sessions={sessions} search={search} onOpen={setActiveId} onClose={() => setSearching(false)} />
       )}

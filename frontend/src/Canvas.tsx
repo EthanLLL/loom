@@ -34,7 +34,8 @@ import { PaneButton, PaneHead, PaneNote, PaneTitle } from "./Pane"
  * NERDTree sits beside a buffer. The button at the head's left end folds it
  * away; whether it is shown is remembered across sessions and reloads. On a
  * phone there is no room for both, so the tree covers the view while it is
- * open and folds itself once something is picked.
+ * open and folds itself once something is picked. The iOS app lists the
+ * files natively instead (`tree` false; ios/Pane.tsx).
  */
 export function Canvas({
   sessionId,
@@ -50,6 +51,7 @@ export function Canvas({
   walking,
   nav,
   onMoved,
+  tree = true,
 }: {
   sessionId: string | null
   item: CanvasItem | null
@@ -68,6 +70,7 @@ export function Canvas({
   nav: RefObject<TreeNav | null>
   // A file renamed or deleted from the tree; see `FileBrowser`.
   onMoved: (source: "output" | "files", from: string, to: string | null) => void
+  tree?: boolean
 }) {
   const [base, setBase] = useState<CanvasBases | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -76,7 +79,7 @@ export function Canvas({
   // On a phone the tree covers the view, so it starts folded when there is
   // something to see, and folds again when something is picked.
   const [phoneTree, setPhoneTree] = useState(false)
-  const showTree = narrow ? phoneTree || !item : treeOpen
+  const showTree = tree && (narrow ? phoneTree || !item : treeOpen)
   const toggleTree = () => (narrow ? setPhoneTree(!showTree) : onTreeOpen(!treeOpen))
 
   const itemKey = item ? `${item.source ?? "output"}:${item.path}` : null
@@ -121,8 +124,8 @@ export function Canvas({
   // what it shows comes from here, and its buttons come back as actions.
   useNativeAction("canvas-reload", () => setReloads((n) => n + 1))
   useNativeAction("canvas-download", download)
-  useNativeAction("canvas-tree", toggleTree)
-  usePost({ pane: { kind: "canvas", title: item ? item.title : "Canvas", item: item !== null, tree: showTree } })
+  // No title while empty: the app has its own word for the canvas.
+  usePost({ pane: { kind: "canvas", title: item ? item.title : "", item: item !== null } })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -131,7 +134,7 @@ export function Canvas({
         title={
           <>
             {narrow && <PaneButton icon={ArrowLeft01Icon} onClick={onBack} title="Back to the chat" />}
-            {sessionId && (
+            {sessionId && tree && (
               <PaneButton
                 icon={FolderTreeIcon}
                 pressed={showTree}
@@ -170,7 +173,7 @@ export function Canvas({
       <div className="relative flex min-h-0 flex-1">
         {/* Kept mounted while folded, so what was unfolded stays unfolded. A
             phone has no room for both: there the tree covers the view. */}
-        {sessionId && (
+        {sessionId && tree && (
           <div
             className={
               "min-w-0 " + (narrow ? "absolute inset-0 z-2 bg-background" : "relative w-64 shrink-0 border-r")

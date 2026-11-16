@@ -28,7 +28,8 @@ export type Attachments = {
   /** Files whose upload finished — the ones a submit can carry. */
   ready: AgentFile[]
   uploading: boolean
-  add: (files: File[]) => void
+  /** The new rows' keys, in order. */
+  add: (files: File[]) => string[]
   remove: (key: string) => void
   clear: () => void
 }
@@ -119,7 +120,7 @@ export function useAttachments(sessionId: string | null): Attachments {
 
   const add = useCallback(
     (files: File[]) => {
-      if (!sessionId || files.length === 0) return
+      if (!sessionId || files.length === 0) return []
 
       const rows: Attachment[] = files.map((file) => ({
         key: `a${nextKey++}`,
@@ -155,6 +156,7 @@ export function useAttachments(sessionId: string | null): Attachments {
             }),
           )
       })
+      return rows.map((row) => row.key)
     },
     [sessionId],
   )

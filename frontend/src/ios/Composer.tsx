@@ -3,6 +3,10 @@ import { listModels, setAgentModel, type AgentInfo, type ModelOption } from "../
 import { obj, str, useNativeAction, usePost } from "../native"
 import type { Attachments } from "../useAttachments"
 
+// The app's own name for each attachment it sent, by the tray's key: it keeps
+// the thumbnail it made under that name.
+const refs = new Map<string, string>()
+
 /**
  * The composer, when the iOS app draws it (`ios/Loom/Composer.swift`): this
  * says what it shows — the conversation, whether a turn runs, the models and
@@ -45,6 +49,7 @@ export function NativeComposer({
       models,
       attachments: attachments.items.map((a) => ({
         key: a.key,
+        ref: refs.get(a.key) ?? null,
         name: a.name,
         type: a.type,
         uploading: a.file === null && a.error === null,
@@ -59,9 +64,10 @@ export function NativeComposer({
   })
   useNativeAction("interrupt", onInterrupt)
   useNativeAction("attach", (value) => {
-    const { name, type, data } = obj(value)
+    const { name, type, data, ref } = obj(value)
     const bytes = Uint8Array.from(atob(str(data)), (c) => c.charCodeAt(0))
-    attachments.add([new File([bytes], str(name) || "attachment", { type: str(type) })])
+    const [key] = attachments.add([new File([bytes], str(name) || "attachment", { type: str(type) })])
+    if (key && str(ref)) refs.set(key, str(ref))
   })
   useNativeAction("unattach", (key) => attachments.remove(str(key)))
   useNativeAction("model", (id) => {
