@@ -1,5 +1,8 @@
 # Passes 127.0.0.1:9222 on to the browser's own port, 9223, and exits
 # after a while without a connection, which lets the browser stop.
+# The idle clock starts only when a connection closes: a proxy started
+# with none (systemctl restart/start) never exits and holds the browser
+# up. Stop it instead; the socket starts it again on the next connection.
 [Unit]
 Description=loom browser CDP proxy
 Requires=loom-browser.service loom-browser-cdp.socket

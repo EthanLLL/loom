@@ -1,5 +1,8 @@
 # Passes 127.0.0.1:5900 on to the browser's own port, 5901, and exits
 # after a while without a connection, which lets the browser stop.
+# The idle clock starts only when a connection closes: a proxy started
+# with none (systemctl restart/start) never exits and holds the browser
+# up. Stop it instead; the socket starts it again on the next connection.
 [Unit]
 Description=loom browser VNC proxy
 Requires=loom-browser.service loom-browser-vnc.socket
