@@ -31,12 +31,25 @@ export function Timeline({
   // A finger on the screen, or the glide after it: in the iOS app, what tells
   // the reader's scrolling from WebKit's.
   const touchingRef = useRef(false)
+  // The finger alone: what it moves is the reader's, while the bounce at the
+  // end after it lets go, which goes up too, is WebKit's.
+  const fingerRef = useRef(false)
+  // The wait after the finger lifts for the glide to end. Kept across
+  // renders: the listeners below are added afresh on each, and clearing it
+  // with them left the timeline thinking a finger was still down.
+  const glideRef = useRef(0)
+  // The viewport's height at the last look. In the iOS app it shrinks by
+  // what the keyboard or a taller composer covers.
+  const heightRef = useRef(window.innerHeight)
   // Where the document was at the last scroll, to tell up from down.
   const lastTopRef = useRef(0)
   const pinnedRef = useRef(true)
   // The ref decides whether to follow; this only drives the button, so a
   // scroll that does not cross the line re-renders nothing.
   const [pinned, setPinned] = useState(true)
+  // More than a screen from the end, when the button shows: nearer, the end
+  // is a flick away, and the bounce there does not make it flicker.
+  const [far, setFar] = useState(false)
   // Set while `toBottom` scrolls. A smooth scroll fires scroll events all the
   // way down, and judging those by position would unpin it again — and bring
   // the button straight back — before it lands.
@@ -64,9 +77,15 @@ export function Timeline({
     el.scrollTop += el.scrollHeight - from
   }, [shown])
 
+  const measure = () => {
+    const el = scroller()
+    if (el) setFar(el.scrollHeight - el.scrollTop - el.clientHeight > el.clientHeight)
+  }
+
   const onScroll = () => {
     const el = scroller()
     if (!el) return
+    measure()
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     if (el.scrollTop < NEAR_TOP) showMore()
     if (jumpingRef.current) {
@@ -75,12 +94,15 @@ export function Timeline({
     }
     // In the iOS app the document scrolls, and WebKit moves it on its own
     // whenever the glass over it changes; only a finger leaves the end, and
-    // any way up at all does, so a short drag is not pulled back down.
+    // any way up at all does, so a short drag is not pulled back down. Only
+    // the very end follows it again: near it, a glide up from a short drag
+    // would otherwise be taken for a return.
     if (native) {
       const up = el.scrollTop < lastTopRef.current - 1
       lastTopRef.current = el.scrollTop
-      const leaving = touchingRef.current && up
-      if (leaving === !pinnedRef.current || (!leaving && !atBottom)) return
+      const leaving = fingerRef.current && up
+      const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 4
+      if (leaving === !pinnedRef.current || (!leaving && !atEnd)) return
       pinnedRef.current = !leaving
       setPinned(!leaving)
       return
@@ -100,37 +122,67 @@ export function Timeline({
     if (el && pinnedRef.current && !touchingRef.current) el.scrollTop = el.scrollHeight
   }
 
-  useLayoutEffect(follow, [items])
+  // The last message sent, undefined until the first look. Sending one is
+  // wanting to see the answer, as in Messages: wherever the reader was, the
+  // end is followed again.
+  const sentRef = useRef<string | null | undefined>(undefined)
+  useLayoutEffect(() => {
+    const sent = items.findLast((item) => item.kind === "user")?.key ?? null
+    if (sentRef.current !== undefined && sent !== sentRef.current) {
+      pinnedRef.current = true
+      setPinned(true)
+    }
+    sentRef.current = sent
+    follow()
+    measure()
+  }, [items])
 
   // The document's own events in the iOS app. A resize there is the keyboard
-  // or the composer growing, which must not leave the end out of sight.
+  // or the composer growing or shrinking: the end stays in sight if it was
+  // followed, and otherwise what was just above the foot stays there, as
+  // Messages keeps it.
   useEffect(() => {
     if (!native) return
-    let glide = 0
     const onTouchStart = () => {
-      window.clearTimeout(glide)
+      window.clearTimeout(glideRef.current)
       touchingRef.current = true
+      fingerRef.current = true
       cancelJump()
     }
     const onTouchEnd = () => {
-      window.clearTimeout(glide)
-      glide = window.setTimeout(() => {
+      fingerRef.current = false
+      window.clearTimeout(glideRef.current)
+      glideRef.current = window.setTimeout(() => {
         touchingRef.current = false
         follow()
       }, 1500)
     }
+    // Not under a finger or its glide either: the glass changing as the page
+    // scrolls resizes it too, a few pixels at a time, and moving the page for
+    // those fights the reader's scrolling.
+    const onResize = () => {
+      const el = scroller()
+      const shrunk = heightRef.current - window.innerHeight
+      heightRef.current = window.innerHeight
+      if (touchingRef.current) return
+      if (pinnedRef.current) follow()
+      else if (el) el.scrollTop += shrunk
+      measure()
+    }
     window.addEventListener("scroll", onScroll)
     window.addEventListener("touchstart", onTouchStart, { passive: true })
     window.addEventListener("touchend", onTouchEnd, { passive: true })
-    window.addEventListener("resize", follow)
+    window.addEventListener("touchcancel", onTouchEnd, { passive: true })
+    window.addEventListener("resize", onResize)
     return () => {
-      window.clearTimeout(glide)
       window.removeEventListener("scroll", onScroll)
       window.removeEventListener("touchstart", onTouchStart)
       window.removeEventListener("touchend", onTouchEnd)
-      window.removeEventListener("resize", follow)
+      window.removeEventListener("touchcancel", onTouchEnd)
+      window.removeEventListener("resize", onResize)
     }
   })
+  useEffect(() => () => window.clearTimeout(glideRef.current), [])
 
   const toBottom = () => {
     const el = scroller()
@@ -191,7 +243,7 @@ export function Timeline({
         </div>
       </div>
 
-      {!pinned && (
+      {!pinned && far && (
         <Button
           variant="outline"
           size="icon"
