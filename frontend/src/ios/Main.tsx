@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   checkAuth,
   createAgent,
@@ -13,7 +13,6 @@ import { Chat } from "../Chat"
 import { filed } from "../directories"
 import { Login } from "../Login"
 import { obj, post, str, useNativeAction, usePost } from "../native"
-import { Search } from "../Search"
 import { dropSocket } from "../socket"
 import { useLobby } from "../useLobby"
 import { useNativeSettings } from "./Settings"
@@ -24,15 +23,15 @@ const BACKENDS: AgentBackend[] = ["claude_code", "codex", "kiro"]
 
 /**
  * The iOS app's main web view (native.ts): one conversation, chosen by the
- * app, and the lobby the app's session list is drawn from. Sign-in and search
- * stay pages of their own; everything else on screen is the app's, Settings
- * included (./Settings.tsx).
+ * app, and the lobby the app's session list is drawn from. Sign-in stays a
+ * page of its own; everything else on screen is the app's, Settings
+ * (./Settings.tsx) and search included: the app filters the titles itself and
+ * asks here for what was said.
  */
 export function NativeMain() {
   const [authed, setAuthed] = useState(!!getToken())
   const { sessions, devices, apps, directoryOrder, upsertDevice, loaded, upsert, drop, search } = useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY))
-  const [searching, setSearching] = useState(false)
 
   useEffect(() => {
     onUnauthorized(() => {
@@ -100,7 +99,17 @@ export function NativeMain() {
     await deleteAgent(str(id))
     drop(str(id))
   })
-  useNativeAction("search", () => setSearching(true))
+  // What was said, searched on the server (Loom.Search); the newest asked
+  // for is the one answered, an older answer arriving late is dropped.
+  const asked = useRef("")
+  useNativeAction("search", (value) => {
+    const q = str(value).trim()
+    asked.current = q
+    if (q === "") return post({ search: { q, hits: [], error: null } })
+    search(q)
+      .then((hits) => asked.current === q && post({ search: { q, hits, error: null } }))
+      .catch((e: Error) => asked.current === q && post({ search: { q, hits: [], error: e.message } }))
+  })
 
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />
   if (!loaded)
@@ -131,9 +140,6 @@ export function NativeMain() {
         <div className="m-auto text-muted-foreground">No session yet.</div>
       )}
       <NativeTerminals />
-      {searching && (
-        <Search sessions={sessions} search={search} onOpen={setActiveId} onClose={() => setSearching(false)} />
-      )}
     </div>
   )
 }
