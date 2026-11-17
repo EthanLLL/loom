@@ -15,7 +15,10 @@ config :loom, LoomWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}],
   check_origin: false,
   code_reloader: true,
-  debug_errors: true,
+  # Plug's debug pages expose stack traces and source. A dev server given its
+  # own SECRET_KEY_BASE (config/runtime.exs) is one others can reach, so it
+  # serves plain errors instead.
+  debug_errors: System.get_env("SECRET_KEY_BASE") in [nil, ""],
   secret_key_base: "8q2gDRHkWQsTUvtXV71GPb8wPMREHXgQUpdc17Or6ZHW1sh5cW7rSbb4GoZcaRKk"
 
 apps_port = String.to_integer(System.get_env("LOOM_APPS_PORT", "5000"))
