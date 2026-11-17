@@ -116,10 +116,14 @@ export function Timeline({
     jumpingRef.current = false
   }
 
-  // Not under a finger: following the end then would fight it.
+  // Not under a finger: following the end then would fight it. The end is
+  // where the last screenful starts, not "as far as it goes": under the iOS
+  // app's glass, WebKit lets a page no taller than the screen scroll on by
+  // the top bar's height, which would put a short conversation's start under
+  // the title.
   const follow = () => {
     const el = scroller()
-    if (el && pinnedRef.current && !touchingRef.current) el.scrollTop = el.scrollHeight
+    if (el && pinnedRef.current && !touchingRef.current) el.scrollTop = el.scrollHeight - el.clientHeight
   }
 
   // The last message sent, undefined until the first look. Sending one is
@@ -197,7 +201,7 @@ export function Timeline({
     // still shows which way it went.
     const end = el.scrollHeight - el.clientHeight
     if (end - el.scrollTop > el.clientHeight * 2) el.scrollTop = end - el.clientHeight
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    el.scrollTo({ top: end, behavior: "smooth" })
   }
 
   return (

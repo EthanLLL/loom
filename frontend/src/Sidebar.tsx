@@ -201,7 +201,7 @@ export function Sidebar({
                 render={<CollapsibleTrigger />}
                 className="group/label w-full hover:text-sidebar-foreground"
               >
-                Directories
+                Groups
                 <HugeiconsIcon
                   icon={ArrowDown01Icon}
                   className="ml-auto -rotate-90 transition-transform group-data-[panel-open]/label:rotate-0"
@@ -395,13 +395,13 @@ function SessionRow({
             {narrow ? (
               <DropdownMenuItem onClick={onMove}>
                 <HugeiconsIcon icon={FolderExportIcon} />
-                Move to directory
+                Move to group
               </DropdownMenuItem>
             ) : (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <HugeiconsIcon icon={FolderExportIcon} />
-                  Move to directory
+                  Move to group
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-56">
                   <MoveTargets dirs={dirs} current={dir} onPick={onMoveTo} />
@@ -411,7 +411,7 @@ function SessionRow({
             {dir !== ROOT && (
               <DropdownMenuItem onClick={() => void onMoveTo(ROOT)}>
                 <HugeiconsIcon icon={FolderRemoveIcon} />
-                Remove from directory
+                Remove from group
               </DropdownMenuItem>
             )}
           </DropdownMenuGroup>
@@ -454,7 +454,7 @@ function MoveTargets({
         <HugeiconsIcon icon={FolderAddIcon} className="size-4 shrink-0 text-muted-foreground" />
         <input
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
-          placeholder="New directory"
+          placeholder="New group"
           value={typed}
           onChange={(e) => {
             setTyped(e.target.value)

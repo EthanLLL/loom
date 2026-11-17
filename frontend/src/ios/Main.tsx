@@ -54,6 +54,9 @@ export function NativeMain() {
   }, [activeId])
 
   usePost({ auth: authed && loaded })
+  // The app covers the page with its own connecting screen until it is
+  // signed in, or until it asks for a sign-in, which is the page's.
+  usePost({ signIn: !authed })
   useNativeSettings(devices, upsertDevice, authed && loaded)
   usePost(
     {

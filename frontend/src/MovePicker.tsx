@@ -63,7 +63,7 @@ export function MovePicker({
             {/* 16px and up: iOS zooms into a smaller field. */}
             <input
               className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
-              placeholder="New directory"
+              placeholder="New group"
               value={typed}
               onChange={(e) => {
                 setTyped(e.target.value)
