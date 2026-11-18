@@ -119,6 +119,11 @@ defmodule LoomWeb.Router do
     get "/:id/:token/:name", CanvasController, :attachment
   end
 
+  # For Apple, about the iOS app; see `LoomWeb.WellKnownController`.
+  scope "/.well-known", LoomWeb do
+    get "/apple-app-site-association", WellKnownController, :apple_app_site_association
+  end
+
   scope "/", LoomWeb do
     pipe_through :browser
 

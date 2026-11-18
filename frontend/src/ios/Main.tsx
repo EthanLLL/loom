@@ -25,10 +25,10 @@ const BACKENDS: AgentBackend[] = ["claude_code", "codex", "kiro"]
 
 /**
  * The iOS app's main web view (native.ts): one conversation, chosen by the
- * app, and the lobby the app's session list is drawn from. Sign-in stays a
- * page of its own; everything else on screen is the app's, Settings
- * (./Settings.tsx) and search included: the app filters the titles itself and
- * asks here for what was said.
+ * app, and the lobby the app's session list is drawn from. Everything else on
+ * screen is the app's: sign-in (it stores the token here and reloads),
+ * Settings (./Settings.tsx) and search, where the app filters the titles
+ * itself and asks here for what was said.
  */
 export function NativeMain() {
   const [authed, setAuthed] = useState(!!getToken())
@@ -62,7 +62,8 @@ export function NativeMain() {
 
   usePost({ auth: authed && loaded })
   // The app covers the page with its own connecting screen until it is
-  // signed in, or until it asks for a sign-in, which is the page's.
+  // signed in, and with its own sign-in screen when asked for one. The page's
+  // sign-in below is for app builds from before that.
   usePost({ signIn: !authed })
   useNativeSettings(devices, upsertDevice, authed && loaded)
   usePost(

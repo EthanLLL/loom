@@ -60,6 +60,16 @@ config :loom, Loom.Push.APNs,
   key_id: System.get_env("LOOM_APNS_KEY_ID"),
   team_id: System.get_env("LOOM_APNS_TEAM_ID")
 
+# The same app's id (`<team id>.<bundle id>`), named in
+# /.well-known/apple-app-site-association so it may use this Loom's passkeys
+# and saved password for its own sign-in screen. Comma-separated for more
+# than one; unset, the file is not served.
+config :loom,
+  ios_apps:
+    System.get_env("LOOM_IOS_APP_ID", "")
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+
 # Parses `LOOM_BIND`, defaulting to loopback. A hostname is not accepted: a
 # typo there would silently fall back to all interfaces in most parsers, which
 # is the one mistake that must not be easy to make.

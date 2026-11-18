@@ -45,6 +45,10 @@ Optional settings:
 - `LOOM_APNS_KEY_FILE`, `LOOM_APNS_KEY_ID` and `LOOM_APNS_TEAM_ID`: only for
   an iPhone app built under your own Apple developer team, to notify it
   through Apple; the file is the team's APNs key (`.p8`). Unset, Web Push only.
+- `LOOM_IOS_APP_ID`: the same app's `<team id>.<bundle id>`, served in
+  `/.well-known/apple-app-site-association` so its own sign-in screen may use
+  this Loom's passkeys and saved password. Unset, the app signs in with the
+  password only.
 
 No TLS settings and no model API keys are needed.
 
