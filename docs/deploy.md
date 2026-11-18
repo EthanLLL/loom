@@ -42,6 +42,9 @@ Optional settings:
   e.g. `https://<machine>-apps.example.com`, served on that port by Caddy
   (§3). Apps never run on Loom's origin; unset, they are at
   `http://localhost:5000`, on this machine only.
+- `LOOM_APNS_KEY_FILE`, `LOOM_APNS_KEY_ID` and `LOOM_APNS_TEAM_ID`: only for
+  an iPhone app built under your own Apple developer team, to notify it
+  through Apple; the file is the team's APNs key (`.p8`). Unset, Web Push only.
 
 No TLS settings and no model API keys are needed.
 

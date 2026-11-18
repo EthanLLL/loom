@@ -37,8 +37,8 @@ defmodule Loom.PushTest do
   end
 
   test "a turn end reaches every device, linking back to the session", %{server: server, pid: pid} do
-    :ok = Push.subscribe(subscription(1), "https://loom.example", [], server)
-    :ok = Push.subscribe(subscription(2), "https://loom.example/", [], server)
+    {:ok, _} = Push.subscribe(subscription(1), "https://loom.example", [], server)
+    {:ok, _} = Push.subscribe(subscription(2), "https://loom.example/", [], server)
 
     turn_ended(pid, "a_1", {:ok, "**Done**: wrote `W42.md`\n\nsee [it](x)"})
 
@@ -59,7 +59,7 @@ defmodule Loom.PushTest do
   end
 
   test "an error says so, and a long reply is cut", %{server: server, pid: pid} do
-    :ok = Push.subscribe(subscription(1), "https://loom.example", [], server)
+    {:ok, _} = Push.subscribe(subscription(1), "https://loom.example", [], server)
 
     turn_ended(pid, "a_1", {:error, "503 Bedrock is unable to process your request"})
 
@@ -76,8 +76,8 @@ defmodule Loom.PushTest do
     server: server,
     pid: pid
   } do
-    :ok = Push.subscribe(subscription(1), "https://loom.example", [], server)
-    :ok = Push.subscribe(subscription(2), "https://loom.example", [], server)
+    {:ok, _} = Push.subscribe(subscription(1), "https://loom.example", [], server)
+    {:ok, _} = Push.subscribe(subscription(2), "https://loom.example", [], server)
     channel = spawn(fn -> Process.sleep(:infinity) end)
 
     Push.watching("https://push.example/1", "a_1", channel, server)
@@ -98,7 +98,7 @@ defmodule Loom.PushTest do
   end
 
   test "hidden counts as not looking", %{server: server, pid: pid} do
-    :ok = Push.subscribe(subscription(1), "https://loom.example", [], server)
+    {:ok, _} = Push.subscribe(subscription(1), "https://loom.example", [], server)
     Push.watching("https://push.example/1", "a_1", self(), server)
     Push.watching("https://push.example/1", nil, self(), server)
     turn_ended(pid, "a_1", {:ok, nil})
@@ -116,7 +116,7 @@ defmodule Loom.PushTest do
     name = :"push_gone_#{System.unique_integer([:positive])}"
     other = Path.rootname(path) <> "-gone.json"
     pid = start_supervised!({Push, name: name, path: other, deliver: gone}, id: :gone)
-    :ok = Push.subscribe(subscription(1), "https://loom.example", [], name)
+    {:ok, _} = Push.subscribe(subscription(1), "https://loom.example", [], name)
 
     turn_ended(pid, "a_1", {:ok, nil})
     assert_receive {:tried, _}
@@ -126,12 +126,12 @@ defmodule Loom.PushTest do
   end
 
   test "turning on can ask for a notification straight away", %{server: server} do
-    :ok = Push.subscribe(subscription(1), "https://loom.example", [test: true], server)
+    {:ok, _} = Push.subscribe(subscription(1), "https://loom.example", [test: true], server)
     assert_receive {:delivered, _, %{"notification" => %{"body" => "Notifications are on."}}, _}
   end
 
   test "signs as the origin, or a stand-in where Apple would refuse it", %{server: server} do
-    :ok = Push.subscribe(subscription(1), "http://localhost:4000", [test: true], server)
+    {:ok, _} = Push.subscribe(subscription(1), "http://localhost:4000", [test: true], server)
 
     assert_receive {:delivered, _, %{"notification" => %{"navigate" => "http://localhost:4000/"}},
                     "mailto:" <> _}
@@ -153,8 +153,77 @@ defmodule Loom.PushTest do
     assert Push.list(server) == []
   end
 
+  describe "an app's APNs token" do
+    setup do
+      previous = Application.get_env(:loom, Loom.Push.APNs)
+
+      Application.put_env(:loom, Loom.Push.APNs,
+        key_file: "/nonexistent.p8",
+        key_id: "KEY0000001",
+        team_id: "TEAM000001"
+      )
+
+      on_exit(fn -> Application.put_env(:loom, Loom.Push.APNs, previous || []) end)
+    end
+
+    defp apns(token, sandbox \\ false),
+      do: %{"apns" => %{"token" => token, "topic" => "com.example.loom", "sandbox" => sandbox}}
+
+    test "is known by Apple's URL for it and sent the app's payload", %{server: server, pid: pid} do
+      assert {:ok, "https://api.push.apple.com/3/device/" <> "ab12" <> _ = endpoint} =
+               Push.subscribe(
+                 apns("AB12" <> String.duplicate("0", 60)),
+                 "https://loom.example",
+                 [],
+                 server
+               )
+
+      assert {:ok, "https://api.sandbox.push.apple.com/3/device/" <> _} =
+               Push.subscribe(
+                 apns(String.duplicate("1", 64), true),
+                 "https://loom.example",
+                 [],
+                 server
+               )
+
+      turn_ended(pid, "a_1", {:ok, "Done."})
+
+      assert_receive {:delivered, ^endpoint,
+                      %{
+                        "aps" => %{
+                          "alert" => %{"title" => "周报", "body" => "Done."},
+                          "thread-id" => "a_1"
+                        },
+                        "session" => "a_1"
+                      }, _}
+
+      assert [%{topic: "com.example.loom"}, %{topic: "com.example.loom"}] = Push.list(server)
+    end
+
+    test "refuses what is not a token, or without a key", %{server: server} do
+      assert {:error, :invalid} = Push.subscribe(apns("not hex"), "https://l", [], server)
+      Application.put_env(:loom, Loom.Push.APNs, [])
+
+      assert {:error, :invalid} =
+               Push.subscribe(apns(String.duplicate("a", 64)), "https://l", [], server)
+    end
+
+    test "a token Apple calls bad is dropped", %{path: path} do
+      bad = fn _sub, _payload, _keys, _subject -> {:ok, 400, ~s({"reason":"BadDeviceToken"})} end
+      name = :"push_bad_#{System.unique_integer([:positive])}"
+      other = Path.rootname(path) <> "-bad.json"
+      pid = start_supervised!({Push, name: name, path: other, deliver: bad}, id: :bad)
+      {:ok, _} = Push.subscribe(apns(String.duplicate("a", 64)), "https://l", [], name)
+
+      turn_ended(pid, "a_1", {:ok, nil})
+      Process.sleep(50)
+      assert Push.list(name) == []
+      File.rm(other)
+    end
+  end
+
   test "subscriptions survive a restart", %{server: server, path: path} do
-    :ok = Push.subscribe(subscription(1), "https://loom.example", [], server)
+    {:ok, _} = Push.subscribe(subscription(1), "https://loom.example", [], server)
     key = Push.public_key(server)
     stop_supervised!(Push)
 

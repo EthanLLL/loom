@@ -790,6 +790,21 @@ export function savePushSubscription(subscription: PushSubscriptionJSON, test: b
   })
 }
 
+/**
+ * The iOS app's own notifications, through Apple: its device token (hex),
+ * bundle id and whether it is a development build. Comes back with the
+ * endpoint the server knows the device by.
+ */
+export function saveAppPushToken(
+  apns: { token: string; topic: string; sandbox: boolean },
+  test: boolean,
+): Promise<{ endpoint: string }> {
+  return apiCall("/api/push/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({ subscription: { apns }, origin: window.location.origin, test }),
+  })
+}
+
 export function deletePushSubscription(endpoint: string): Promise<void> {
   return apiCall("/api/push/subscriptions", { method: "DELETE", body: JSON.stringify({ endpoint }) })
 }

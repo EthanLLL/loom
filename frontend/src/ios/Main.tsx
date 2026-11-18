@@ -7,12 +7,14 @@ import {
   moveAgent,
   onUnauthorized,
   renameAgent,
+  saveAppPushToken,
   type AgentBackend,
 } from "../api"
 import { Chat } from "../Chat"
 import { filed } from "../directories"
 import { Login } from "../Login"
 import { obj, post, str, useNativeAction, usePost } from "../native"
+import { useVisible } from "../push"
 import { dropSocket } from "../socket"
 import { useLobby } from "../useLobby"
 import { useNativeSettings } from "./Settings"
@@ -30,9 +32,13 @@ const BACKENDS: AgentBackend[] = ["claude_code", "codex", "kiro"]
  */
 export function NativeMain() {
   const [authed, setAuthed] = useState(!!getToken())
-  const { sessions, devices, apps, directoryOrder, orderDirectories, upsertDevice, loaded, upsert, drop, search } =
-    useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY))
+  // The app's notifications (APNs): the endpoint the server knows this
+  // device by, so it holds back the one for the conversation on screen.
+  const [endpoint, setEndpoint] = useState<string | null>(null)
+  const visible = useVisible()
+  const { sessions, devices, apps, directoryOrder, orderDirectories, upsertDevice, loaded, upsert, drop, search } =
+    useLobby(authed, endpoint ? { endpoint, session: visible ? activeId : null } : null)
 
   useEffect(() => {
     onUnauthorized(() => {
@@ -102,6 +108,14 @@ export function NativeMain() {
   // device, as the sidebar's drag sends it.
   useNativeAction("order-directories", (value) => {
     if (Array.isArray(value)) orderDirectories(value.map(str))
+  })
+  // The app's device token, on every start once signed in: Apple can change
+  // it, and the server forgets one Apple refused. `test` when the user has
+  // just allowed notifications.
+  useNativeAction("push-token", async (value) => {
+    const { token, topic, sandbox, test } = obj(value)
+    const apns = { token: str(token), topic: str(topic), sandbox: sandbox === true }
+    setEndpoint((await saveAppPushToken(apns, test === true)).endpoint)
   })
   // The app asked first; the history does not come back.
   useNativeAction("delete", async (id) => {

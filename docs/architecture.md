@@ -102,6 +102,11 @@ sends nothing; tapping opens the session.
   caches nothing.
 - iPhone: home-screen app only (iOS 16.4+). A 404/410 from the push service
   drops the subscription.
+- **An iPhone app of one's own** signs up with its APNs device token and is
+  sent to through Apple (`Loom.Push.APNs`, HTTP/2 through Mint), when the
+  server has the app team's key (`LOOM_APNS_*`). Its endpoint is Apple's URL
+  for the token, so it is watched and dropped like a Web Push one; a
+  `BadDeviceToken` drops it too.
 
 ### 2.7 What the backend is told
 

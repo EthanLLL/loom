@@ -52,6 +52,14 @@ config :loom, Loom.Agent,
   workspace: System.get_env("LOOM_WORKSPACE"),
   idle_release_ms: :timer.minutes(idle_release_minutes)
 
+# Notifications for an iPhone app of one's own, through Apple (Loom.Push.APNs):
+# the team's APNs key (a .p8 from the developer account; a file, as it is a
+# private key), its id, and the team's. Unset, only Web Push is offered.
+config :loom, Loom.Push.APNs,
+  key_file: System.get_env("LOOM_APNS_KEY_FILE"),
+  key_id: System.get_env("LOOM_APNS_KEY_ID"),
+  team_id: System.get_env("LOOM_APNS_TEAM_ID")
+
 # Parses `LOOM_BIND`, defaulting to loopback. A hostname is not accepted: a
 # typo there would silently fall back to all interfaces in most parsers, which
 # is the one mistake that must not be easy to make.

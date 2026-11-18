@@ -3,11 +3,14 @@ defmodule Loom.Push do
   Notifications on the user's devices when a turn is over, so a long job can
   be left running with the phone locked. Web Push, so the same code reaches an
   iPhone home-screen app (iOS 16.4+), Chrome and Firefox; see
-  `Loom.Push.WebPush` for the protocol.
+  `Loom.Push.WebPush` for the protocol. An iPhone app of one's own signs up
+  with its APNs device token instead, and is sent to through Apple directly
+  (`Loom.Push.APNs`), where the server has the team's key.
 
   - **Truth is `~/.loom/push.json`**: the VAPID key pair, made on first boot
     and kept, since every subscription is bound to it, and one subscription
-    per device that turned notifications on.
+    per device that turned notifications on. Either kind is known by its
+    `endpoint`, the URL its notifications are posted to.
   - **What is sent.** A session broadcasts `{:turn_ended, id, summary}` on
     `Loom.Agent.turns_topic/0` when a turn ends with nothing queued after it
     (not on an interrupt: whoever stopped it knows). Every subscription gets
@@ -21,13 +24,14 @@ defmodule Loom.Push do
     hands it to `frontend/public/sw.js`, which shows the same fields.
 
   A push service that answers 404 or 410 has dropped the subscription (the
-  app was removed, permission withdrawn), and so do we.
+  app was removed, permission withdrawn), and so do we; so does a token Apple
+  calls a bad one (`BadDeviceToken`: of the other environment, or not one).
   """
   use GenServer
 
   require Logger
 
-  alias Loom.Push.WebPush
+  alias Loom.Push.{APNs, WebPush}
 
   @name __MODULE__
   @body_limit 180
@@ -46,8 +50,11 @@ defmodule Loom.Push do
 
   @doc """
   Keep a browser's subscription (`PushSubscription.toJSON()`, string keys) and
-  the origin it was made on, which notifications link back to. With `test:
-  true` it is sent a notification at once, so turning them on shows they work.
+  the origin it was made on, which notifications link back to; or an app's,
+  `%{"apns" => %{"token" =>, "topic" =>, "sandbox" =>}}` with its device token
+  (hex), bundle id and whether it is a development build. With `test: true` it
+  is sent a notification at once, so turning them on shows they work.
+  `{:ok, endpoint}`, the device's name from now on.
   """
   def subscribe(subscription, origin, opts \\ [], server \\ @name),
     do:
@@ -82,7 +89,7 @@ defmodule Loom.Push do
       subs: subs,
       # endpoint => {session_id, pid, monitor}
       watching: %{},
-      deliver: Keyword.get(opts, :deliver, &WebPush.deliver/4)
+      deliver: Keyword.get(opts, :deliver, &deliver/4)
     }
 
     state = if keys, do: state, else: save(%{state | keys: WebPush.generate_keys()})
@@ -106,7 +113,7 @@ defmodule Loom.Push do
           send_to(state, sub, message(sub, "loom", "Notifications are on.", nil))
         end
 
-        {:reply, :ok, state}
+        {:reply, {:ok, sub.endpoint}, state}
 
       :error ->
         {:reply, {:error, :invalid}, state}
@@ -190,6 +197,9 @@ defmodule Loom.Push do
       else: text
   end
 
+  defp message(%{topic: topic}, title, body, session_id) when is_binary(topic),
+    do: APNs.payload(title, body, session_id)
+
   defp message(sub, title, body, session_id) do
     url = if session_id, do: "#{sub.origin}/?session=#{session_id}", else: sub.origin <> "/"
 
@@ -219,11 +229,21 @@ defmodule Loom.Push do
         {:ok, status, _body} when status in [404, 410] ->
           GenServer.cast(server, {:gone, sub.endpoint})
 
+        {:ok, 400, body} when is_map_key(sub, :topic) and is_binary(body) ->
+          if body =~ "BadDeviceToken",
+            do: GenServer.cast(server, {:gone, sub.endpoint}),
+            else: Logger.warning("Loom.Push: #{sub.endpoint} answered 400 #{body}")
+
         other ->
           Logger.warning("Loom.Push: #{sub.endpoint} answered #{inspect(other)}")
       end
     end)
   end
+
+  defp deliver(%{topic: topic} = sub, payload, _keys, _subject) when is_binary(topic),
+    do: APNs.deliver(sub, payload)
+
+  defp deliver(sub, payload, keys, subject), do: WebPush.deliver(sub, payload, keys, subject)
 
   # Apple refuses a VAPID subject on `localhost` or plain http (BadJwtToken,
   # measured), which is what a dev server has; any real-looking contact will do.
@@ -256,6 +276,16 @@ defmodule Loom.Push do
     end
   end
 
+  defp parse(%{"apns" => %{"token" => token, "topic" => topic, "sandbox" => sandbox}}, origin)
+       when is_binary(topic) and topic != "" and is_binary(origin) do
+    with true <- APNs.configured?(),
+         {:ok, endpoint} <- APNs.endpoint(token, sandbox) do
+      {:ok, %{endpoint: endpoint, topic: topic, origin: String.trim_trailing(origin, "/")}}
+    else
+      _ -> :error
+    end
+  end
+
   defp parse(_subscription, _origin), do: :error
 
   defp drop(state, endpoint) do
@@ -272,7 +302,8 @@ defmodule Loom.Push do
       subs =
         for sub <- data["subscriptions"] || [], is_binary(sub["endpoint"]), into: %{} do
           {sub["endpoint"],
-           Map.new(~w(endpoint p256dh auth origin created_at)a, &{&1, sub[to_string(&1)]})}
+           Map.new(~w(endpoint p256dh auth topic origin created_at)a, &{&1, sub[to_string(&1)]})
+           |> Map.reject(fn {_, v} -> is_nil(v) end)}
         end
 
       {keys, subs}

@@ -20,12 +20,13 @@ defmodule LoomWeb.PushControllerTest do
       "keys" => %{"p256dh" => "BCVxsr7N_eNgVRqvHtD0zQ", "auth" => "BTBZMqHH6r4Tts7J_aSIgg"}
     }
 
-    conn
-    |> post("/api/push/subscriptions", %{
-      subscription: subscription,
-      origin: "https://loom.example"
-    })
-    |> response(204)
+    assert %{"endpoint" => @endpoint_url} =
+             conn
+             |> post("/api/push/subscriptions", %{
+               subscription: subscription,
+               origin: "https://loom.example"
+             })
+             |> json_response(200)
 
     assert Enum.any?(Loom.Push.list(), &(&1.endpoint == @endpoint_url))
 

@@ -45,7 +45,9 @@ defmodule Loom.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:expty, "~> 0.2.1"}
+      {:expty, "~> 0.2.1"},
+      # HTTP/2 for APNs (Loom.Push.APNs); :httpc speaks only HTTP/1.1.
+      {:mint, "~> 1.7"}
     ]
   end
 
