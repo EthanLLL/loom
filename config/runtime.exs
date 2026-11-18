@@ -91,8 +91,6 @@ if config_env() == :prod do
   # hostname Cloudflare serves, recorded for completeness.
   host = System.get_env("PHX_HOST") || "localhost"
 
-  config :loom, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
-
   config :loom,
          :password,
          System.get_env("LOOM_PASSWORD") ||

@@ -9,7 +9,6 @@ defmodule Loom.Application do
   def start(_type, _args) do
     children = [
       LoomWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:loom, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Loom.PubSub},
       {Registry, keys: :unique, name: Loom.Terminal.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: Loom.Terminal.SessionSupervisor},
