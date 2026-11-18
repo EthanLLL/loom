@@ -30,7 +30,8 @@ const BACKENDS: AgentBackend[] = ["claude_code", "codex", "kiro"]
  */
 export function NativeMain() {
   const [authed, setAuthed] = useState(!!getToken())
-  const { sessions, devices, apps, directoryOrder, upsertDevice, loaded, upsert, drop, search } = useLobby(authed)
+  const { sessions, devices, apps, directoryOrder, orderDirectories, upsertDevice, loaded, upsert, drop, search } =
+    useLobby(authed)
   const [activeId, setActiveId] = useState<string | null>(() => localStorage.getItem(ACTIVE_KEY))
 
   useEffect(() => {
@@ -96,6 +97,11 @@ export function NativeMain() {
   useNativeAction("move", async (value) => {
     const { id, directory } = obj(value)
     upsert(await moveAgent(str(id), str(directory)))
+  })
+  // The directories in the order the app's list was dragged into, for every
+  // device, as the sidebar's drag sends it.
+  useNativeAction("order-directories", (value) => {
+    if (Array.isArray(value)) orderDirectories(value.map(str))
   })
   // The app asked first; the history does not come back.
   useNativeAction("delete", async (id) => {
