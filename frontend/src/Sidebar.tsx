@@ -47,10 +47,9 @@ import {
 import type { AgentBackend, AgentInfo } from "./api"
 import { listProfiles } from "./api"
 import { RenameInput } from "./Confirm"
-import { filed, ROOT } from "./directories"
+import { dirName, filed, ROOT } from "./directories"
 import { ago } from "./format"
 import { isComposing } from "./ime"
-import { dirName } from "./MovePicker"
 import { useDragOrder } from "./useDragOrder"
 import { lastActive } from "./useLobby"
 

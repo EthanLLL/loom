@@ -13,8 +13,6 @@ defmodule LoomWeb.AgentFileController do
   """
   use LoomWeb, :controller
 
-  require Logger
-
   alias Loom.Agent
   alias Loom.Agent.Files
   alias Loom.Agent.Store

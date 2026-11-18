@@ -413,7 +413,7 @@ agent.ts          pure reducers: applySnapshot / applyEvent / applyDelta / build
 markdown.tsx      markdown for assistant messages only
 Terminal.tsx      one xterm pane
 push.ts theme.ts  this device's notifications and theme (Settings.tsx)
-keys.tsx          vim-style keys, desktop only, off by default (docs/keys.md)
+keys.ts           vim-style keys, desktop only, off by default (docs/keys.md); WhichKey.tsx shows them
 ime.ts            whether a key event belongs to an IME composition
 useAgent.ts       one agent channel; useLobby.ts the lobby
 ```

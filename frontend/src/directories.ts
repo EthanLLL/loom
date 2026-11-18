@@ -12,6 +12,9 @@ export const ROOT = ""
 
 export const join = (dir: string, name: string) => (dir === ROOT ? name : `${dir}/${name}`)
 
+/** A directory name as one: no slashes, so directories stay one level deep. */
+export const dirName = (typed: string) => typed.replaceAll("/", " ").trim().replace(/\s+/g, " ")
+
 /**
  * The directories sessions are in, as the sidebar lists them: first those in
  * `order`, as the user dragged them (`Loom.Agent.DirectoryOrder`, the same on

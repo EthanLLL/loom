@@ -368,7 +368,11 @@ defmodule Loom.Agent.RestoreTest do
       refute Enum.any?(Agent.list_sessions(), &(&1.id == id))
 
       assert_receive :stub_stopped, 1_000
-      assert_eventually(fn -> not Agent.exists?(id) and not File.exists?(Store.session_dir(id)) end)
+
+      assert_eventually(fn ->
+        not Agent.exists?(id) and not File.exists?(Store.session_dir(id))
+      end)
+
       assert Enum.any?(File.ls!(Store.trash_dir()), &String.starts_with?(&1, id <> "."))
       assert {:error, {:no_such_session, ^id}} = Agent.restore_session(id)
     end

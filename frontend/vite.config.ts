@@ -9,8 +9,23 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': path.resolve(import.meta.dirname, './src') } },
   // noVNC (the browser pane) uses top-level await.
-  build: { target: 'es2022' },
-  optimizeDeps: { esbuildOptions: { target: 'es2022' } },
+  build: {
+    target: 'es2022',
+    rolldownOptions: {
+      output: {
+        // The libraries in chunks of their own: under the size Vite warns
+        // at, and kept by browsers across deploys, which change only the app.
+        codeSplitting: {
+          groups: [
+            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: 'ui', test: /node_modules[\\/]@(base-ui|floating-ui)[\\/]/ },
+            { name: 'xterm', test: /node_modules[\\/]@xterm[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
+  optimizeDeps: { rolldownOptions: { transform: { target: 'es2022' } } },
   server: {
     proxy: {
       '/api': { target: 'http://localhost:4000', changeOrigin: true },

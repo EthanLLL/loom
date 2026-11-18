@@ -4,10 +4,8 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
+import { dirName } from "./directories"
 import { isComposing } from "./ime"
-
-/** A directory name as one: no slashes, so directories stay one level deep. */
-export const dirName = (typed: string) => typed.replaceAll("/", " ").trim().replace(/\s+/g, " ")
 
 /**
  * "Move to directory" on a phone, where a submenu has no room: where a session

@@ -26,7 +26,7 @@ import type { Push } from "./push"
 import { SecurityPanel } from "./Security"
 import { setThemePref, useThemePref, type ThemePref } from "./theme"
 import { useNarrow } from "./useNarrow"
-import { useViewportReadout } from "./ViewportReadout"
+import { useViewportReadout } from "./readout"
 
 type Section = "general" | "devices" | "sign-in"
 

@@ -1,6 +1,6 @@
 import { CheckmarkSquare02Icon, SquareIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { createContext, useContext, useMemo, type ReactNode } from "react"
+import { useContext, useMemo, type ReactNode } from "react"
 import { marked, type Token, type Tokens } from "marked"
 import {
   CodeBlock,
@@ -10,6 +10,7 @@ import {
   CodeBlockHeader,
   CodeBlockTitle,
 } from "@/components/ui/code-block"
+import { OutputLink } from "./outputLink"
 
 /**
  * Markdown for assistant messages, rendered from `marked`'s token stream.
@@ -43,18 +44,6 @@ import {
  * fence on its own, and a half-written table stays a paragraph until its
  * delimiter row arrives. Both read fine mid-stream.
  */
-/**
- * How a link into the session's output directory is rendered.
- *
- * The agent is asked to write `[name](output/<path>)` for files it made (see
- * `Loom.Agent.Output`). That is not a URL the browser can follow — the file is
- * behind the API's token — so whoever renders the conversation supplies the
- * element, and without one such a link is shown like any other.
- */
-export const OutputLink = createContext<
-  ((path: string, label: ReactNode) => ReactNode) | null
->(null)
-
 /** Inline code, wherever it appears: in a reply, a user's message, a card. */
 export const codeSpan = "rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.875em] box-decoration-clone"
 
