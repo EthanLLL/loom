@@ -11,6 +11,7 @@ import {
   type AgentBackend,
 } from "../api"
 import { Chat } from "../Chat"
+import { NativeComposer } from "./Composer"
 import { filed } from "../directories"
 import { Login } from "../Login"
 import { obj, post, str, useNativeAction, usePost } from "../native"
@@ -151,19 +152,25 @@ export function NativeMain() {
         <Chat
           key={active.id}
           session={active}
-          terminalOpen={false}
-          terminalCount={0}
-          onToggleTerminal={() => {}}
-          canvasOpen={false}
-          onToggleCanvas={() => {}}
           // The canvas is the app's other web view; it is told through here.
           onOpenCanvas={(item) => post({ canvas: { session: active.id, item } })}
           onFilesChanged={(outputs) => post({ files: { session: active.id, outputs } })}
+          // No bar: the app draws its own. The composer is the app's too.
+          composer={({ session, transcript, busy, attachments, send, interrupt }) => (
+            <NativeComposer
+              session={session}
+              status={transcript.status}
+              busy={busy}
+              attachments={attachments}
+              onSubmit={send}
+              onInterrupt={interrupt}
+            />
+          )}
         />
       ) : (
         <div className="m-auto text-muted-foreground">No session yet.</div>
       )}
-      <NativeTerminals />
+      <NativeTerminals devices={devices} />
     </div>
   )
 }

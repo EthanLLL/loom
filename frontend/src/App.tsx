@@ -14,6 +14,8 @@ import { Canvas } from "./Canvas"
 import { moved, touches, type CanvasItem } from "./canvasItems"
 import { Confirm } from "./Confirm"
 import { Chat } from "./Chat"
+import { Composer } from "./chat/Composer"
+import { ChatHeader } from "./chat/Header"
 import { Apps } from "./Apps"
 import { filed, ROOT } from "./directories"
 import type { TreeNav } from "./FileBrowser"
@@ -27,9 +29,10 @@ import { Search } from "./Search"
 import { SettingsDialog } from "./Settings"
 import { Sidebar, SidebarHandle, WIDE } from "./Sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
-import { Terminal } from "./Terminal"
-// noVNC is only for the browser pane, so it loads when that is first opened.
+// noVNC is only for the browser pane, and xterm for the terminals: each
+// loads when its column is first opened.
 const Browser = lazy(() => import("./Browser").then((m) => ({ default: m.Browser })))
+const Terminal = lazy(() => import("./Terminal").then((m) => ({ default: m.Terminal })))
 import { useLobby } from "./useLobby"
 import { ViewportReadout } from "./ViewportReadout"
 import { useCompact, useNarrow } from "./useNarrow"
@@ -48,7 +51,6 @@ import {
   type AgentBackend,
 } from "./api"
 import { dropSocket } from "./socket"
-import "./App.css"
 
 const SIDEBAR_KEY = "loom_sidebar_open"
 const SIDEBAR_SCALE_KEY = "loom_sidebar_scale"
@@ -130,10 +132,13 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const terminalOpen = side === "terminal"
   // Mounted once first opened, so an app keeps its state while the canvas or
-  // the terminals are shown instead.
+  // the terminals are shown instead; and the terminals so, too, which is when
+  // xterm loads.
   const [appsUsed, setAppsUsed] = useState(false)
+  const [terminalsUsed, setTerminalsUsed] = useState(false)
   useEffect(() => {
     if (side === "apps") setAppsUsed(true)
+    if (side === "terminal") setTerminalsUsed(true)
   }, [side])
 
   // The right-hand column across the whole window, chat and sidebar hidden —
@@ -306,8 +311,6 @@ function App() {
   }
 
   // Up front, so the header's count is right before the column is ever opened.
-  // The panes mount hidden and stay idle: a terminal only joins its channel
-  // once it has a size.
   useEffect(() => {
     if (authed) void syncTerminals([])
   }, [authed])
@@ -612,16 +615,35 @@ function App() {
             <Chat
               key={active.id}
               session={active}
-              terminalOpen={terminalOpen}
-              terminalCount={ptyIds.length}
-              onToggleTerminal={toggleTerminal}
-              canvasOpen={side === "canvas"}
-              onToggleCanvas={toggleCanvas}
               onOpenCanvas={(item) => openCanvas(active.id, item)}
               onFilesChanged={(outputs) => {
                 setFilesRev((n) => n + 1)
                 refreshCanvas(active.id, outputs)
               }}
+              header={({ session, transcript, rename }) => (
+                <ChatHeader
+                  session={session}
+                  transcript={transcript}
+                  terminalOpen={terminalOpen}
+                  terminalCount={ptyIds.length}
+                  onToggleTerminal={toggleTerminal}
+                  canvasOpen={side === "canvas"}
+                  onToggleCanvas={toggleCanvas}
+                  onRename={rename}
+                />
+              )}
+              composer={({ session, transcript, busy, attachments, send, interrupt }) => (
+                <Composer
+                  sessionId={session.id}
+                  backend={session.backend}
+                  model={session.model ?? null}
+                  busy={busy}
+                  interrupted={transcript.status === "interrupted"}
+                  attachments={attachments}
+                  onSubmit={send}
+                  onInterrupt={interrupt}
+                />
+              )}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 font-sans text-muted-foreground">
@@ -685,8 +707,9 @@ function App() {
 
         {/* Kept mounted once opened: unmounting would drop the channel and
             xterm's scrollback, and the shell itself keeps running server-side
-            either way. */}
-        {ptyIds.length > 0 && (
+            either way. Hidden, a pane stays idle: a terminal only joins its
+            channel once it has a size. */}
+        {terminalsUsed && ptyIds.length > 0 && (
           <div
             className={column}
             style={{ display: terminalOpen ? "flex" : "none" }}
@@ -745,7 +768,9 @@ function App() {
                 {/* Terminal positions itself absolutely, so this has to be a
                     positioning context or it escapes the pane. */}
                 <div className="relative min-h-0 flex-1">
-                  <Terminal sessionId={id} active={terminalOpen} onClosed={() => dropTerminal(id)} />
+                  <Suspense fallback={null}>
+                    <Terminal sessionId={id} active={terminalOpen} onClosed={() => dropTerminal(id)} />
+                  </Suspense>
                 </div>
               </div>
             ))}

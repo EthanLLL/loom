@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import type { Channel } from "phoenix"
-import { createSession, deleteSession, listSessions } from "../api"
+import { createSession, deleteSession, listSessions, type Device } from "../api"
 import { obj, post, str, useNativeAction } from "../native"
 import { getSocket } from "../socket"
 
@@ -10,13 +10,24 @@ import { getSocket } from "../socket"
  * channel is joined while the app shows that terminal and left when it stops,
  * as `Terminal.tsx` does for xterm; the shell keeps running server-side
  * either way. Bytes cross as base64.
+ *
+ * A terminal may run on one of the user's devices: the list says which, and
+ * which devices are online to open one on, again whenever that changes.
  */
-export function NativeTerminals() {
+export function NativeTerminals({ devices }: { devices: Device[] }) {
   const channels = useRef(new Map<string, Channel>())
+  const online = devices.filter((d) => d.online).map((d) => d.name)
+  const onlineNow = useRef(online)
+  onlineNow.current = online
 
   const list = async () => {
     const live = await listSessions().catch(() => null)
-    if (live) post({ terminals: [...live].sort((a, b) => a.created_at - b.created_at).map((s) => s.id) })
+    if (live)
+      post({
+        terminals: [...live].sort((a, b) => a.created_at - b.created_at).map((s) => s.id),
+        terminalNodes: Object.fromEntries(live.flatMap((s) => (s.node ? [[s.id, s.node]] : []))),
+        terminalDevices: onlineNow.current,
+      })
   }
 
   const leave = (id: string) => {
@@ -25,15 +36,23 @@ export function NativeTerminals() {
   }
 
   useEffect(() => {
-    void list()
     const open = channels.current
     return () => open.forEach((channel) => channel.leave())
   }, [])
 
+  // Up front, and again when a device comes or goes: that changes what the
+  // app's "+" offers.
+  const onlineKey = online.join("\n")
+  useEffect(() => {
+    void list()
+  }, [onlineKey])
+
   useNativeAction("terminals", () => void list())
 
-  useNativeAction("terminal-new", async () => {
-    const session = await createSession("terminal").catch(() => null)
+  // `{node}` for a device; nothing, or an app from before devices, for here.
+  useNativeAction("terminal-new", async (value) => {
+    const node = str(obj(value).node)
+    const session = await createSession("terminal", node || undefined).catch(() => null)
     await list()
     if (session) post({ terminalCreated: session.id })
   })

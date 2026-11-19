@@ -1,30 +1,38 @@
 import { useCallback, useMemo, useRef, type ReactNode } from "react"
-import { buildTimeline, foldTools, isBusy } from "./agent"
+import { buildTimeline, foldTools, isBusy, type Transcript } from "./agent"
 import type { AgentInfo, OutputFile } from "./api"
 import { itemForPath, type CanvasItem } from "./canvasItems"
 import { ChatContext, type ChatScope } from "./chat/context"
-import { Composer } from "./chat/Composer"
 import { OutputLink as OutputLinkButton } from "./chat/Files"
-import { ChatHeader } from "./chat/Header"
 import { QueuePanel } from "./chat/QueuePanel"
 import { Timeline } from "./chat/Timeline"
 import { OutputLink } from "./outputLink"
-import { NativeComposer } from "./ios/Composer"
 import { native } from "./native"
 import { useAgent } from "./useAgent"
-import { useAttachments, useFileDrop } from "./useAttachments"
+import { useAttachments, useFileDrop, type Attachments } from "./useAttachments"
+
+/** What the bar and the box to write in are drawn from. */
+export type ChatParts = {
+  session: AgentInfo
+  transcript: Transcript
+  busy: boolean
+  attachments: Attachments
+  send: (text: string) => void
+  interrupt: () => void
+  rename: (title: string) => void
+}
 
 type Props = {
   session: AgentInfo
-  terminalOpen: boolean
-  terminalCount: number
-  onToggleTerminal: () => void
-  canvasOpen: boolean
-  onToggleCanvas: () => void
   onOpenCanvas: (item: CanvasItem) => void
   // A turn left outputs (their top-level paths), or a message brought
   // attachments (no paths).
   onFilesChanged: (outputs: string[]) => void
+  // The bar and the box are the caller's: the browser's own (chat/Header,
+  // chat/Composer), or the iOS app's composer and no bar, the app drawing
+  // its own. So each bundle carries only the ones it shows.
+  header?: (parts: ChatParts) => ReactNode
+  composer: (parts: ChatParts) => ReactNode
 }
 
 /**
@@ -33,16 +41,7 @@ type Props = {
  * transcript from its channel and the attachments on their way — and hands
  * each part what it needs.
  */
-export function Chat({
-  session,
-  terminalOpen,
-  terminalCount,
-  onToggleTerminal,
-  canvasOpen,
-  onToggleCanvas,
-  onOpenCanvas,
-  onFilesChanged,
-}: Props) {
+export function Chat({ session, onOpenCanvas, onFilesChanged, header, composer }: Props) {
   // The app passes a fresh function each render; reaching it through a ref
   // keeps what the transcript sees stable, so its memoised entries stay put.
   const openRef = useRef(onOpenCanvas)
@@ -93,6 +92,7 @@ export function Chat({
     submit(text, attachments.ready)
     attachments.clear()
   }
+  const parts: ChatParts = { session, transcript, busy, attachments, send, interrupt, rename }
 
   return (
     <ChatContext.Provider value={scope}>
@@ -111,16 +111,7 @@ export function Chat({
           </div>
         )}
 
-        <ChatHeader
-          session={session}
-          transcript={transcript}
-          terminalOpen={terminalOpen}
-          terminalCount={terminalCount}
-          onToggleTerminal={onToggleTerminal}
-          canvasOpen={canvasOpen}
-          onToggleCanvas={onToggleCanvas}
-          onRename={rename}
-        />
+        {header?.(parts)}
 
         {joinError && (
           <div className="shrink-0 bg-destructive/10 px-4 py-1.5 text-sm text-destructive">{joinError}</div>
@@ -138,28 +129,7 @@ export function Chat({
           />
         )}
 
-        {/* In the iOS app the composer is the app's own; see ios/Composer.tsx. */}
-        {native ? (
-          <NativeComposer
-            session={session}
-            status={transcript.status}
-            busy={busy}
-            attachments={attachments}
-            onSubmit={send}
-            onInterrupt={interrupt}
-          />
-        ) : (
-        <Composer
-          sessionId={session.id}
-          backend={session.backend}
-          model={session.model ?? null}
-          busy={busy}
-          interrupted={transcript.status === "interrupted"}
-          attachments={attachments}
-          onSubmit={send}
-          onInterrupt={interrupt}
-        />
-        )}
+        {composer(parts)}
       </div>
     </ChatContext.Provider>
   )

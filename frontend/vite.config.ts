@@ -15,10 +15,12 @@ export default defineConfig({
       output: {
         // The libraries in chunks of their own: under the size Vite warns
         // at, and kept by browsers across deploys, which change only the app.
+        // Not the UI components: in one chunk, a page took all of them for
+        // the few it shows; split as they are used, the iOS app's
+        // conversation page goes without the browser's menus and dialogs.
         codeSplitting: {
           groups: [
             { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
-            { name: 'ui', test: /node_modules[\\/]@(base-ui|floating-ui)[\\/]/ },
             { name: 'xterm', test: /node_modules[\\/]@xterm[\\/]/ },
           ],
         },
