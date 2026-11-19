@@ -33,6 +33,7 @@ export default defineConfig({
       '/api': { target: 'http://localhost:4000', changeOrigin: true },
       '/canvas/': { target: 'http://localhost:4000', changeOrigin: true },
       '/canvas-files/': { target: 'http://localhost:4000', changeOrigin: true },
+      '/app-icons/': { target: 'http://localhost:4000', changeOrigin: true },
       '/vendor/': { target: 'http://localhost:4000', changeOrigin: true },
       '/browser/': { target: 'ws://localhost:4000', ws: true, changeOrigin: true },
       '/socket': { target: 'ws://localhost:4000', ws: true, changeOrigin: true },

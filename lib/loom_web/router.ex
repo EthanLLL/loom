@@ -119,6 +119,11 @@ defmodule LoomWeb.Router do
     get "/:id/:token/:name", CanvasController, :attachment
   end
 
+  # The Apps grid's icons, Loom's own copies; see `LoomWeb.AppIconController`.
+  scope "/app-icons", LoomWeb do
+    get "/:name/:file", AppIconController, :show
+  end
+
   # For Apple, about the iOS app; see `LoomWeb.WellKnownController`.
   scope "/.well-known", LoomWeb do
     get "/apple-app-site-association", WellKnownController, :apple_app_site_association

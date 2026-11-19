@@ -122,7 +122,9 @@ $B rpc 'IO.inspect(Loom.Apps.delete("todo"))'        # units go, the directory t
   `apple-touch-icon`) in `web/index.html` that points into `web/`. If there is
   none, the grid uses `favicon.svg`/`.png`/`.ico` in `web/`, and if those are
   missing too, the title's first letter. Loom rounds its corners, so draw it
-  as a full-bleed square with no rounded corners of its own.
+  as a full-bleed square with no rounded corners of its own. Loom keeps its
+  own copy, taken at each `put` (and at boot), and the grid shows that copy,
+  so after changing the icon, `put` the app again.
 - **Installable**:
   - `web/manifest.webmanifest` with `name`, `short_name`, `"id": "./"`,
     `"start_url": "./"`, `"scope": "./"`, `"display": "standalone"` and

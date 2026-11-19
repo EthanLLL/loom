@@ -133,14 +133,24 @@ defmodule Loom.AppsTest do
     assert [%{name: ^a, title: "Kept", order: 1}] = Apps.list(name)
   end
 
-  test "its icon is the page's favicon", %{name: s} do
+  test "its icon is a copy of the page's favicon, taken at each put", %{name: s, path: path} do
     a = page(uniq("a"))
     web = Path.join(Apps.dir(a), "web")
+    icons = Path.join(Path.dirname(path), "app-icons")
     {:ok, %{icon: nil}} = Apps.put(a, %{}, s)
 
     File.write!(Path.join(web, "favicon.png"), "png")
-    assert [%{icon: icon}] = Apps.list(s)
-    assert String.ends_with?(icon, "/favicon.png")
+    # Not until it is put: the grid shows the registry's, not the app's.
+    assert [%{icon: nil}] = Apps.list(s)
+    {:ok, %{icon: "/app-icons/" <> rest}} = Apps.put(a, %{}, s)
+    [^a, png] = String.split(rest, "/")
+    assert png =~ ~r/\A[0-9a-f]{16}\.png\z/
+    assert {:ok, copy} = Apps.icon(a, png, s)
+    assert File.read!(copy) == "png"
+    # The app's own file may go; the grid keeps its copy.
+    File.rm!(Path.join(web, "favicon.png"))
+    assert File.read!(copy) == "png"
+    File.write!(Path.join(web, "favicon.png"), "png")
 
     File.mkdir_p!(Path.join(web, "img"))
     File.write!(Path.join(web, "img/mark.svg"), "<svg/>")
@@ -150,8 +160,12 @@ defmodule Loom.AppsTest do
       ~s(<link rel="shortcut icon" href="/img/mark.svg?v=2">)
     )
 
-    assert [%{icon: icon}] = Apps.list(s)
-    assert String.ends_with?(icon, "/img/mark.svg")
+    {:ok, %{icon: icon}} = Apps.put(a, %{}, s)
+    svg = Path.basename(icon)
+    assert String.ends_with?(svg, ".svg")
+    # The old copy is gone, and so is its address.
+    assert File.ls!(Path.join(icons, a)) == [svg]
+    assert Apps.icon(a, png, s) == :error
 
     # Nothing outside web/, and no other site's.
     File.write!(
@@ -159,8 +173,32 @@ defmodule Loom.AppsTest do
       ~s(<link rel="icon" href="../server.ts"><link rel="icon" href="https://x/i.png">)
     )
 
-    assert [%{icon: icon}] = Apps.list(s)
-    assert String.ends_with?(icon, "/favicon.png")
+    {:ok, %{icon: icon}} = Apps.put(a, %{}, s)
+    assert String.ends_with?(icon, ".png")
+
+    # No icon at all: no copy left behind.
+    File.rm!(Path.join(web, "favicon.png"))
+    assert {:ok, %{icon: nil}} = Apps.put(a, %{}, s)
+    refute File.exists?(Path.join(icons, a))
+  end
+
+  test "boot copies every app's icon afresh; delete removes it", %{units: units} do
+    path = Path.join(Path.dirname(units), "boot.json")
+    icons = Path.join(Path.dirname(path), "app-icons")
+    a = page(uniq("a"))
+    name = :"apps_boot_#{System.unique_integer([:positive])}"
+    start_supervised!({Apps, name: name, path: path, units: units, systemd: false}, id: :boot)
+    {:ok, %{icon: nil}} = Apps.put(a, %{}, name)
+    stop_supervised!(:boot)
+
+    File.write!(Path.join([Apps.dir(a), "web", "favicon.svg"]), "<svg/>")
+    File.mkdir_p!(Path.join(icons, "gone"))
+    start_supervised!({Apps, name: name, path: path, units: units, systemd: false}, id: :boot2)
+    assert [%{icon: "/app-icons/" <> _}] = Apps.list(name)
+    refute File.exists?(Path.join(icons, "gone"))
+
+    :ok = Apps.delete(a, name)
+    refute File.exists?(Path.join(icons, a))
   end
 
   test "a whole site needs no page; ports are the app's own", %{name: s, units: units} do

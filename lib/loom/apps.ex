@@ -10,7 +10,7 @@ defmodule Loom.Apps do
   follows without polling. An app's code and data are its directory,
   `~/.loom/apps/<name>/`:
 
-    * `web/` — the page; its favicon is its icon in the grid (`icon/1`)
+    * `web/` — the page; its favicon is its icon in the grid, see below
     * `server` — a command run there on demand, listening on the unix socket
       in `$APP_SOCKET`, or on `$PORT` when the app has a `port`
     * `job` — a command run there on `schedule` (systemd `OnCalendar`, UTC)
@@ -55,6 +55,15 @@ defmodule Loom.Apps do
   At boot every app's units are rewritten and any other `app-*` unit removed:
   the registry, not what happens to be installed, says what runs.
 
+  ## The grid is Loom's
+
+  What the Apps grid shows is the registry's, not the apps': opening the grid
+  must not start every app's server to fetch an icon, nor show nothing for
+  one that is down. So at each `put`, and at boot, the app's favicon is
+  copied to `app-icons/<name>/<hash>.<ext>` beside `apps.json`, and Loom
+  serves it from there (`LoomWeb.AppIconController`), under a name that
+  changes with its bytes. An icon changed later shows at the next `put`.
+
   There is no HTTP API. Apps are made by an agent on the node itself, over
   `bin/loom rpc` — see the `apps` skill.
   """
@@ -63,7 +72,8 @@ defmodule Loom.Apps do
   require Logger
 
   @name __MODULE__
-  @persisted ~w(name title order proxy port server idle memory job schedule created_at)a
+  # `icon`: the file name of the registry's copy of its icon, or nil.
+  @persisted ~w(name title order proxy port server idle memory job schedule icon created_at)a
   @settable ~w(title proxy port server idle memory job schedule)a
   @memory "256M"
   @proxies ~w(api all)
@@ -97,6 +107,12 @@ defmodule Loom.Apps do
 
   @doc "Run an app's job now, without waiting for its schedule; it runs in the background."
   def run(name, server \\ @name), do: GenServer.call(server, {:run, name}, 30_000)
+
+  @doc """
+  The registry's copy of `name`'s icon, if `file` is the current one:
+  `{:ok, path}`, else `:error`.
+  """
+  def icon(name, file, server \\ @name), do: GenServer.call(server, {:icon, name, file})
 
   @doc "The apps' own origin (`LOOM_APPS_URL`): their URLs are absolute there."
   def origin, do: config(:origin)
@@ -137,7 +153,7 @@ defmodule Loom.Apps do
   def handle_continue(:sync, state) do
     sync_all(state)
     serve(state, :boot)
-    {:noreply, state}
+    {:noreply, keep_icons(state)}
   end
 
   @impl true
@@ -147,6 +163,7 @@ defmodule Loom.Apps do
     with :ok <- check_name(name),
          {:ok, app} <- build(old, name, attrs, state),
          :ok <- check_dir(app) do
+      app = keep_icon(app, state)
       state = save(put_in(state.apps[name], app))
       install(app, state)
       serve(state)
@@ -158,6 +175,16 @@ defmodule Loom.Apps do
 
   def handle_call(:list, _from, state), do: {:reply, ordered(state), state}
 
+  def handle_call({:icon, name, file}, _from, state) do
+    case state.apps do
+      %{^name => %{icon: ^file}} when is_binary(file) ->
+        {:reply, {:ok, Path.join([icons_dir(state), name, file])}, state}
+
+      _ ->
+        {:reply, :error, state}
+    end
+  end
+
   def handle_call({:get, name}, _from, state) do
     {:reply, state.apps[name] && public(state.apps[name]), state}
   end
@@ -167,6 +194,7 @@ defmodule Loom.Apps do
       %{^name => _} ->
         uninstall(name, state)
         trash(name)
+        File.rm_rf(Path.join(icons_dir(state), name))
         state = state |> Map.update!(:apps, &Map.delete(&1, name)) |> renumber() |> save()
         serve(state)
         {:reply, :ok, broadcast(state)}
@@ -237,6 +265,7 @@ defmodule Loom.Apps do
             order:
               (state.apps |> Map.values() |> Enum.map(& &1.order) |> Enum.max(fn -> 0 end)) + 1,
             server: nil,
+            icon: nil,
             idle: nil,
             memory: nil,
             job: nil,
@@ -304,18 +333,63 @@ defmodule Loom.Apps do
     state.apps |> Map.values() |> Enum.sort_by(&{&1.order, &1.name}) |> Enum.map(&public/1)
   end
 
+  # The icon's address is Loom's own, relative: the browser and the iOS app
+  # each resolve it against the Loom they are talking to.
   defp public(app) do
-    url = "#{origin()}/apps/#{app.name}/"
-    icon = icon(app.name)
-    Map.merge(app, %{url: url, icon: icon && url <> icon})
+    Map.merge(app, %{
+      url: "#{origin()}/apps/#{app.name}/",
+      icon: app.icon && "/app-icons/#{app.name}/#{app.icon}"
+    })
+  end
+
+  defp icons_dir(state), do: Path.join(Path.dirname(state.path), "app-icons")
+
+  # Every app's icon copied afresh, and the copies of apps no longer here
+  # gone: at boot, after a deploy or an icon changed without a `put`.
+  defp keep_icons(state) do
+    apps = Map.new(state.apps, fn {name, app} -> {name, keep_icon(app, state)} end)
+
+    with {:ok, dirs} <- File.ls(icons_dir(state)) do
+      for d <- dirs, not Map.has_key?(apps, d), do: File.rm_rf(Path.join(icons_dir(state), d))
+    end
+
+    if apps == state.apps, do: state, else: save(%{state | apps: apps})
+  end
+
+  # The registry's copy of the app's favicon, named by its bytes, so a new
+  # icon is a new address and the old one may be cached forever.
+  defp keep_icon(app, state) do
+    dir = Path.join(icons_dir(state), app.name)
+
+    file =
+      with [rel | _] <- icons(app.name),
+           {:ok, bytes} <- File.read(Path.join([dir(app.name), "web", rel])) do
+        hash = :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower) |> binary_part(0, 16)
+        file = hash <> String.downcase(Path.extname(rel))
+        path = Path.join(dir, file)
+
+        unless File.regular?(path) do
+          File.mkdir_p!(dir)
+          File.write!(path <> ".tmp", bytes)
+          File.rename!(path <> ".tmp", path)
+        end
+
+        file
+      else
+        _ -> nil
+      end
+
+    with {:ok, files} <- File.ls(dir) do
+      for f <- files, f != file, do: File.rm(Path.join(dir, f))
+      if file == nil, do: File.rmdir(dir)
+    end
+
+    %{app | icon: file}
   end
 
   # The page's own favicon, so one file is both: the first `<link rel="icon">`
   # (or `apple-touch-icon`, which iOS puts on the home screen) in
   # `web/index.html` that points at a file in `web/`, else a `favicon.*` there.
-  # Read at each list, as the page is the agent's to rewrite at any time.
-  defp icon(name), do: List.first(icons(name))
-
   defp icons(name) do
     web = Path.join(dir(name), "web")
     html = File.read(Path.join(web, "index.html"))
