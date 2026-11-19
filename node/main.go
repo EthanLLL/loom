@@ -3,7 +3,8 @@
 // One binary, two roles:
 //
 //   - On a device (a Mac, a WSL box): `loom-node daemon` keeps a websocket open
-//     to loom and runs what it is sent — commands, file reads and writes.
+//     to loom and runs what it is sent — commands, file reads and writes, and
+//     terminals for loom's terminal pane.
 //     `loom-node install` sets that up as a login service; the install script
 //     loom hands out runs it.
 //   - On the loom host: `loom-node list | exec | read | write` is what an agent

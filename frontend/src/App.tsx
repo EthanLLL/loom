@@ -1,6 +1,14 @@
 import { ArrowLeft01Icon, Cancel01Icon, Maximize01Icon, Minimize01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { BackendIcon } from "./BackendIcon"
 import { Canvas } from "./Canvas"
 import { moved, touches, type CanvasItem } from "./canvasItems"
@@ -197,6 +205,8 @@ function App() {
   const [filesRev, setFilesRev] = useState(0)
   // PTY session ids, top to bottom in the right-hand column.
   const [ptyIds, setPtyIds] = useState<string[]>([])
+  // The device each one runs on, for those not on this server.
+  const [ptyNodes, setPtyNodes] = useState<Record<string, string>>({})
   const openingTerminal = useRef(false)
 
   useEffect(() => {
@@ -285,6 +295,7 @@ function App() {
     if (live === null) return current.length
 
     const alive = new Set(live.map((s) => s.id))
+    setPtyNodes(Object.fromEntries(live.flatMap((s) => (s.node ? [[s.id, s.node]] : []))))
     const kept = current.filter((id) => alive.has(id))
     const added = [...live]
       .sort((a, b) => a.created_at - b.created_at)
@@ -324,10 +335,14 @@ function App() {
     setTerminalOpen(true)
   }
 
-  const addTerminal = async () => {
-    const session = await createSession("terminal")
+  // On this server, or on one of the user's devices.
+  const addTerminal = async (node?: string) => {
+    const session = await createSession("terminal", node).catch(() => null)
+    if (!session) return
+    if (session.node) setPtyNodes((nodes) => ({ ...nodes, [session.id]: session.node! }))
     setPtyIds((ids) => [...ids, session.id])
   }
+  const onlineDevices = devices.filter((d) => d.online)
 
   // Off the column, and the column off once nothing is left in it rather
   // than leave a gap.
@@ -691,7 +706,10 @@ function App() {
                           title="Back to the chat"
                         />
                       )}
-                      <PaneTitle>Terminal {index + 1}</PaneTitle>
+                      <PaneTitle>
+                        Terminal {index + 1}
+                        {ptyNodes[id] && <span className="font-normal text-muted-foreground"> · {ptyNodes[id]}</span>}
+                      </PaneTitle>
                     </>
                   }
                 >
@@ -704,7 +722,24 @@ function App() {
                       title={maximized ? "Back beside the chat (Esc outside a shell)" : "Full window"}
                     />
                   )}
-                  <PaneButton icon={PlusSignIcon} onClick={addTerminal} title="New terminal" />
+                  {onlineDevices.length === 0 ? (
+                    <PaneButton icon={PlusSignIcon} onClick={() => addTerminal()} title="New terminal" />
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<PaneButton icon={PlusSignIcon} title="New terminal" />} />
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel>New terminal</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => addTerminal()}>On this server</DropdownMenuItem>
+                          {onlineDevices.map((d) => (
+                            <DropdownMenuItem key={d.id} onClick={() => addTerminal(d.name)}>
+                              On {d.name}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                   <PaneButton icon={Cancel01Icon} onClick={() => closeTerminal(id)} title="Close this terminal" />
                 </PaneHead>
                 {/* Terminal positions itself absolutely, so this has to be a

@@ -277,6 +277,11 @@ agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
   timeout 120 s (max 1800 s, exit 124), output capped at 10 MB. Writes go to a
   temp file renamed into place. Everything is logged on the device in
   `~/.local/state/loom-node/log`.
+- **Terminals** (`pty_open`, `pty_in`, `pty_resize`; back `pty_opened`,
+  `pty_out`, `pty_exit`) are the user's, from the terminal column's "+", not
+  the CLI's: the device runs its login shell on a PTY, and the session on
+  this side keeps the screen, §8. Like a command, the shell is hung up when
+  the connection drops.
 
 ## 5. Apps
 
@@ -387,7 +392,10 @@ Skills ship in the repo (`skills/*/SKILL.md`, `node/SKILL.md`) and
 ## 8. Terminals
 
 Each `Loom.Terminal.Session` owns one PTY (`expty`); terminals are global, not
-tied to a session.
+tied to a session. Given a device (`POST /api/sessions` with `node`), the PTY
+is on the device instead and its bytes cross that device's channel, §4.4;
+everything below is the same. A device that drops leaves the terminal on
+screen, saying so, until it is closed.
 
 - **Several clients, one shell.** Input is serialized through the mailbox; the
   buffer is replayed inside `subscribe/3`, so nothing slips in between.

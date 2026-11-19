@@ -45,6 +45,7 @@ config :loom, Loom.Push, path: Path.join(System.tmp_dir!(), "loom-test-#{System.
 config :loom, Loom.Auth, path: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}/auth.json")
 config :loom, Loom.Nodes, dir: Path.join(System.tmp_dir!(), "loom-test-#{System.pid()}")
 config :loom, LoomWeb.NodeController, await_ms: 200
+config :loom, Loom.Terminal.Session, open_timeout: 300
 
 # Nor the real apps, and never systemd.
 config :loom, Loom.Apps,

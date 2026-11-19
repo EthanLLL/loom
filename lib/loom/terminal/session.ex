@@ -32,6 +32,18 @@ defmodule Loom.Terminal.Session do
   land between the buffer and the live stream — which is why clients are kept
   here rather than on a PubSub topic, where subscribing and fetching the buffer
   are two steps with output in between.
+
+  ## On a device
+
+  Given `node:` (a device's name) and `channel:` (its `LoomWeb.NodeChannel`),
+  the shell runs there instead: `loom-node` opens a PTY with the device's login
+  shell, and its bytes come and go over that channel, the session's id being
+  the request id. Everything above — replay, several clients, the driver's
+  size — is the same, since it all happens here.
+
+  The device hangs up the shell when its connection drops, as it does to a
+  command. The session then stays, saying so on screen, until it is closed:
+  a pane that just vanished would leave no clue why.
   """
   use GenServer, restart: :transient
 
@@ -39,6 +51,10 @@ defmodule Loom.Terminal.Session do
 
   # Bytes of recent output retained for replay-on-reconnect.
   @buffer_limit 256 * 1024
+
+  # How long a device has to say it opened the terminal. One whose loom-node
+  # predates terminals ignores the request, so silence has to end somewhere.
+  @open_timeout Application.compile_env(:loom, [__MODULE__, :open_timeout], 15_000)
 
   # ── Public API ──────────────────────────────────────────────────────────
 
@@ -81,8 +97,36 @@ defmodule Loom.Terminal.Session do
     id = Keyword.fetch!(opts, :id)
     cols = Keyword.get(opts, :cols, 80)
     rows = Keyword.get(opts, :rows, 24)
-    shell = Keyword.get_lazy(opts, :shell, &default_shell/0)
     title = Keyword.get(opts, :title)
+
+    state = %{
+      id: id,
+      pty: nil,
+      os_pid: nil,
+      node: nil,
+      channel: nil,
+      # Only for a device: it said the terminal is open / the shell is gone.
+      opened: false,
+      ended: false,
+      title: title,
+      created_at: System.system_time(:millisecond),
+      cols: cols,
+      rows: rows,
+      # pid => %{ref: monitor, size: {cols, rows} | nil}
+      clients: %{},
+      driver: nil,
+      buffer: "",
+      buffer_size: 0
+    }
+
+    case Keyword.get(opts, :node) do
+      nil -> {:ok, start_local(state, Keyword.get_lazy(opts, :shell, &default_shell/0))}
+      node -> {:ok, start_remote(state, node, Keyword.fetch!(opts, :channel))}
+    end
+  end
+
+  defp start_local(state, shell) do
+    %{cols: cols, rows: rows} = state
 
     env =
       Loom.ChildEnv.map()
@@ -115,22 +159,21 @@ defmodule Loom.Terminal.Session do
         _, _ -> nil
       end
 
-    state = %{
-      id: id,
-      pty: pty,
-      os_pid: os_pid,
-      title: title,
-      created_at: System.system_time(:millisecond),
-      cols: cols,
-      rows: rows,
-      # pid => %{ref: monitor, size: {cols, rows} | nil}
-      clients: %{},
-      driver: nil,
-      buffer: "",
-      buffer_size: 0
-    }
+    %{state | pty: pty, os_pid: os_pid}
+  end
 
-    {:ok, state}
+  # The channel monitors this process too, and tells the device to hang up if
+  # it dies; this one watches the channel for the device going away.
+  defp start_remote(state, node, channel) do
+    Process.monitor(channel)
+
+    send(
+      channel,
+      {:node_send, self(), state.id, "pty_open", %{"cols" => state.cols, "rows" => state.rows}}
+    )
+
+    Process.send_after(self(), :open_timeout, @open_timeout)
+    %{state | node: node, channel: channel}
   end
 
   @impl true
@@ -153,17 +196,19 @@ defmodule Loom.Terminal.Session do
   end
 
   @impl true
+  def handle_cast({:input, _pid, _data}, %{ended: true} = state), do: {:noreply, state}
+
   def handle_cast({:input, pid, data}, state) do
     cond do
       pid == state.driver ->
-        ExPTY.write(state.pty, data)
+        write(state, data)
         {:noreply, state}
 
       reply_only?(data) ->
         {:noreply, state}
 
       true ->
-        ExPTY.write(state.pty, data)
+        write(state, data)
         {:noreply, drive(state, pid)}
     end
   end
@@ -180,20 +225,52 @@ defmodule Loom.Terminal.Session do
   end
 
   @impl true
-  def handle_info({:pty_data, data}, state) do
-    output = Loom.Terminal.Sgr.transform(data)
-
-    if output == "" do
-      {:noreply, state}
-    else
-      for {pid, _} <- state.clients, do: send(pid, {:pty_output, output})
-      {:noreply, append_buffer(state, output)}
-    end
-  end
+  def handle_info({:pty_data, data}, state), do: {:noreply, output(state, data)}
 
   def handle_info(:pty_exit, state) do
     Logger.info("PTY for session #{state.id} exited, stopping")
     {:stop, :normal, state}
+  end
+
+  # ── From the device ──
+
+  def handle_info({:node_reply, _id, "pty_opened", _}, state),
+    do: {:noreply, %{state | opened: true}}
+
+  def handle_info({:node_reply, _id, "pty_out", %{"data" => data}}, state) do
+    case Base.decode64(data) do
+      {:ok, bytes} -> {:noreply, output(state, bytes)}
+      :error -> {:noreply, state}
+    end
+  end
+
+  def handle_info({:node_reply, _id, "pty_exit", _}, state) do
+    Logger.info("Terminal #{state.id} on #{state.node}: the shell exited, stopping")
+    {:stop, :normal, %{state | ended: true}}
+  end
+
+  def handle_info({:node_reply, _id, "error", %{"message" => message}}, state),
+    do: {:noreply, finish(state, "#{state.node} could not open a terminal: #{message}")}
+
+  def handle_info(:open_timeout, %{opened: false, ended: false} = state) do
+    {:noreply,
+     finish(
+       state,
+       "#{state.node} did not open a terminal. Its loom-node may predate terminals: " <>
+         "reinstall it from Devices."
+     )}
+  end
+
+  def handle_info(:open_timeout, state), do: {:noreply, state}
+
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, %{channel: pid} = state) do
+    state = %{state | channel: nil}
+
+    if state.ended,
+      do: {:noreply, state},
+      else:
+        {:noreply,
+         finish(state, "#{state.node} disconnected. Close this terminal and open a new one.")}
   end
 
   # A client went away — keep the PTY alive for reconnect. If it was driving,
@@ -219,6 +296,10 @@ defmodule Loom.Terminal.Session do
     # another device. Their column drops it rather than show a dead screen.
     for {pid, _} <- state.clients, do: send(pid, :pty_closed)
 
+    # On a device: hang up there. The channel would also notice this process
+    # gone, but only once it is.
+    if state.channel && !state.ended, do: send(state.channel, {:node_cancel, state.id})
+
     # Closing a tab/pane calls DynamicSupervisor.terminate_child, which lands
     # here. Without this the PTY + shell (+ any TUI in it) would keep running
     # forever, since ExPTY is unlinked (it uses GenServer.start, not start_link).
@@ -232,7 +313,7 @@ defmodule Loom.Terminal.Session do
     # one set per closed terminal, and kept a `mix test` node from ever exiting.
     # If ExPTY already died (:pty_exit), the child is already gone — skip the
     # kill to avoid SIGKILLing an unrelated session that reused the pid.
-    if Process.alive?(state.pty) do
+    if state.pty && Process.alive?(state.pty) do
       if state.os_pid && state.os_pid > 1 do
         System.cmd("pkill", ["-KILL", "-s", "#{state.os_pid}"], stderr_to_stdout: true)
         # `--` is required: procps-ng 4.0.4 `kill -KILL -12993` reads only the
@@ -256,7 +337,7 @@ defmodule Loom.Terminal.Session do
   defp drive(state, pid) do
     case state.clients[pid] do
       %{size: {cols, rows}} when {cols, rows} != {state.cols, state.rows} ->
-        ExPTY.resize(state.pty, cols, rows)
+        resize_pty(state, cols, rows)
         %{state | driver: pid, cols: cols, rows: rows}
 
       _ ->
@@ -274,6 +355,42 @@ defmodule Loom.Terminal.Session do
   @reply ~r/\A(?:\e\[\??[\d;]*[Rn]|\e\[[\d;]*t|\e\[[?>=][\d;]*c|\e\[\?[\d;]*u|\e\[\??[\d;]*\$y|\e\[[IO]|\e\][^\a\e]*(?:\a|\e\\)|\eP[^\e]*\e\\)+\z/
 
   defp reply_only?(data), do: Regex.match?(@reply, data)
+
+  defp write(%{pty: pty}, data) when pty != nil, do: ExPTY.write(pty, data)
+
+  defp write(%{channel: channel} = state, data) when channel != nil,
+    do: send(channel, {:node_send, self(), state.id, "pty_in", %{"data" => Base.encode64(data)}})
+
+  defp write(_state, _data), do: :ok
+
+  defp resize_pty(%{ended: true}, _cols, _rows), do: :ok
+  defp resize_pty(%{pty: pty}, cols, rows) when pty != nil, do: ExPTY.resize(pty, cols, rows)
+
+  defp resize_pty(%{channel: channel} = state, cols, rows) when channel != nil,
+    do:
+      send(
+        channel,
+        {:node_send, self(), state.id, "pty_resize", %{"cols" => cols, "rows" => rows}}
+      )
+
+  defp resize_pty(_state, _cols, _rows), do: :ok
+
+  defp output(state, data) do
+    case Loom.Terminal.Sgr.transform(data) do
+      "" ->
+        state
+
+      output ->
+        for {pid, _} <- state.clients, do: send(pid, {:pty_output, output})
+        append_buffer(state, output)
+    end
+  end
+
+  # A device terminal that can no longer run: say why, dimmed, on its own line,
+  # and take no more input.
+  defp finish(state, message) do
+    %{output(state, "\r\n\e[2m[#{message}]\e[0m\r\n") | ended: true}
+  end
 
   defp append_buffer(state, output) do
     buffer = state.buffer <> output
@@ -295,7 +412,8 @@ defmodule Loom.Terminal.Session do
       title: state.title,
       created_at: state.created_at,
       cols: state.cols,
-      rows: state.rows
+      rows: state.rows,
+      node: state.node
     }
   end
 

@@ -280,6 +280,8 @@ export type SessionInfo = {
   created_at: number
   cols: number
   rows: number
+  // The device the shell runs on, or null for this server.
+  node: string | null
 }
 
 export async function listSessions(): Promise<SessionInfo[]> {
@@ -290,11 +292,11 @@ export async function listSessions(): Promise<SessionInfo[]> {
   return data.sessions
 }
 
-export async function createSession(title?: string): Promise<SessionInfo> {
+export async function createSession(title?: string, node?: string): Promise<SessionInfo> {
   const res = await fetch("/api/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(title ? { title } : {}),
+    body: JSON.stringify({ ...(title && { title }), ...(node && { node }) }),
   })
   if (res.status === 401) throw unauthorized()
   if (!res.ok) throw new Error(`createSession failed: ${res.status}`)

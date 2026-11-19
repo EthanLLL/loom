@@ -8,10 +8,25 @@ defmodule LoomWeb.SessionController do
     json(conn, %{sessions: Enum.map(Terminal.list_sessions(), &view/1)})
   end
 
-  # POST /api/sessions — create a new session with a server-generated id.
-  def create(conn, params) do
+  # POST /api/sessions — create a new session with a server-generated id. With
+  # `node`, the shell runs on that device (see Loom.Terminal.Session).
+  def create(conn, %{"node" => node} = params) when is_binary(node) and node != "" do
+    case Loom.Nodes.lookup(node) do
+      {:ok, channel} ->
+        start(conn, [node: node, channel: channel] ++ build_opts(params))
+
+      {:offline, _summary} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: "#{node} is offline"})
+
+      :unknown ->
+        conn |> put_status(:not_found) |> json(%{error: "there is no device called #{node}"})
+    end
+  end
+
+  def create(conn, params), do: start(conn, build_opts(params))
+
+  defp start(conn, opts) do
     id = generate_id()
-    opts = build_opts(params)
 
     case Terminal.start_session(id, opts) do
       {:ok, _pid} ->
@@ -58,7 +73,8 @@ defmodule LoomWeb.SessionController do
       title: info.title,
       created_at: info.created_at,
       cols: info.cols,
-      rows: info.rows
+      rows: info.rows,
+      node: info.node
     }
   end
 end
