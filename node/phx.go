@@ -108,7 +108,7 @@ func dial(ctx context.Context, origin, token string, info map[string]string) (*c
 		if resp != nil && resp.StatusCode == http.StatusForbidden {
 			return nil, errRevoked
 		}
-		return nil, err
+		return nil, redact(err, token)
 	}
 	// Files travel as 256 KiB chunks, base64'd; leave room.
 	ws.SetReadLimit(8 << 20)
@@ -149,6 +149,21 @@ func dial(ctx context.Context, origin, token string, info map[string]string) (*c
 		c.name = reply.Response.Name
 		return c, nil
 	}
+}
+
+// redact keeps the token out of an error that quotes the socket's address, as
+// a failed dial does: the daemon logs it, and its log is not a secret store.
+func redact(err error, token string) error {
+	msg := err.Error()
+	for _, t := range []string{token, url.QueryEscape(token)} {
+		if t != "" {
+			msg = strings.ReplaceAll(msg, t, "<token>")
+		}
+	}
+	if msg == err.Error() {
+		return err
+	}
+	return errors.New(msg)
 }
 
 func (c *conn) nextRef() string { return strconv.FormatInt(c.ref.Add(1), 10) }
