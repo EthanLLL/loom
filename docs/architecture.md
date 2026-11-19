@@ -250,7 +250,7 @@ agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
           NodeController ── Loom.Nodes (who is registered / online)
                  │  Erlang messages
                  ▼
-          NodeChannel  ◄── wss /node/websocket, through cloudflared ──  loom-node daemon (device)
+          NodeChannel  ◄── wss /node/websocket, through the proxy ──  loom-node daemon (device)
 ```
 
 - **Registering.** The Devices dialog returns a one-time install code (1 h).

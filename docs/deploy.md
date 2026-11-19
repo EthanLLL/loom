@@ -1,19 +1,14 @@
 # Deploy
 
-One EC2 machine. The BEAM serves HTTP itself on `127.0.0.1:4000`, and
-`cloudflared` on the same machine tunnels it out. There is no nginx, and TLS is
-not terminated on the box.
-
-```
-browser ─https→ Cloudflare edge ─tunnel (outbound)→ cloudflared ─http→ 127.0.0.1:4000
-```
+One machine. The BEAM serves plain HTTP itself on `127.0.0.1:4000`; whatever
+puts it on the network (a reverse proxy, a tunnel) and terminates TLS is yours
+to choose and runs in front of it.
 
 ## 1. Bind to loopback
 
-The tunnel dials out, so the security group needs no inbound rules. Set
-`LOOM_BIND` only if the tunnel runs on another machine, and then restrict
-ingress to that host. Whoever reaches the port gets an unsandboxed agent behind
-the sign-in, so set up a passkey or an authenticator in Settings → Sign-in
+Set `LOOM_BIND` only if what fronts Loom runs on another machine, and then
+restrict ingress to that host. Whoever reaches the port gets an unsandboxed
+agent behind the sign-in, so set up a passkey or an authenticator in Settings → Sign-in
 once it is running: until an authenticator exists, the password alone gets in.
 
 ## 2. `.env`
@@ -60,8 +55,6 @@ Loom makes no model requests itself. Before starting it, log in on the server:
 - `codex login`, or set a provider in `~/.codex/config.toml`
 - `kiro-cli login` (check with `kiro-cli whoami`). On a machine without a
   browser: `kiro-cli login --identity-provider <start URL> --region <region>
-  --use-device-flow`, without `--license`
-
   --use-device-flow`, without `--license`. Or an API key: kiro-cli reads it
   only from `KIRO_API_KEY`, so give it to the service as machine config, not
   in Loom's `.env`, e.g. a systemd drop-in with
@@ -109,9 +102,6 @@ sudo cp rel/systemd/loom.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
-`cloudflared` runs as its own service, with ingress pointing Loom's host at
-`http://localhost:4000` and the apps' host at `http://localhost:5000`.
-
 ## 6. Deploying Loom from inside Loom
 
 An agent inside Loom is part of the service's process tree. Restarting the
@@ -131,9 +121,3 @@ systemd gives up, and you move `loom.prev` back by hand.
 
 A frontend-only change needs no restart. Copy `frontend/dist` into the running
 release's `lib/loom-*/priv/static`.
-
-## 7. Limits
-
-- Cloudflare caps request bodies at 100 MB. Attachments are capped at 25 MB
-  per file. A 413 from Cloudflare never shows up in Loom's logs.
-- Phoenix's 30 s heartbeat keeps WebSockets under Cloudflare's idle timeout.

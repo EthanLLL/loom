@@ -98,7 +98,7 @@ if config_env() == :prod do
       """
 
   # Only used for generated absolute URLs, of which loom has none — it is the
-  # hostname Cloudflare serves, recorded for completeness.
+  # hostname the proxy serves, recorded for completeness.
   host = System.get_env("PHX_HOST") || "localhost"
 
   config :loom,
@@ -109,12 +109,11 @@ if config_env() == :prod do
   config :loom, LoomWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
-      # Loopback only. `cloudflared` runs on the same host and dials *out* to
-      # Cloudflare, so nothing has to listen on a public interface and the
-      # security group needs no inbound rule at all. Overridable for the case
-      # where the tunnel runs elsewhere — but then whatever can reach that
-      # port has an unsandboxed agent behind one password, so narrow the
-      # ingress to the tunnel host.
+      # Loopback only: whatever fronts Loom runs on the same host, so nothing
+      # has to listen on a public interface. Overridable for the case where it
+      # runs elsewhere — but then whatever can reach that port has an
+      # unsandboxed agent behind one password, so narrow the ingress to that
+      # host.
       ip: bind_address.(System.get_env("LOOM_BIND")),
       port: String.to_integer(System.get_env("PORT", "4000"))
     ],
@@ -122,7 +121,7 @@ if config_env() == :prod do
     # matches our configured host. Both checks are off deliberately:
     #
     #   check_origin: false  — accept the proxied Origin
-    #   no force_ssl         — TLS ends at Cloudflare; the last hop is plain
+    #   no force_ssl         — TLS ends at the proxy; the last hop is plain
     #                          HTTP over loopback, and redirecting to https
     #                          here would loop forever
     #
@@ -132,7 +131,7 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   # The apps' own origin, served by Caddy (`Loom.Apps`): the public URL the
-  # tunnel serves, e.g. https://loom-apps.luozhen.cloud, and the loopback port
+  # proxy serves, e.g. https://apps.example.com, and the loopback port
   # it points at. Unset, it is http://localhost:<port>: apps work on this
   # machine only.
   apps_port = String.to_integer(System.get_env("LOOM_APPS_PORT", "5000"))

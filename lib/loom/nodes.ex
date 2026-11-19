@@ -3,7 +3,7 @@ defmodule Loom.Nodes do
   The user's own machines — a Mac, a WSL box — that agents can run commands on.
 
   Each one runs `loom-node daemon` (the Go program in `node/`), which dials
-  loom over the same Cloudflare tunnel the browser uses and joins
+  loom at the same address the browser uses and joins
   `LoomWeb.NodeChannel`. An agent reaches it through the `loom-node` CLI on this
   host, which talks to `LoomWeb.NodeController`; the controller finds the
   device's channel here and relays. See docs/architecture.md §4.4.

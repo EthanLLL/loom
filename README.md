@@ -84,7 +84,7 @@ slides) and `node/SKILL.md`, copied to both backends on deploy.
 
 - [docs/architecture.md](docs/architecture.md): how Loom is built
 - [docs/backends.md](docs/backends.md): the Claude Code, Codex and Kiro (ACP) protocols, as measured
-- [docs/deploy.md](docs/deploy.md): EC2 + Cloudflare Tunnel + systemd
+- [docs/deploy.md](docs/deploy.md): running it on a server: `.env`, build, systemd, self-deploy
 - [docs/keys.md](docs/keys.md): the keyboard
 
 ## Requirements
