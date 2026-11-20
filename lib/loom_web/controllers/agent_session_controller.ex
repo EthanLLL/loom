@@ -35,6 +35,32 @@ defmodule LoomWeb.AgentSessionController do
     end
   end
 
+  # POST /api/agents/:id/submit — a message, as the composer sends it over the
+  # channel ("submit" in `LoomWeb.AgentChannel`, same params and reply), for a
+  # client with no socket: the iOS share extension lives for one message.
+  # `files` are what `POST /api/agents/:id/files` returned.
+  def submit(conn, %{"id" => id, "text" => text} = params) when is_binary(text) do
+    if Agent.exists?(id) do
+      case Agent.submit(id, text,
+             origin: Map.get(params, "device", "unknown"),
+             client_msg_id: Map.get(params, "client_msg_id"),
+             files: LoomWeb.AgentChannel.file_paths(params)
+           ) do
+        {:ok, disposition} ->
+          json(conn, %{status: disposition})
+
+        {:error, reason} ->
+          conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
+      end
+    else
+      conn |> put_status(:not_found) |> json(%{error: "unknown session"})
+    end
+  end
+
+  def submit(conn, _params) do
+    conn |> put_status(:unprocessable_entity) |> json(%{error: "submit requires a `text` string"})
+  end
+
   # GET /api/profiles — the profiles a new Claude Code session can use.
   def profiles(conn, _params) do
     json(conn, %{profiles: Loom.Agent.Profiles.list()})

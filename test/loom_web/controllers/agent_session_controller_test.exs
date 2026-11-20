@@ -92,6 +92,40 @@ defmodule LoomWeb.AgentSessionControllerTest do
     end
   end
 
+  describe "POST /api/agents/:id/submit" do
+    setup %{conn: conn} do
+      %{"id" => id} =
+        conn |> post(~p"/api/agents", %{backend: "claude_code"}) |> json_response(201)
+
+      {:ok, id: id}
+    end
+
+    test "starts a turn with the attachments, as the channel's submit would", %{
+      conn: conn,
+      id: id
+    } do
+      tmp = Path.join(System.tmp_dir!(), "ctl-att-#{System.unique_integer([:positive])}")
+      File.write!(tmp, "hi")
+      {:ok, file} = Loom.Agent.Files.store(id, %{filename: "note.txt", path: tmp})
+      File.rm(tmp)
+
+      conn = post(conn, ~p"/api/agents/#{id}/submit", %{text: "look at this", files: [file.path]})
+      assert %{"status" => "started"} = json_response(conn, 200)
+      assert BackendStub.await_turn() =~ file.path
+    end
+
+    test "a path the session does not own is refused", %{conn: conn, id: id} do
+      conn = post(conn, ~p"/api/agents/#{id}/submit", %{text: "read it", files: ["/etc/passwd"]})
+      assert json_response(conn, 422)["error"] =~ "not_an_attachment"
+      BackendStub.refute_turn()
+    end
+
+    test "needs text, and a session that exists", %{conn: conn, id: id} do
+      assert json_response(post(conn, ~p"/api/agents/#{id}/submit", %{}), 422)["error"] =~ "text"
+      assert json_response(post(conn, ~p"/api/agents/a_nope/submit", %{text: "hi"}), 404)
+    end
+  end
+
   describe "PATCH /api/agents/:id" do
     test "renames without touching the backend", %{conn: conn} do
       %{"id" => id} = post(conn, ~p"/api/agents", %{backend: "codex"}) |> json_response(201)

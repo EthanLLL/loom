@@ -107,7 +107,9 @@ defmodule LoomWeb.AgentChannel do
   # Attachments arrive as the objects `POST /api/agents/:id/files` returned, but
   # only the path is trusted input to anything — and the session checks even
   # that against its own files directory before the model hears about it.
-  defp file_paths(%{"files" => files}) when is_list(files) do
+  @doc false
+  # Also what `POST /api/agents/:id/submit` reads its `files` with.
+  def file_paths(%{"files" => files}) when is_list(files) do
     Enum.flat_map(files, fn
       %{"path" => path} when is_binary(path) -> [path]
       path when is_binary(path) -> [path]
@@ -115,5 +117,5 @@ defmodule LoomWeb.AgentChannel do
     end)
   end
 
-  defp file_paths(_params), do: []
+  def file_paths(_params), do: []
 end
