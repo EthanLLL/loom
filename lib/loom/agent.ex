@@ -23,13 +23,14 @@ defmodule Loom.Agent do
   @doc """
   Start a fresh session titled `title` and submit `prompt` to it, as a person
   starting a new chat would; returns `{:ok, id}`. `:backend` defaults to
-  `:claude_code`.
+  `:claude_code`; `:model`, when given, is set before the first turn.
   """
   def new_session(title, prompt, opts \\ []) do
     id = "a_" <> Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
     backend = Keyword.get(opts, :backend, :claude_code)
 
     with {:ok, _} <- start_session(id, backend: backend, title: title),
+         :ok <- if(model = opts[:model], do: set_model(id, model), else: :ok),
          {:ok, _} <- submit(id, prompt, Keyword.take(opts, [:origin])) do
       {:ok, id}
     end

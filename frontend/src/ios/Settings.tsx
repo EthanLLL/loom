@@ -6,13 +6,18 @@ import {
   deletePasskey,
   deviceInstallCode,
   installCommand,
+  listModels,
+  quickAskSettings,
   renameDevice,
   revokeLogin,
+  setQuickAsk,
   totpBegin,
   totpConfirm,
   totpRemove,
   type AuthOverview,
   type Device,
+  type ModelOption,
+  type QuickAsk,
 } from "../api"
 import { obj, str, useNativeAction, usePost } from "../native"
 import { setThemePref, useThemePref, type ThemePref } from "../theme"
@@ -23,7 +28,8 @@ const THEMES: ThemePref[] = ["system", "light", "dark", "coolnight"]
  * The app's Settings (Settings.swift in loom-ios) are native; this is what they
  * read and do, as Settings.tsx, Devices.tsx and Security.tsx do in a browser.
  * The app asks with `settings-*` actions; the state goes back as `settings`
- * whenever it changes. The devices come with the lobby, live.
+ * whenever it changes. The devices come with the lobby, live. Quick Ask comes
+ * with the models its backend offers.
  */
 export function useNativeSettings(devices: Device[], upsertDevice: (device: Device) => void, on: boolean) {
   const theme = useThemePref()
@@ -34,12 +40,16 @@ export function useNativeSettings(devices: Device[], upsertDevice: (device: Devi
   const [install, setInstall] = useState<{ id: string; command: string } | null>(null)
   const [totp, setTotp] = useState<{ secret: string; uri: string } | null>(null)
   const [recovery, setRecovery] = useState<string[] | null>(null)
+  const [quickAsk, setQuickAskState] = useState<(QuickAsk & { models: ModelOption[] }) | null>(null)
 
   const reload = useCallback(() => {
     authOverview()
       .then(setAuth)
       .catch((e) => setError((e as Error).message))
   }, [])
+
+  const showQuickAsk = async (settings: QuickAsk) =>
+    setQuickAskState({ ...settings, models: await listModels(settings.backend) })
 
   const run = async (action: () => Promise<unknown>, relist = false) => {
     setError(null)
@@ -86,6 +96,11 @@ export function useNativeSettings(devices: Device[], upsertDevice: (device: Devi
         install,
         totp,
         recovery,
+        quick_ask: quickAsk && {
+          backend: quickAsk.backend,
+          model: quickAsk.model,
+          models: quickAsk.models.map((m) => ({ id: m.id, label: m.label })),
+        },
       },
     },
     on,
@@ -98,10 +113,18 @@ export function useNativeSettings(devices: Device[], upsertDevice: (device: Devi
     setTotp(null)
     setRecovery(null)
     reload()
+    void run(async () => showQuickAsk(await quickAskSettings()))
   })
   useNativeAction("settings-theme", (value) => {
     const pref = str(value) as ThemePref
     if (THEMES.includes(pref)) setThemePref(pref)
+  })
+
+  useNativeAction("settings-quick-ask", (value) => {
+    const { backend, model } = obj(value)
+    void run(async () =>
+      showQuickAsk(await setQuickAsk({ backend: str(backend) as QuickAsk["backend"], model: model ? str(model) : null })),
+    )
   })
 
   useNativeAction("settings-device-add", (value) =>

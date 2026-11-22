@@ -755,6 +755,17 @@ async function apiCall<T>(url: string, init: RequestInit): Promise<T> {
   return body
 }
 
+/** Quick Ask: what a message from Siri or Shortcuts starts; a null model is the backend's default. */
+export type QuickAsk = { backend: AgentBackend; model: string | null }
+
+export function quickAskSettings(): Promise<QuickAsk> {
+  return apiCall("/api/quick-ask/settings", { method: "GET" })
+}
+
+export function setQuickAsk(settings: QuickAsk): Promise<QuickAsk> {
+  return apiCall("/api/quick-ask/settings", { method: "PUT", body: JSON.stringify(settings) })
+}
+
 /** Register a device: it comes back with its one-time install code. */
 export function createDevice(name: string): Promise<{ node: Device; code: string }> {
   return apiCall("/api/devices", { method: "POST", body: JSON.stringify({ name }) })

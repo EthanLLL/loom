@@ -38,6 +38,9 @@ defmodule LoomWeb.Router do
     delete "/agents/:id", AgentSessionController, :delete
     post "/agents/:id/submit", AgentSessionController, :submit
     post "/directories/move", AgentSessionController, :move_directory
+    post "/quick-ask", QuickAskController, :create
+    get "/quick-ask/settings", QuickAskController, :show
+    put "/quick-ask/settings", QuickAskController, :update
 
     post "/agents/:id/files", AgentFileController, :create
     get "/agents/:id/files/:name", AgentFileController, :show
