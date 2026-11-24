@@ -784,6 +784,23 @@ export function deviceInstallCode(id: string): Promise<{ code: string }> {
   return apiCall(`/api/devices/${id}/install`, { method: "POST" })
 }
 
+/**
+ * The browser's WebRTC offer for a port on the device, handed over by loom;
+ * the device's answer back. See node/rtc.go.
+ */
+export function deviceRtc(id: string, sdp: string, port: number, iceServers: string[]): Promise<{ sdp: string }> {
+  return apiCall(`/api/devices/${id}/rtc`, {
+    method: "POST",
+    body: JSON.stringify({ sdp, port, ice_servers: iceServers }),
+  })
+}
+
+/** A port on the device's loopback through loom, when there is no direct line. */
+export function devicePortUrl(id: string, port: number): string {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:"
+  return `${proto}//${location.host}/devices/${id}/port/${port}?token=${encodeURIComponent(getToken() ?? "")}`
+}
+
 /** What to paste into a terminal on the device. */
 export function installCommand(code: string): string {
   return `curl -fsSL ${window.location.origin}/node/install/${code} | sh`

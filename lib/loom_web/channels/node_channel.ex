@@ -21,8 +21,13 @@ defmodule LoomWeb.NodeChannel do
     - "pty_opened", "pty_out" `{id, data}`, "pty_exit" `{id, code}`: a
       terminal, for `Loom.Terminal.Session`; it sends `pty_in` and
       `pty_resize` the same way as any request
+    - "tcp_opened", "tcp_out" `{id, data}`, "tcp_closed": a port on the
+      device's loopback, for `LoomWeb.DevicePortSocket`, which sends `tcp_in`
+    - "rtc_answer" `{id, sdp}`: the device's half of a direct connection to
+      the browser, for `LoomWeb.DevicesController.rtc/2`
 
-  "exit", "done", "written", "pty_exit" and "error" end a request. The requester monitors
+  "exit", "done", "written", "pty_exit", "tcp_closed", "rtc_answer" and
+  "error" end a request. The requester monitors
   this process, so a dropped device shows up there as a `:DOWN` — and the
   device kills whatever it was running when it loses the connection, so
   nothing is left behind on either side.
@@ -31,7 +36,7 @@ defmodule LoomWeb.NodeChannel do
 
   require Logger
 
-  @final ~w(exit done written pty_exit error)
+  @final ~w(exit done written pty_exit tcp_closed rtc_answer error)
 
   @impl true
   def join("node", info, socket) do
@@ -43,7 +48,8 @@ defmodule LoomWeb.NodeChannel do
 
   @impl true
   def handle_in(event, %{"id" => id} = payload, socket)
-      when event in ~w(out exit chunk done written error pty_opened pty_out pty_exit) do
+      when event in ~w(out exit chunk done written error pty_opened pty_out pty_exit
+                       tcp_opened tcp_out tcp_closed rtc_answer) do
     case socket.assigns.requests do
       %{^id => {pid, ref}} ->
         send(pid, {:node_reply, id, event, Map.delete(payload, "id")})

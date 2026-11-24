@@ -27,11 +27,13 @@ import { PaneButton, PaneHead, PaneTitle } from "./Pane"
 import { usePush, useVisible } from "./push"
 import { Search } from "./Search"
 import { SettingsDialog } from "./Settings"
+import { DevicesDialog } from "./Devices"
 import { Sidebar, SidebarHandle, WIDE } from "./Sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
 // noVNC is only for the browser pane, and xterm for the terminals: each
 // loads when its column is first opened.
 const Browser = lazy(() => import("./Browser").then((m) => ({ default: m.Browser })))
+const Desktop = lazy(() => import("./Desktop").then((m) => ({ default: m.Desktop })))
 const Terminal = lazy(() => import("./Terminal").then((m) => ({ default: m.Terminal })))
 import { useLobby } from "./useLobby"
 import { ViewportReadout } from "./ViewportReadout"
@@ -49,6 +51,7 @@ import {
   moveDirectory,
   onUnauthorized,
   type AgentBackend,
+  type Device,
 } from "./api"
 import { dropSocket } from "./socket"
 
@@ -59,8 +62,8 @@ const TREE_KEY = "loom_canvas_tree"
 const VIM_KEY = "loom_vim"
 
 // The right-hand side shows one thing at a time: the terminals, the canvas,
-// the browser or the apps.
-type Side = "terminal" | "canvas" | "browser" | "apps" | null
+// the browser, the apps, or a device's screen.
+type Side = "terminal" | "canvas" | "browser" | "apps" | "desktop" | null
 
 function loadCanvases(): Record<string, CanvasItem> {
   try {
@@ -130,6 +133,9 @@ function App() {
 
   const [side, setSide] = useState<Side>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [devicesOpen, setDevicesOpen] = useState(false)
+  // The device whose screen is shown, while side is "desktop".
+  const [desktopId, setDesktopId] = useState<string | null>(null)
   const terminalOpen = side === "terminal"
   // Mounted once first opened, so an app keeps its state while the canvas or
   // the terminals are shown instead; and the terminals so, too, which is when
@@ -346,6 +352,21 @@ function App() {
     setPtyIds((ids) => [...ids, session.id])
   }
   const onlineDevices = devices.filter((d) => d.online)
+  const desktop = devices.find((d) => d.id === desktopId) ?? null
+
+  // From the Devices dialog, which gets out of the way of what was asked for.
+  const connectDevice = (d: Device) => {
+    setDevicesOpen(false)
+    if (narrow) setDrawerOpen(false)
+    setDesktopId(d.id)
+    setSide("desktop")
+  }
+  const deviceTerminal = async (d: Device) => {
+    setDevicesOpen(false)
+    if (narrow) setDrawerOpen(false)
+    await addTerminal(d.name)
+    setTerminalOpen(true)
+  }
 
   // Off the column, and the column off once nothing is left in it rather
   // than leave a gap.
@@ -561,6 +582,7 @@ function App() {
       onToggleBrowser={toggleBrowser}
       appsOpen={side === "apps"}
       onToggleApps={toggleApps}
+      onDevices={() => setDevicesOpen(true)}
       onSettings={() => setSettingsOpen(true)}
     />
   )
@@ -595,8 +617,14 @@ function App() {
         onOpenChange={setSettingsOpen}
         push={push}
         vim={narrow ? null : { on: vim, toggle: () => setVim((v) => !v) }}
+      />
+      <DevicesDialog
+        open={devicesOpen}
+        onOpenChange={setDevicesOpen}
         devices={devices}
-        onUpsertDevice={upsertDevice}
+        onUpsert={upsertDevice}
+        onConnect={connectDevice}
+        onTerminal={(d) => void deviceTerminal(d)}
       />
       {!maximized && <SidebarHandle scale={sidebarScale} onScale={setSidebarScale} />}
 
@@ -684,6 +712,23 @@ function App() {
           <div className={column}>
             <Suspense fallback={null}>
               <Browser
+                narrow={narrow}
+                maximized={maximized}
+                onToggleMaximized={toggleFull}
+                onClose={() => setSide(null)}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {/* Mounted only while shown, as the browser is: a closed pane holds
+            no line open to the device. */}
+        {side === "desktop" && desktop && (
+          <div className={column}>
+            <Suspense fallback={null}>
+              <Desktop
+                key={desktop.id}
+                device={desktop}
                 narrow={narrow}
                 maximized={maximized}
                 onToggleMaximized={toggleFull}

@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/pion/webrtc/v4"
 )
 
 const (
@@ -215,15 +217,18 @@ type session struct {
 	loom string // its url, for the audit log
 	ctx  context.Context
 
-	mu     sync.Mutex
-	execs  map[string]*job
-	writes map[string]*upload
-	terms  map[string]*term
-	wg     sync.WaitGroup
+	mu      sync.Mutex
+	execs   map[string]*job
+	writes  map[string]*upload
+	terms   map[string]*term
+	tunnels map[string]*tunnel
+	peers   map[string]*webrtc.PeerConnection
+	wg      sync.WaitGroup
 }
 
 func newSession(c *conn, cfg *config, url string) *session {
-	return &session{c: c, cfg: cfg, loom: url, execs: map[string]*job{}, writes: map[string]*upload{}, terms: map[string]*term{}}
+	return &session{c: c, cfg: cfg, loom: url, execs: map[string]*job{}, writes: map[string]*upload{}, terms: map[string]*term{},
+		tunnels: map[string]*tunnel{}, peers: map[string]*webrtc.PeerConnection{}}
 }
 
 func (s *session) serve(parent context.Context) error {
@@ -244,7 +249,17 @@ func (s *session) serve(parent context.Context) error {
 		delete(s.terms, id)
 		t.kill()
 	}
+	for id, t := range s.tunnels {
+		delete(s.tunnels, id)
+		t.close()
+	}
+	peers := s.peers
+	s.peers = map[string]*webrtc.PeerConnection{}
 	s.mu.Unlock()
+	// Outside the lock: closing a peer calls back into the session.
+	for _, pc := range peers {
+		pc.Close()
+	}
 	s.wg.Wait()
 	return err
 }
@@ -260,6 +275,10 @@ type request struct {
 	Final   bool   `json:"final"`
 	Cols    int    `json:"cols"`
 	Rows    int    `json:"rows"`
+	Port    int    `json:"port"`
+	SDP     string `json:"sdp"`
+
+	IceServers []string `json:"ice_servers"`
 }
 
 func (s *session) handle(event string, payload json.RawMessage) {
@@ -286,6 +305,15 @@ func (s *session) handle(event string, payload json.RawMessage) {
 			delete(s.terms, r.ID)
 			t.kill()
 		}
+		if t := s.tunnels[r.ID]; t != nil {
+			delete(s.tunnels, r.ID)
+			t.close()
+		}
+		// Not under the lock: closing a peer calls back into the session.
+		if pc := s.peers[r.ID]; pc != nil {
+			delete(s.peers, r.ID)
+			go pc.Close()
+		}
 		s.mu.Unlock()
 	case "read":
 		s.wg.Add(1)
@@ -298,6 +326,12 @@ func (s *session) handle(event string, payload json.RawMessage) {
 		s.ptyInput(r)
 	case "pty_resize":
 		s.ptyResize(r)
+	case "tcp_open":
+		s.tcpOpen(r)
+	case "tcp_in":
+		s.tcpInput(r)
+	case "rtc_offer":
+		s.rtcOffer(r)
 	default:
 		log.Printf("ignoring unknown event %q", event)
 	}

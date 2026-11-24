@@ -221,4 +221,85 @@ defmodule LoomWeb.NodeTest do
       assert %{"size" => 7} = Task.await(task) |> json_response(200)
     end
   end
+
+  describe "connect" do
+    defp user(conn \\ build_conn()),
+      do: put_req_header(conn, "authorization", "Bearer " <> Loom.Auth.mint_token())
+
+    test "rtc hands the offer to the device and answers with its answer" do
+      {node, socket} = online()
+
+      task =
+        Task.async(fn ->
+          post(user(), "/api/devices/#{node.id}/rtc", %{
+            "sdp" => "offer",
+            "port" => 5900,
+            "ice_servers" => ["stun:example.org:3478", 7]
+          })
+        end)
+
+      assert_push "rtc_offer", %{
+        "id" => id,
+        "sdp" => "offer",
+        "port" => 5900,
+        "ice_servers" => ["stun:example.org:3478"]
+      }
+
+      push(socket, "rtc_answer", %{"id" => id, "sdp" => "answer"})
+      assert %{"sdp" => "answer"} = Task.await(task) |> json_response(200)
+    end
+
+    test "rtc passes on the device's refusal, and refuses an offline device" do
+      {node, socket} = online()
+
+      task =
+        Task.async(fn ->
+          post(user(), "/api/devices/#{node.id}/rtc", %{"sdp" => "x", "port" => 5900})
+        end)
+
+      assert_push "rtc_offer", %{"id" => id}
+      push(socket, "error", %{"id" => id, "message" => "bad offer"})
+      assert %{"error" => "bad offer"} = Task.await(task) |> json_response(502)
+
+      {quiet, _token} = register()
+
+      assert post(user(), "/api/devices/#{quiet.id}/rtc", %{"sdp" => "x", "port" => 5900})
+             |> json_response(409)
+    end
+
+    test "the relay needs a login, and the device online" do
+      {node, _socket} = online()
+      assert get(build_conn(), "/devices/#{node.id}/port/5900").status == 401
+
+      {quiet, _token} = register()
+
+      assert get(build_conn(), "/devices/#{quiet.id}/port/5900?token=#{Loom.Auth.mint_token()}").status ==
+               409
+    end
+
+    test "the relay opens the port and passes bytes both ways" do
+      alias LoomWeb.DevicePortSocket
+
+      {:ok, state} = DevicePortSocket.init({self(), 5900})
+      assert_receive {:node_send, _pid, id, "tcp_open", %{"port" => 5900}}
+
+      {:ok, state} = DevicePortSocket.handle_info({:node_reply, id, "tcp_opened", %{}}, state)
+      assert {:ok, state} = DevicePortSocket.handle_in({"RFB", opcode: :binary}, state)
+      assert_receive {:node_send, _pid, ^id, "tcp_in", %{"data" => data}}
+      assert Base.decode64!(data) == "RFB"
+
+      assert {:push, {:binary, "003.889"}, state} =
+               DevicePortSocket.handle_info(
+                 {:node_reply, id, "tcp_out", %{"data" => Base.encode64("003.889")}},
+                 state
+               )
+
+      assert {:stop, :normal, {1011, "nothing is listening on port 5900 here"}, _} =
+               DevicePortSocket.handle_info(
+                 {:node_reply, id, "error",
+                  %{"message" => "nothing is listening on port 5900 here"}},
+                 state
+               )
+    end
+  end
 end

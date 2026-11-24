@@ -7,10 +7,16 @@ defmodule LoomWeb.DevicesController do
   Registering a device, or asking to reinstall one, returns an install `code`.
   The dialog turns it into `curl -fsSL <origin>/node/install/<code> | sh`; see
   `LoomWeb.NodeInstallController`.
+
+  Connect, the device's own screen, is `rtc/2` for a direct line from the
+  browser to a port on it, and `port/2` for the relay when there is none.
   """
   use LoomWeb, :controller
 
   alias Loom.Nodes
+
+  # Gathering takes the device up to 5 s, and a device just woken may be slow.
+  @rtc_timeout 15_000
 
   def index(conn, _params), do: json(conn, %{nodes: Nodes.list()})
 
@@ -39,6 +45,80 @@ defmodule LoomWeb.DevicesController do
     case Nodes.install_code(id) do
       {:ok, code} -> json(conn, %{code: code})
       {:error, reason} -> refuse(conn, reason)
+    end
+  end
+
+  @doc """
+  Hands the browser's WebRTC offer, for a `port` on the device's loopback, to
+  the device and answers with the device's: `{sdp}`. The two then find a way to each other, or don't, without
+  loom (see node/rtc.go). 409 when the device is offline, 502 when it
+  refused, 504 when it didn't answer (a loom-node from before this).
+  """
+  def rtc(conn, %{"id" => id, "sdp" => sdp, "port" => port} = params)
+      when is_binary(sdp) and is_integer(port) do
+    servers = for s <- List.wrap(params["ice_servers"]), is_binary(s), do: s
+
+    case Nodes.lookup_id(id) do
+      {:ok, channel} ->
+        req = Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
+        ref = Process.monitor(channel)
+
+        send(
+          channel,
+          {:node_send, self(), req, "rtc_offer",
+           %{"sdp" => sdp, "ice_servers" => servers, "port" => port}}
+        )
+
+        receive do
+          {:node_reply, ^req, "rtc_answer", %{"sdp" => answer}} ->
+            Process.demonitor(ref, [:flush])
+            json(conn, %{sdp: answer})
+
+          {:node_reply, ^req, "error", payload} ->
+            Process.demonitor(ref, [:flush])
+            conn |> put_status(502) |> json(%{error: payload["message"]})
+
+          {:DOWN, ^ref, :process, _pid, _reason} ->
+            conn |> put_status(409) |> json(%{error: "the device went offline"})
+        after
+          @rtc_timeout ->
+            send(channel, {:node_cancel, req})
+            Process.demonitor(ref, [:flush])
+            conn |> put_status(504) |> json(%{error: "the device did not answer"})
+        end
+
+      {:offline, _} ->
+        conn |> put_status(409) |> json(%{error: "the device is offline"})
+
+      :unknown ->
+        refuse(conn, :not_found)
+    end
+  end
+
+  def rtc(conn, _params),
+    do: conn |> put_status(400) |> json(%{error: "sdp and port are required"})
+
+  @doc """
+  Upgrades to `LoomWeb.DevicePortSocket`, for `port` on the device's
+  loopback. A WebSocket can't carry the header `RequireAuth` reads, so the
+  login token comes as `?token=`, as it does for `LoomWeb.BrowserController`.
+  """
+  def port(conn, %{"id" => id, "port" => port} = params) do
+    with {:ok, _login} <- Loom.Auth.verify_token(params["token"]),
+         {port, ""} when port in 1..65_535 <- Integer.parse(port),
+         {:ok, channel} <- Nodes.lookup_id(id) do
+      conn
+      |> WebSockAdapter.upgrade(LoomWeb.DevicePortSocket, {channel, port},
+        timeout: :timer.hours(4),
+        compress: true
+      )
+      |> halt()
+    else
+      {:error, _} -> send_resp(conn, 401, "")
+      {:offline, _} -> send_resp(conn, 409, "")
+      :unknown -> send_resp(conn, 404, "")
+      # Not a port number.
+      _ -> send_resp(conn, 400, "")
     end
   end
 

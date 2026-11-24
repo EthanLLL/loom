@@ -1,7 +1,14 @@
-import { Cancel01Icon } from "@hugeicons/core-free-icons"
+import { Cancel01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Confirm } from "./Confirm"
 import { isComposing } from "./ime"
@@ -15,8 +22,42 @@ import {
 } from "./api"
 
 /**
- * The user's machines that agents can reach through `loom-node` — add, rename,
- * remove, and get the command that installs one. A section of Settings.
+ * Devices, from the sidebar's foot: the user's machines, shaped as Settings
+ * is but with no sections.
+ */
+export function DevicesDialog({
+  open,
+  onOpenChange,
+  ...panel
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+} & Parameters<typeof DevicesPanel>[0]) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[min(34rem,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-[40rem] max-sm:h-dvh max-sm:max-w-none max-sm:rounded-none max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)] max-sm:ring-0">
+        <DialogDescription className="sr-only">Your machines: their screens, terminals, and installing loom-node.</DialogDescription>
+        <header className="flex h-14 shrink-0 items-center gap-2 px-5 pr-3 max-sm:pl-3">
+          <DialogTitle className="text-base font-medium">Devices</DialogTitle>
+          <DialogClose render={<Button variant="ghost" size="icon-sm" className="ml-auto" />}>
+            <HugeiconsIcon icon={Cancel01Icon} />
+            <span className="sr-only">Close</span>
+          </DialogClose>
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 max-sm:px-3">
+          <DevicesPanel {...panel} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * The user's machines that agents can reach through `loom-node`: connect to
+ * one's screen, open a terminal on it; add, rename, remove, and get the
+ * command that installs one.
  *
  * Who is online comes from the lobby channel, so the dots change while it is
  * open. The install command is shown once, right after it is made: the code in
@@ -26,9 +67,13 @@ import {
 export function DevicesPanel({
   devices,
   onUpsert,
+  onConnect,
+  onTerminal,
 }: {
   devices: Device[]
   onUpsert: (device: Device) => void
+  onConnect: (device: Device) => void
+  onTerminal: (device: Device) => void
 }) {
   const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -91,6 +136,8 @@ export function DevicesPanel({
             <div key={d.id}>
               <DeviceRow
                 device={d}
+                onConnect={() => onConnect(d)}
+                onTerminal={() => onTerminal(d)}
                 onRename={(value) => rename(d, value)}
                 onReinstall={() => reinstall(d)}
                 onRemove={() => setRemoving(d)}
@@ -141,11 +188,15 @@ export function DevicesPanel({
 
 function DeviceRow({
   device,
+  onConnect,
+  onTerminal,
   onRename,
   onReinstall,
   onRemove,
 }: {
   device: Device
+  onConnect: () => void
+  onTerminal: () => void
   onRename: (name: string) => void
   onReinstall: () => void
   onRemove: () => void
@@ -201,17 +252,28 @@ function DeviceRow({
           {[system, device.hostname, seen(device)].filter(Boolean).join(" · ")}
         </span>
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onReinstall}
-        title="New install command (replaces this device's token)"
-      >
-        Install
+      {/* Macs only: their screen is loom-mac-screen's, or Screen Sharing's. */}
+      {device.os === "darwin" && (
+        <Button variant="outline" size="sm" disabled={!device.online} onClick={onConnect} title="Its screen">
+          Connect
+        </Button>
+      )}
+      <Button variant="outline" size="sm" disabled={!device.online} onClick={onTerminal} title="A shell on it">
+        Terminal
       </Button>
-      <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={onRemove} title="Remove device">
-        <HugeiconsIcon icon={Cancel01Icon} />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground" title="More" />}>
+          <HugeiconsIcon icon={MoreHorizontalIcon} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={onReinstall} title="A new install command; it replaces this device's token">
+            Install
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={onRemove}>
+            Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

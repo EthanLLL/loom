@@ -1,5 +1,6 @@
 import {
   ArrowDown01Icon,
+  ComputerPhoneSyncIcon,
   DashboardSquare01Icon,
   Delete02Icon,
   Folder01Icon,
@@ -85,13 +86,14 @@ type Props = {
   onToggleBrowser: () => void
   appsOpen: boolean
   onToggleApps: () => void
+  onDevices: () => void
   onSettings: () => void
 }
 
 /**
  * The session list, as a card floating beside the conversation (a drawer on a
  * phone): making one at the top, the directories and Recents under it, and the
- * ways out to the apps, the browser and the settings at the foot. It is opened
+ * ways out to the apps, the browser, the devices and the settings at the foot. It is opened
  * and closed from the conversation's bar.
  */
 export function Sidebar({
@@ -115,6 +117,7 @@ export function Sidebar({
   onToggleBrowser,
   appsOpen,
   onToggleApps,
+  onDevices,
   onSettings,
 }: Props) {
   // Ages are relative, so they go stale without any new data. A local clock,
@@ -292,8 +295,15 @@ export function Sidebar({
               <span>Browser</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          {/* This device's preferences, the user's machines, and how this
-              Loom is signed in to. */}
+          {/* The user's machines: their screens and terminals, and
+              installing loom-node on them. */}
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={onDevices}>
+              <HugeiconsIcon icon={ComputerPhoneSyncIcon} />
+              <span>Devices</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {/* This device's preferences, and how this Loom is signed in to. */}
           <SidebarMenuItem>
             <SidebarMenuButton onClick={onSettings}>
               <HugeiconsIcon icon={Settings01Icon} />

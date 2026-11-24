@@ -1,9 +1,4 @@
-import {
-  Cancel01Icon,
-  ComputerPhoneSyncIcon,
-  SecurityCheckIcon,
-  Settings01Icon,
-} from "@hugeicons/core-free-icons"
+import { Cancel01Icon, SecurityCheckIcon, Settings01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
@@ -20,19 +15,16 @@ import {
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import type { Device } from "./api"
-import { DevicesPanel } from "./Devices"
 import type { Push } from "./push"
 import { SecurityPanel } from "./Security"
 import { setThemePref, useThemePref, type ThemePref } from "./theme"
 import { useNarrow } from "./useNarrow"
 import { useViewportReadout } from "./readout"
 
-type Section = "general" | "devices" | "sign-in"
+type Section = "general" | "sign-in"
 
 const SECTIONS: { id: Section; label: string; icon: IconSvgElement }[] = [
   { id: "general", label: "General", icon: Settings01Icon },
-  { id: "devices", label: "Devices", icon: ComputerPhoneSyncIcon },
   { id: "sign-in", label: "Sign-in", icon: SecurityCheckIcon },
 ]
 
@@ -41,30 +33,22 @@ const SECTIONS: { id: Section; label: string; icon: IconSvgElement }[] = [
  * them; a phone has no width for that, so they go across the top instead.
  *
  * General is this device's own: theme, Vim keys (desktop only) and
- * notifications. Devices and Sign-in are this Loom's: the machines its agents
- * reach, and how it is signed in to.
+ * notifications. Sign-in is this Loom's: how it is signed in to. The user's
+ * machines have a dialog of their own, Devices.
  */
 export function SettingsDialog({
   open,
   onOpenChange,
   push,
   vim,
-  devices,
-  onUpsertDevice,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   push: Push
   vim: { on: boolean; toggle: () => void } | null
-  devices: Device[]
-  onUpsertDevice: (device: Device) => void
 }) {
   const [section, setSection] = useState<Section>("general")
   const narrow = useNarrow()
-  const online = devices.filter((d) => d.online).length
-
-  const label = (id: Section) =>
-    id === "devices" && devices.length > 0 ? `Devices · ${online}/${devices.length}` : SECTIONS.find((s) => s.id === id)!.label
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -72,7 +56,7 @@ export function SettingsDialog({
         showCloseButton={false}
         className="flex h-[min(34rem,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-[46rem] max-sm:h-dvh max-sm:max-w-none max-sm:rounded-none max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)] max-sm:ring-0">
         <DialogTitle className="sr-only">Settings</DialogTitle>
-        <DialogDescription className="sr-only">This device's preferences, your devices, and sign-in.</DialogDescription>
+        <DialogDescription className="sr-only">This device's preferences, and sign-in.</DialogDescription>
         <SidebarProvider className="min-h-0 flex-1 items-stretch">
           {!narrow && (
             <Sidebar collapsible="none" className="w-48 border-r">
@@ -84,7 +68,7 @@ export function SettingsDialog({
                         <SidebarMenuItem key={s.id}>
                           <SidebarMenuButton isActive={section === s.id} onClick={() => setSection(s.id)}>
                             <HugeiconsIcon icon={s.icon} />
-                            <span>{label(s.id)}</span>
+                            <span>{s.label}</span>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       ))}
@@ -120,7 +104,6 @@ export function SettingsDialog({
             </header>
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 max-sm:px-3">
               {section === "general" && <General push={push} vim={vim} />}
-              {section === "devices" && <DevicesPanel devices={devices} onUpsert={onUpsertDevice} />}
               {section === "sign-in" && <SecurityPanel />}
             </div>
           </main>

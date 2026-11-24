@@ -282,6 +282,17 @@ agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
   the CLI's: the device runs its login shell on a PTY, and the session on
   this side keeps the screen, §8. Like a command, the shell is hung up when
   the connection drops.
+- **Screens** (Connect, in the Devices dialog) are a port on the device's
+  loopback: loom-mac-screen's H.264 on 5960 (its own repository), decoded
+  with WebCodecs, or else VNC on 5900, macOS's Screen Sharing, drawn by
+  noVNC. Direct when the networks allow: the browser's WebRTC offer goes to
+  the device as `rtc_offer` (`POST /api/devices/:id/rtc`), its `rtc_answer`
+  comes back, and the two punch through on their own; a data channel
+  labelled `tcp:<port>` is the line. No TURN server: when no path is found
+  within seconds, the page falls back to `/devices/:id/port/:port`, a
+  WebSocket that loom relays as `tcp_open`, `tcp_in`, `tcp_out`,
+  `tcp_closed`. Loopback ports only, and they end with the connection like
+  everything else.
 
 ## 5. Apps
 

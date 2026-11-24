@@ -80,6 +80,9 @@ defmodule Loom.Nodes do
   """
   def lookup(name, server \\ @name), do: GenServer.call(server, {:lookup, name})
 
+  @doc "The same, by id: for the Devices dialog, which knows its devices by id."
+  def lookup_id(id, server \\ @name), do: GenServer.call(server, {:lookup_id, id})
+
   @doc """
   Like `lookup/2`, but an offline device gets `timeout` ms to come back — a Mac
   just woken from sleep is usually seconds from reconnecting.
@@ -268,19 +271,12 @@ defmodule Loom.Nodes do
   end
 
   def handle_call({:lookup, name}, _from, state) do
-    reply =
-      case Enum.find(Map.values(state.nodes), &same_name?(&1.name, name)) do
-        nil ->
-          :unknown
+    {:reply, channel(Enum.find(Map.values(state.nodes), &same_name?(&1.name, name)), state),
+     state}
+  end
 
-        node ->
-          case Map.fetch(state.online, node.id) do
-            {:ok, {pid, _ref}} -> {:ok, pid}
-            :error -> {:offline, summary(node, state)}
-          end
-      end
-
-    {:reply, reply, state}
+  def handle_call({:lookup_id, id}, _from, state) do
+    {:reply, channel(state.nodes[id], state), state}
   end
 
   @impl true
@@ -309,6 +305,15 @@ defmodule Loom.Nodes do
   end
 
   # ── Helpers ─────────────────────────────────────────────────────────────
+
+  defp channel(nil, _state), do: :unknown
+
+  defp channel(node, state) do
+    case Map.fetch(state.online, node.id) do
+      {:ok, {pid, _ref}} -> {:ok, pid}
+      :error -> {:offline, summary(node, state)}
+    end
+  end
 
   defp summary(node, state) do
     node
