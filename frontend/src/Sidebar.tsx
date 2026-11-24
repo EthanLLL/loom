@@ -61,11 +61,7 @@ const DIRS_OPEN_KEY = "loom.dirsOpen"
 
 type Props = {
   sessions: AgentInfo[]
-  // Desktop only, so null on a phone; see keys.tsx.
-  vim: { on: boolean; toggle: () => void } | null
   activeId: string | null
-  // The session under the keyboard's cursor while the list is walked; see App.
-  cursorId: string | null
   // The session whose name is being edited in its row, and where it goes.
   renamingId: string | null
   onRenamed: (id: string, title: string | null) => Promise<void>
@@ -98,9 +94,7 @@ type Props = {
  */
 export function Sidebar({
   sessions,
-  vim,
   activeId,
-  cursorId,
   renamingId,
   onRenamed,
   onSelect,
@@ -159,7 +153,6 @@ export function Sidebar({
       key={s.id}
       session={s}
       active={s.id === activeId}
-      cursor={s.id === cursorId}
       renaming={s.id === renamingId}
       dirs={dirs}
       narrow={narrow}
@@ -184,7 +177,7 @@ export function Sidebar({
             size="icon-sm"
             className="text-muted-foreground pointer-coarse:size-[48px]"
             onClick={onSearch}
-            title={vim?.on ? "Search (␣␣)" : "Search"}
+            title="Search"
             aria-label="Search"
           >
             <HugeiconsIcon icon={Search01Icon} />
@@ -329,7 +322,6 @@ export const WORKING = " text-muted-foreground shimmer"
 function SessionRow({
   session: s,
   active,
-  cursor,
   renaming,
   dirs,
   narrow,
@@ -341,7 +333,6 @@ function SessionRow({
 }: {
   session: AgentInfo
   active: boolean
-  cursor: boolean
   renaming: boolean
   dirs: string[]
   narrow: boolean
@@ -356,7 +347,7 @@ function SessionRow({
   const title = s.title ?? s.id
 
   return (
-    <SidebarMenuItem ref={cursor ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}>
+    <SidebarMenuItem>
       {renaming ? (
         <div className="flex h-8 items-center px-2 pointer-coarse:h-[44px]">
           <RenameInput value={title} stem={false} onDone={onRenamed} />
@@ -365,8 +356,6 @@ function SessionRow({
         <SidebarMenuButton
           isActive={active}
           onClick={onSelect}
-          // Walking the list with j/k; see the keys in App.tsx.
-          className={cursor ? "ring-2 ring-sidebar-ring" : undefined}
         >
           <span className={"min-w-0 flex-1 truncate" + (working ? WORKING : "")} title={s.status}>
             {title}

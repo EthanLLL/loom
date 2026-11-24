@@ -5,8 +5,8 @@ defmodule Loom.Agent.Backend.Kiro do
   let go when the session idles.
 
   The process model is Claude Code's, the wire is Codex's. See
-  `docs/backends.md` §9 for the measurements behind each choice below
-  (kiro-cli 3.2.0, its default v3 engine).
+  `docs/backends.md`, Kiro throughout, for the measurements behind each choice
+  below (kiro-cli 3.2.0, some re-measured on 3.3.0; its default v3 engine).
 
   ## One process per session
 

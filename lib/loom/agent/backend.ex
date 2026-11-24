@@ -138,7 +138,7 @@ defmodule Loom.Agent.Backend do
 
   Codex enforces a single writer per thread with a lock file that survives an
   ungraceful kill, so this is also where a stale lock belonging to *our own*
-  session gets cleared. See `docs/backends.md` §6.2.
+  session gets cleared. See `docs/backends.md` §9.3.
   """
   @callback resume(session_id :: String.t(), meta :: map()) ::
               {:ok, handle} | {:error, term()}

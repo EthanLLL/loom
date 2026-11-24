@@ -36,6 +36,8 @@ export default defineConfig({
       '/app-icons/': { target: 'http://localhost:4000', changeOrigin: true },
       '/vendor/': { target: 'http://localhost:4000', changeOrigin: true },
       '/browser/': { target: 'ws://localhost:4000', ws: true, changeOrigin: true },
+      // Connect's relay to a port on a device.
+      '/devices/': { target: 'ws://localhost:4000', ws: true, changeOrigin: true },
       '/socket': { target: 'ws://localhost:4000', ws: true, changeOrigin: true },
       // loom-node: install script, binaries, and the devices' own socket.
       '/node/': { target: 'http://localhost:4000', ws: true, changeOrigin: true },

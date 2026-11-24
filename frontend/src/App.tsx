@@ -18,9 +18,6 @@ import { Composer } from "./chat/Composer"
 import { ChatHeader } from "./chat/Header"
 import { Apps } from "./Apps"
 import { filed, ROOT } from "./directories"
-import type { TreeNav } from "./FileBrowser"
-import { useGlobalKey, useKeys, type Keymap } from "./keys"
-import { KeyHelp, WhichKey } from "./WhichKey"
 import { Login } from "./Login"
 import { MovePicker } from "./MovePicker"
 import { PaneButton, PaneHead, PaneTitle } from "./Pane"
@@ -59,7 +56,6 @@ const SIDEBAR_KEY = "loom_sidebar_open"
 const SIDEBAR_SCALE_KEY = "loom_sidebar_scale"
 const CANVAS_KEY = "loom_canvas"
 const TREE_KEY = "loom_canvas_tree"
-const VIM_KEY = "loom_vim"
 
 // The right-hand side shows one thing at a time: the terminals, the canvas,
 // the browser, the apps, or a device's screen.
@@ -381,147 +377,6 @@ function App() {
     await deleteSession(id).catch(() => {})
   }
 
-  // ── Keys ─────────────────────────────────────────────────────────────────
-  //
-  // See keys.tsx and docs/keys.md. The session list has a cursor of its own
-  // while it is being walked with j/k; Enter opens the session under it.
-  //
-  // The canvas's file tree is walked the same way, by `treeNav`, which the
-  // tree fills in.
-  // Off until turned on: not everyone wants single keys to do things.
-  const [vim, setVim] = useState(() => localStorage.getItem(VIM_KEY) === "1")
-  useEffect(() => {
-    localStorage.setItem(VIM_KEY, vim ? "1" : "0")
-  }, [vim])
-  const [listCursor, setListCursor] = useState<string | null>(null)
-  const [treeWalk, setTreeWalk] = useState(false)
-  const treeNav = useRef<TreeNav | null>(null)
-  const [help, setHelp] = useState(false)
-  const walking = listCursor !== null || treeWalk
-  useEffect(() => {
-    if (!walking) return
-    // A dialog the walk opened (deleting, asks first) is still part of it.
-    const away = (e: MouseEvent) => {
-      if ((e.target as Element | null)?.closest?.("[role=dialog], [role=alertdialog]")) return
-      setListCursor(null)
-      setTreeWalk(false)
-    }
-    window.addEventListener("mousedown", away)
-    return () => window.removeEventListener("mousedown", away)
-  }, [walking])
-  // Nothing to walk once the tree is out of sight.
-  useEffect(() => {
-    if (side !== "canvas" || !treeOpen) setTreeWalk(false)
-  }, [side, treeOpen])
-
-  const timeline = () => document.querySelector<HTMLElement>(".timeline")
-  const scroll = (by: (el: HTMLElement) => number, smooth = false) => {
-    const el = timeline()
-    el?.scrollBy({ top: by(el), behavior: smooth ? "smooth" : "instant" })
-  }
-  const step = (ids: string[], from: string | null, by: number) => {
-    if (ids.length === 0) return null
-    const at = from === null ? -1 : ids.indexOf(from)
-    return ids[at === -1 ? 0 : Math.min(ids.length - 1, Math.max(0, at + by))]
-  }
-  // What j/k, J/K walk: the list as the sidebar shows it, the root's sessions.
-  const ids = sessions.filter((s) => (s.directory ?? ROOT) === ROOT).map((s) => s.id)
-
-  // Into the columns either side of the chat, opening them as needed: `h` and
-  // `␣b` to the session list, `l` and `␣e` to the file tree.
-  const toList = () => {
-    setTreeWalk(false)
-    setFull(false)
-    setSidebarOpen(true)
-    if (compact) setSide(null)
-    setListCursor(activeId ?? ids[0] ?? null)
-  }
-  const toTree = () => {
-    setListCursor(null)
-    setSide("canvas")
-    setTreeOpen(true)
-    setTreeWalk(true)
-  }
-
-  const leader: Keymap = {
-    "Space Space": { desc: "search titles and what was said", run: () => openOver(setSearching) },
-    "Space e": {
-      desc: "file tree (j/k, h/l, Enter)",
-      run: () => {
-        if (!treeWalk) return toTree()
-        setTreeWalk(false)
-        setTreeOpen(false)
-      },
-    },
-    "Space b": {
-      desc: "session list (j/k, Enter)",
-      run: () => {
-        if (listCursor === null) return toList()
-        setListCursor(null)
-        setSidebarOpen(false)
-      },
-    },
-    "Space t": { desc: "terminal", run: () => void toggleTerminal() },
-    "Space c": { desc: "canvas", run: toggleCanvas },
-    "Space f": { desc: "full window", run: () => side !== null && toggleFull() },
-    "Space n c": { desc: "new Claude Code session", run: () => void create("claude_code") },
-    "Space n x": { desc: "new Codex session", run: () => void create("codex") },
-    "Space n k": { desc: "new Kiro session", run: () => void create("kiro") },
-  }
-  const keymap: Keymap = treeWalk
-    ? {
-        j: { desc: "next file", run: () => treeNav.current?.move(1) },
-        k: { desc: "previous file", run: () => treeNav.current?.move(-1) },
-        h: {
-          desc: "fold, up to the folder, or back to the chat",
-          run: () => treeNav.current?.left() || setTreeWalk(false),
-        },
-        l: { desc: "unfold, or open", run: () => treeNav.current?.right() },
-        Enter: { desc: "open the file, or fold the folder", run: () => treeNav.current?.enter() },
-        Esc: { desc: "leave the tree", run: () => setTreeWalk(false) },
-        d: { desc: "delete it (asks)", run: () => treeNav.current?.remove() },
-        r: { desc: "rename it", run: () => treeNav.current?.rename() },
-        ...leader,
-      }
-    : listCursor !== null
-      ? {
-          j: { desc: "next session", run: () => setListCursor((c) => step(ids, c, 1)) },
-          k: { desc: "previous session", run: () => setListCursor((c) => step(ids, c, -1)) },
-          Enter: {
-            desc: "open it",
-            run: () => {
-              select(listCursor)
-              setListCursor(null)
-            },
-          },
-          Esc: { desc: "leave the list", run: () => setListCursor(null) },
-          d: { desc: "delete the session (asks)", run: () => setDeleting(listCursor) },
-          r: { desc: "rename the session", run: () => setRenaming(listCursor) },
-          l: { desc: "back to the chat", run: () => setListCursor(null) },
-          ...leader,
-        }
-      : {
-          i: {
-            desc: "type a message",
-            run: () => document.querySelector<HTMLElement>(".composer-input")?.focus(),
-          },
-          j: { desc: "scroll down", run: () => scroll(() => 60) },
-          k: { desc: "scroll up", run: () => scroll(() => -60) },
-          "C-d": { desc: "half a page down", run: () => scroll((el) => el.clientHeight / 2, true) },
-          "C-u": { desc: "half a page up", run: () => scroll((el) => -el.clientHeight / 2, true) },
-          "g g": { desc: "top", run: () => timeline()?.scrollTo({ top: 0 }) },
-          G: { desc: "bottom", run: () => scroll((el) => el.scrollHeight) },
-          h: { desc: "to the session list", run: toList },
-          l: { desc: "to the file tree", run: toTree },
-          J: { desc: "next session", run: () => activeId && select(step(ids, activeId, 1)!) },
-          K: { desc: "previous session", run: () => activeId && select(step(ids, activeId, -1)!) },
-          ...leader,
-          "?": { desc: "all keys", run: () => setHelp(true) },
-        }
-  const keysOn = vim && authed && loaded && !narrow
-  const pending = useKeys(keysOn, keymap)
-  useGlobalKey(keysOn, (e) => e.ctrlKey && e.code === "Backquote", () => void toggleTerminal())
-
   // The browser and the apps are opened from the sidebar's foot.
   const toggleBrowser = () => {
     if (narrow) setDrawerOpen(false)
@@ -560,9 +415,7 @@ function App() {
   const sidebar = (
     <Sidebar
       sessions={sessions}
-      vim={narrow ? null : { on: vim, toggle: () => setVim((v) => !v) }}
       activeId={activeId}
-      cursorId={listCursor}
       renamingId={renaming}
       onRenamed={renamed}
       onSelect={select}
@@ -616,7 +469,6 @@ function App() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         push={push}
-        vim={narrow ? null : { on: vim, toggle: () => setVim((v) => !v) }}
       />
       <DevicesDialog
         open={devicesOpen}
@@ -702,8 +554,6 @@ function App() {
             onToggleMaximized={toggleFull}
             treeOpen={treeOpen}
             onTreeOpen={setTreeOpen}
-            walking={treeWalk}
-            nav={treeNav}
             onMoved={(source, from, to) => active && followCanvas(active.id, source, from, to)}
           />
         </div>
@@ -841,8 +691,6 @@ function App() {
           detail="The session and its whole history, with what it made. This cannot be undone."
           onYes={async () => {
             const id = deleting
-            // The cursor moves on to a neighbour rather than off the list.
-            if (listCursor === id) setListCursor(step(ids, id, 1) === id ? step(ids, id, -1) : step(ids, id, 1))
             await deleteAgent(id)
             drop(id)
           }}
@@ -850,14 +698,6 @@ function App() {
         />
       )}
       <ViewportReadout />
-      <WhichKey pending={pending} keymap={keymap} groups={{ "Space n": "new session" }} />
-      {help && (
-        <KeyHelp
-          keymap={keymap}
-          extra={[["C-`", "terminal, from anywhere — a shell too"]]}
-          onClose={() => setHelp(false)}
-        />
-      )}
     </SidebarProvider>
   )
 }

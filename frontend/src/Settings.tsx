@@ -32,20 +32,17 @@ const SECTIONS: { id: Section; label: string; icon: IconSvgElement }[] = [
  * Settings, with its sections down the left as shadcn's settings dialog has
  * them; a phone has no width for that, so they go across the top instead.
  *
- * General is this device's own: theme, Vim keys (desktop only) and
- * notifications. Sign-in is this Loom's: how it is signed in to. The user's
+ * General is this device's own: theme and notifications. Sign-in is this Loom's: how it is signed in to. The user's
  * machines have a dialog of their own, Devices.
  */
 export function SettingsDialog({
   open,
   onOpenChange,
   push,
-  vim,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   push: Push
-  vim: { on: boolean; toggle: () => void } | null
 }) {
   const [section, setSection] = useState<Section>("general")
   const narrow = useNarrow()
@@ -103,7 +100,7 @@ export function SettingsDialog({
               </DialogClose>
             </header>
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 max-sm:px-3">
-              {section === "general" && <General push={push} vim={vim} />}
+              {section === "general" && <General push={push} />}
               {section === "sign-in" && <SecurityPanel />}
             </div>
           </main>
@@ -127,7 +124,7 @@ const PUSH_HINT: Record<Push["state"], string> = {
   unsupported: "On an iPhone, add Loom to the Home Screen and open it from there to get notifications.",
 }
 
-function General({ push, vim }: { push: Push; vim: { on: boolean; toggle: () => void } | null }) {
+function General({ push }: { push: Push }) {
   const pref = useThemePref()
   const [readout, setReadout] = useViewportReadout()
   return (
@@ -147,11 +144,6 @@ function General({ push, vim }: { push: Push; vim: { on: boolean; toggle: () => 
           ))}
         </ToggleGroup>
       </Row>
-      {vim && (
-        <Row title="Vim mode" hint="Keys for the panes; ? lists them.">
-          <Switch checked={vim.on} onCheckedChange={vim.toggle} />
-        </Row>
-      )}
       <Row title="Notifications" hint={push.error ?? PUSH_HINT[push.state]}>
         <Switch
           checked={push.state === "on"}

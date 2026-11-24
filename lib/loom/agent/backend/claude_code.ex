@@ -4,7 +4,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   spoken to over stdin/stdout in stream-json, and let go when the session idles.
 
   (An earlier version spawned a process per turn and tore it down on `result`.
-  Every turn paid the cold start for it; see `docs/backends.md` §6.4.)
+  Every turn paid the cold start for it; see `docs/backends.md` §2.)
 
   ## One process per session, kept warm between turns
 

@@ -10,7 +10,6 @@ import {
 } from "../api"
 import { itemForAttachment, itemForPath, moved, touches, type CanvasItem } from "../canvasItems"
 import { Canvas } from "../Canvas"
-import type { TreeNav } from "../FileBrowser"
 import { obj, str, useNativeAction, usePost } from "../native"
 import { setThemePref, type ThemePref } from "../theme"
 import { useNarrow } from "../useNarrow"
@@ -47,7 +46,6 @@ export function NativePane() {
   const [canvases, setCanvases] = useState(loadCanvases)
   const [treeOpen, setTreeOpen] = useState(false)
   const [filesRev, setFilesRev] = useState(0)
-  const nav = useRef<TreeNav | null>(null)
   const narrow = useNarrow()
   // The sessions the app has unfolded, as listed or as why they could not be.
   const [trees, setTrees] = useState<Record<string, { files: TreeFile[]; output: TreeFile[] } | { error: string }>>({})
@@ -195,8 +193,6 @@ export function NativePane() {
           onToggleMaximized={() => {}}
           treeOpen={treeOpen}
           onTreeOpen={setTreeOpen}
-          walking={false}
-          nav={nav}
           onMoved={(source, from, to) => sessionId && follow(sessionId, source, from, to)}
           tree={false}
         />

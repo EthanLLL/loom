@@ -1,5 +1,5 @@
 import { ArrowLeft01Icon, Download04Icon, FolderTreeIcon, Maximize01Icon, Minimize01Icon, ReloadIcon } from "@hugeicons/core-free-icons"
-import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   canvasBase,
   downloadAgentOutput,
@@ -8,7 +8,7 @@ import {
   type CanvasBases,
 } from "./api"
 import { viewerFor, type CanvasItem, type Viewer } from "./canvasItems"
-import { FileBrowser, type TreeNav } from "./FileBrowser"
+import { FileBrowser } from "./FileBrowser"
 import { Markdown } from "./markdown"
 import { useNativeAction, usePost } from "./native"
 import { PaneButton, PaneHead, PaneNote, PaneTitle } from "./Pane"
@@ -48,8 +48,6 @@ export function Canvas({
   onToggleMaximized,
   treeOpen,
   onTreeOpen,
-  walking,
-  nav,
   onMoved,
   tree = true,
 }: {
@@ -62,12 +60,9 @@ export function Canvas({
   onBack: () => void
   maximized: boolean
   onToggleMaximized: () => void
-  // Desktop only, and kept by the app, which has a key for it.
+  // Desktop only, and kept by the app.
   treeOpen: boolean
   onTreeOpen: (open: boolean) => void
-  // The tree walked from the keyboard; see `FileBrowser`.
-  walking: boolean
-  nav: RefObject<TreeNav | null>
   // A file renamed or deleted from the tree; see `FileBrowser`.
   onMoved: (source: "output" | "files", from: string, to: string | null) => void
   tree?: boolean
@@ -185,8 +180,6 @@ export function Canvas({
               rev={filesRev}
               current={itemKey}
               onOpen={pick}
-              walking={walking && showTree}
-              nav={nav}
               onMoved={onMoved}
             />
           </div>

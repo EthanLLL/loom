@@ -209,8 +209,7 @@ export function Timeline({
     // cannot live inside the scroller without scrolling away with it.
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
-        // `.timeline` is how the app's keys find the scroller (App.tsx).
-        className={native ? "timeline" : "timeline min-h-0 flex-1 overflow-y-auto"}
+        className={native ? undefined : "min-h-0 flex-1 overflow-y-auto"}
         ref={ref}
         onScroll={native ? undefined : onScroll}
         onWheel={cancelJump}

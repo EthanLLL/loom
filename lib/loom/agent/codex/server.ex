@@ -269,7 +269,7 @@ defmodule Loom.Agent.Codex.Server do
       |> maybe_put("developerInstructions", opts[:developer_instructions])
 
     {:noreply,
-     send_request(state, "thread/resume", params, {:claim_resume, from, owner, thread_id})}
+     send_request(state, "thread/resume", params, {:claim_resume, from, owner, thread_id, params})}
   end
 
   # Not claimed here: the app-server was restarted since this thread was
@@ -451,7 +451,7 @@ defmodule Loom.Agent.Codex.Server do
   defp fail({:turn, from, _thread_id}, reason), do: GenServer.reply(from, {:error, reason})
   defp fail({:claim, from, _owner}, reason), do: GenServer.reply(from, {:error, reason})
 
-  defp fail({:claim_resume, from, _owner, _id}, reason),
+  defp fail({:claim_resume, from, _owner, _id, _params}, reason),
     do: GenServer.reply(from, {:error, reason})
 
   defp fail({:claim_retry, from, _owner, _id}, reason),
@@ -497,12 +497,12 @@ defmodule Loom.Agent.Codex.Server do
     state
   end
 
-  defp resolve({:claim_resume, from, owner, thread_id}, {:ok, _result}, state) do
+  defp resolve({:claim_resume, from, owner, thread_id, _params}, {:ok, _result}, state) do
     GenServer.reply(from, {:ok, thread_id})
     claim(state, thread_id, owner)
   end
 
-  defp resolve({:claim_resume, from, owner, thread_id}, {:error, error}, state) do
+  defp resolve({:claim_resume, from, owner, thread_id, params}, {:error, error}, state) do
     reason = message_of(error)
 
     if locked?(reason) do
@@ -512,7 +512,7 @@ defmodule Loom.Agent.Codex.Server do
       Logger.warning("Codex.Server: clearing stale writer lock for #{thread_id}")
       release_lock(state, thread_id)
 
-      params = Map.merge(%{"threadId" => thread_id, "excludeTurns" => true}, @access)
+      # The same request again, Loom's instructions included.
       send_request(state, "thread/resume", params, {:claim_retry, from, owner, thread_id})
     else
       GenServer.reply(from, {:error, reason})

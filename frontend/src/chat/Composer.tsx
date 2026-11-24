@@ -190,9 +190,8 @@ export function Composer({
         >
           <InputGroupTextarea
             ref={ref}
-            // `.composer-input` is how the app's keys find the box (App.tsx).
             className={
-              "composer-input field-sizing-fixed min-h-0 flex-none text-base leading-normal [grid-area:input] md:text-base " +
+              "field-sizing-fixed min-h-0 flex-none text-base leading-normal [grid-area:input] md:text-base " +
               // On one line the box is exactly a button's height (2rem, or
               // 2.75rem on touch) so the text and the buttons share a centre.
               (multiline ? "px-2.5 pt-2 pb-1.5" : "px-1.5 py-1 pointer-coarse:py-[calc((44px-1.5rem)/2)]")
