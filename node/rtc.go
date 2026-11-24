@@ -29,7 +29,12 @@ import (
 // ends, as everything else does.
 
 const (
-	gatherWait  = 5 * time.Second  // for the STUN servers to answer
+	// For the STUN servers to answer: until a little after the first does,
+	// or the most it is waited. Some never answer from some networks
+	// (stun.miwifi.com from a home line), and waiting for all of them, as
+	// gathering "complete" does, held the answer up the whole time.
+	srflxGrace  = 300 * time.Millisecond
+	gatherWait  = 2 * time.Second
 	connectWait = 30 * time.Second // for the browser to get through, or give up
 	// A data channel keeps everything it is given; reading the port stops
 	// while this much is unsent, which is how a slow link holds back VNC.
@@ -110,18 +115,34 @@ func (s *session) answer(r request) (string, error) {
 		return "", err
 	}
 	gathered := webrtc.GatheringCompletePromise(pc)
+	reflexive := make(chan struct{})
+	var first sync.Once
+	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c != nil && c.Typ == webrtc.ICECandidateTypeSrflx {
+			first.Do(func() { close(reflexive) })
+		}
+	})
 	if err := pc.SetLocalDescription(ans); err != nil {
 		drop()
 		return "", err
 	}
+	start := time.Now()
+	limit := time.NewTimer(gatherWait)
+	defer limit.Stop()
 	select {
 	case <-gathered:
-	case <-time.After(gatherWait):
+	case <-reflexive:
+		select {
+		case <-gathered:
+		case <-time.After(srflxGrace):
+		case <-limit.C:
+		}
+	case <-limit.C:
 	case <-s.ctx.Done():
 		drop()
 		return "", s.ctx.Err()
 	}
-	s.audit("rtc %s offered", r.ID)
+	s.audit("rtc %s offered after %s", r.ID, time.Since(start).Round(time.Millisecond))
 
 	go func() {
 		select {

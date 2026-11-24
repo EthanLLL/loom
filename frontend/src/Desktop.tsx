@@ -12,7 +12,12 @@ const VNC_PORT = 5900
 // costs its share of the wait.
 const STUN = ["stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478", "stun:stun.cloudflare.com:3478"]
 
-const GATHER_MS = 3_000
+// For the STUN servers to answer: until a little after the first does, or
+// the most it is waited. Some never answer from some networks
+// (stun.miwifi.com from a home line), and waiting for all of them held the
+// offer up the whole time.
+const GATHER_MS = 2_000
+const SRFLX_GRACE_MS = 300
 const OPEN_MS = 8_000
 
 /**
@@ -77,21 +82,28 @@ function close(pc: RTCPeerConnection): null {
   return null
 }
 
-// Every candidate, or what there is after GATHER_MS: a STUN server that
-// never answers would otherwise hold the offer up.
+// Every candidate, or what there is SRFLX_GRACE_MS after the first address a
+// STUN server saw, or after GATHER_MS.
 function gathered(pc: RTCPeerConnection): Promise<void> {
   if (pc.iceGatheringState === "complete") return Promise.resolve()
   return new Promise((resolve) => {
+    let grace: ReturnType<typeof setTimeout> | undefined
     const done = () => {
       if (pc.iceGatheringState === "complete") finish()
     }
+    const found = (e: RTCPeerConnectionIceEvent) => {
+      if (e.candidate?.type === "srflx" && !grace) grace = setTimeout(finish, SRFLX_GRACE_MS)
+    }
     const finish = () => {
       clearTimeout(timer)
+      clearTimeout(grace)
       pc.removeEventListener("icegatheringstatechange", done)
+      pc.removeEventListener("icecandidate", found)
       resolve()
     }
     const timer = setTimeout(finish, GATHER_MS)
     pc.addEventListener("icegatheringstatechange", done)
+    pc.addEventListener("icecandidate", found)
   })
 }
 
