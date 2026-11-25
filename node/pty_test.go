@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-// A session on a fake connection: what it pushes lands in c.out.
+// A session on a fake connection: what it pushes, urgent or not, lands in out.
 func testSession(t *testing.T) (*session, chan []byte) {
 	t.Helper()
 	out := make(chan []byte, 1024)
-	s := newSession(&conn{out: out, joinRef: "1"}, &config{Shell: "/bin/sh"}, "test")
+	s := newSession(&conn{out: out, first: out, joinRef: "1"}, &config{Shell: "/bin/sh"}, "test")
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	s.ctx = ctx

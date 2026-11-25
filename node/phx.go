@@ -2,17 +2,21 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/coder/websocket"
+	"golang.org/x/sys/unix"
 )
 
 // The slice of the Phoenix channel protocol (serializer 2.0.0) a device needs:
@@ -26,7 +30,20 @@ const (
 	topic             = "node"
 	heartbeatInterval = 15 * time.Second
 	writeTimeout      = 20 * time.Second
+
+	// What may wait to go out. A stream's bytes (a port's, a shell's, a
+	// file's) queue only a few chunks deep, and the kernel holds back little
+	// it has not sent: on a slow line a deep queue is seconds of a screen
+	// already gone stale, and the answers behind it miss their timeouts.
+	// The pressure goes back to whoever is writing instead, as it should.
+	streamQueue = 4
+	notSentLow  = 128 << 10
 )
+
+// Answers that open something, sent ahead of any stream's bytes: nothing of
+// theirs can be waiting yet, and the far end has a timeout on each. A
+// stream's end ("exit", "done", "tcp_closed"…) stays behind its bytes.
+var urgent = map[string]bool{"rtc_answer": true, "tcp_opened": true, "pty_opened": true, "written": true}
 
 // errRevoked: loom refused the token. Retrying soon will not change that.
 var errRevoked = errors.New("loom refused this device's token (removed, or reinstalled elsewhere)")
@@ -66,7 +83,8 @@ func (f *frame) UnmarshalJSON(b []byte) error {
 // conn is one live connection: the socket, joined to "node".
 type conn struct {
 	ws      *websocket.Conn
-	out     chan []byte
+	out     chan []byte // in order: streams' bytes and their ends
+	first   chan []byte // urgent events
 	ref     atomic.Int64
 	joinRef string
 	name    string
@@ -103,6 +121,7 @@ func dial(ctx context.Context, origin, token string, info map[string]string) (*c
 
 	ws, resp, err := websocket.Dial(dctx, addr, &websocket.DialOptions{
 		HTTPHeader: http.Header{"User-Agent": {"loom-node/" + version}},
+		HTTPClient: &http.Client{Transport: transport},
 	})
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusForbidden {
@@ -113,7 +132,7 @@ func dial(ctx context.Context, origin, token string, info map[string]string) (*c
 	// Files travel as 256 KiB chunks, base64'd; leave room.
 	ws.SetReadLimit(8 << 20)
 
-	c := &conn{ws: ws, out: make(chan []byte, 64)}
+	c := &conn{ws: ws, out: make(chan []byte, streamQueue), first: make(chan []byte, 16)}
 	c.joinRef = c.nextRef()
 	if err := c.writeNow(dctx, c.joinRef, c.joinRef, topic, "phx_join", info); err != nil {
 		ws.CloseNow()
@@ -200,15 +219,37 @@ func (c *conn) push(ctx context.Context, event string, payload any) error {
 	if err != nil {
 		return err
 	}
+	q := c.out
+	if urgent[event] {
+		q = c.first
+	}
 	select {
-	case c.out <- b:
+	case q <- b:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 
-// run pumps the connection until it fails: writes from the queue, heartbeats,
+// transport dials loom as http.DefaultTransport would (proxy settings and
+// all), on HTTP/1.1 for the upgrade, with TCP_NOTSENT_LOWAT on the socket:
+// the kernel takes more only once what it holds unsent is below notSentLow.
+var transport = func() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ForceAttemptHTTP2 = false
+	t.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second,
+		Control: func(_, _ string, raw syscall.RawConn) error {
+			// Best effort: a kernel without it only queues more.
+			return raw.Control(func(fd uintptr) {
+				_ = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_NOTSENT_LOWAT, notSentLow)
+			})
+		}}
+	t.DialContext = d.DialContext
+	return t
+}()
+
+// run pumps the connection until it fails: writes from the queues, heartbeats,
 // and every frame read handed to onEvent. It returns why the connection ended.
 func (c *conn) run(ctx context.Context, onEvent func(event string, payload json.RawMessage)) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -222,34 +263,44 @@ func (c *conn) run(ctx context.Context, onEvent func(event string, payload json.
 	go func() {
 		ticker := time.NewTicker(heartbeatInterval)
 		defer ticker.Stop()
+		write := func(b []byte) error {
+			wctx, wcancel := context.WithTimeout(ctx, writeTimeout)
+			defer wcancel()
+			return c.ws.Write(wctx, websocket.MessageText, b)
+		}
 		for {
+			var b []byte
+			// Urgent events first, whenever there are any.
 			select {
-			case <-ctx.Done():
+			case b = <-c.first:
+			default:
+				select {
+				case <-ctx.Done():
+					return
+				case b = <-c.first:
+				case b = <-c.out:
+				case <-ticker.C:
+					// Still waiting on the last one: the far end is gone even if
+					// the TCP connection has not noticed yet.
+					if pending.Load().(string) != "" {
+						errs <- errors.New("loom stopped answering heartbeats")
+						return
+					}
+					ref := c.nextRef()
+					pending.Store(ref)
+					wctx, wcancel := context.WithTimeout(ctx, writeTimeout)
+					err := c.writeNow(wctx, nil, ref, "phoenix", "heartbeat", map[string]any{})
+					wcancel()
+					if err != nil {
+						errs <- err
+						return
+					}
+					continue
+				}
+			}
+			if err := write(b); err != nil {
+				errs <- err
 				return
-			case b := <-c.out:
-				wctx, wcancel := context.WithTimeout(ctx, writeTimeout)
-				err := c.ws.Write(wctx, websocket.MessageText, b)
-				wcancel()
-				if err != nil {
-					errs <- err
-					return
-				}
-			case <-ticker.C:
-				// Still waiting on the last one: the far end is gone even if
-				// the TCP connection has not noticed yet.
-				if pending.Load().(string) != "" {
-					errs <- errors.New("loom stopped answering heartbeats")
-					return
-				}
-				ref := c.nextRef()
-				pending.Store(ref)
-				wctx, wcancel := context.WithTimeout(ctx, writeTimeout)
-				err := c.writeNow(wctx, nil, ref, "phoenix", "heartbeat", map[string]any{})
-				wcancel()
-				if err != nil {
-					errs <- err
-					return
-				}
 			}
 		}
 	}()
