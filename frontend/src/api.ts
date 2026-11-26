@@ -339,8 +339,8 @@ export type AgentInfo = {
   directory: string
   backend: AgentBackend
   backend_label: string
-  // The Claude Code profile it talks through, or null for the default.
-  // Older servers do not send it.
+  // The profile (Claude Code or Codex) it talks through, or null for the
+  // default. Older servers do not send it.
   profile?: string | null
   // The model picked in the composer, or null for the backend's default.
   // Older servers do not send it.
@@ -374,7 +374,8 @@ export async function listAgents(): Promise<AgentInfo[]> {
 
 // `backend` is required and permanent: the conversation lives in that engine's
 // own store, so there is nothing to migrate if it changes later. So is the
-// profile, which picks the model provider a Claude Code session talks to.
+// profile, which picks the model provider a Claude Code or Codex session talks
+// to.
 export async function createAgent(
   backend: AgentBackend,
   profile?: string,
@@ -389,31 +390,40 @@ export async function createAgent(
   return res.json()
 }
 
-// Names of the Claude Code profiles on the server; empty when there are none.
-export async function listProfiles(): Promise<string[]> {
+export type Profile = { name: string; backend: AgentBackend }
+
+// The profiles on the server, each with the backend it is for; empty when
+// there are none.
+export async function listProfiles(): Promise<Profile[]> {
   const res = await fetch("/api/profiles", { headers: authHeaders() })
   if (res.status === 401) throw unauthorized()
   if (!res.ok) return []
   const data = await res.json()
-  return data.profiles
+  // Older servers list Claude Code's alone, by name.
+  return data.profiles.map((p: Profile | string) =>
+    typeof p === "string" ? { name: p, backend: "claude_code" } : p,
+  )
 }
 
 export type ModelOption = { id: string; label: string; default: boolean }
 
-// Once per backend per page load: the list only changes with the machine's
-// configuration, and the composer asks every time a session opens.
-const modelLists = new Map<AgentBackend, Promise<ModelOption[]>>()
+// Once per backend and profile per page load: the list only changes with the
+// machine's configuration, and the composer asks every time a session opens.
+// A Codex profile has a list of its own.
+const modelLists = new Map<string, Promise<ModelOption[]>>()
 
-export function listModels(backend: AgentBackend): Promise<ModelOption[]> {
-  let list = modelLists.get(backend)
+export function listModels(backend: AgentBackend, profile?: string | null): Promise<ModelOption[]> {
+  const query = new URLSearchParams(profile ? { backend, profile } : { backend })
+  const key = query.toString()
+  let list = modelLists.get(key)
   if (!list) {
-    list = fetch(`/api/models?backend=${backend}`, { headers: authHeaders() })
+    list = fetch(`/api/models?${key}`, { headers: authHeaders() })
       .then(async (res) => (res.ok ? (await res.json()).models : []))
       .catch(() => [])
-    modelLists.set(backend, list)
+    modelLists.set(key, list)
     // A failure is not worth remembering; the next session asks again.
     list.then((models) => {
-      if (models.length === 0) modelLists.delete(backend)
+      if (models.length === 0) modelLists.delete(key)
     })
   }
   return list

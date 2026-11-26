@@ -326,7 +326,8 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   # A profile that has gone missing fails the turn with its name rather than
   # quietly falling back to the default provider.
   defp profile_args(%{profile: profile}) when is_binary(profile) do
-    with {:ok, file} <- Loom.Agent.Profiles.path(profile), do: {:ok, ["--settings", file]}
+    with {:ok, file} <- Loom.Agent.Profiles.path(:claude_code, profile),
+         do: {:ok, ["--settings", file]}
   end
 
   defp profile_args(_handle), do: {:ok, []}
@@ -376,7 +377,7 @@ defmodule Loom.Agent.Backend.ClaudeCode do
   end
 
   @impl Backend
-  def models do
+  def models(_profile) do
     [
       %{id: "opus", label: "Opus", default: true},
       %{id: "sonnet", label: "Sonnet", default: false},

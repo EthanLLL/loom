@@ -46,7 +46,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import type { AgentBackend, AgentInfo } from "./api"
-import { listProfiles } from "./api"
+import { listProfiles, type Profile } from "./api"
 import { RenameInput } from "./Confirm"
 import { dirName, filed, ROOT } from "./directories"
 import { ago } from "./format"
@@ -487,7 +487,19 @@ function MoveTargets({
  * start in Recents; "Move to directory" files them.
  */
 function NewChat({ onCreate }: { onCreate: (backend: AgentBackend, profile?: string) => void }) {
-  const [profiles, setProfiles] = useState<string[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const item = (backend: AgentBackend, label: string) => [
+    <DropdownMenuItem key={backend} onClick={() => onCreate(backend)}>
+      {label}
+    </DropdownMenuItem>,
+    ...profiles
+      .filter((p) => p.backend === backend)
+      .map((p) => (
+        <DropdownMenuItem key={`${backend}/${p.name}`} onClick={() => onCreate(backend, p.name)}>
+          {label} · {p.name}
+        </DropdownMenuItem>
+      )),
+  ]
 
   return (
     <SidebarMenuItem>
@@ -503,14 +515,9 @@ function NewChat({ onCreate }: { onCreate: (backend: AgentBackend, profile?: str
           <span>New chat</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-(--anchor-width) min-w-52">
-          <DropdownMenuItem onClick={() => onCreate("claude_code")}>Claude Code</DropdownMenuItem>
-          {profiles.map((p) => (
-            <DropdownMenuItem key={p} onClick={() => onCreate("claude_code", p)}>
-              Claude Code · {p}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuItem onClick={() => onCreate("codex")}>Codex</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onCreate("kiro")}>Kiro</DropdownMenuItem>
+          {item("claude_code", "Claude Code")}
+          {item("codex", "Codex")}
+          {item("kiro", "Kiro")}
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>

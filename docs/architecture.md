@@ -126,16 +126,19 @@ stay on Loom's side.
 
 - **Model, per session.** Switchable at any time (`PATCH /api/agents/:id` with
   `model`), from the next turn on; it must be one of the backend's own list
-  (`GET /api/models?backend=…`), else 422. It is kept in the header and
+  (`GET /api/models?backend=…`, with `&profile=…` for a session on one), else
+  422. It is kept in the header and
   announced in the transcript (`:model_changed`). No fallback model, so who
   answered is always visible. A new Kiro session starts on `LOOM_KIRO_MODEL`
   (unset, `auto`).
-- **Claude Code profiles.** `$LOOM_HOME/profiles/<name>.json` is a Claude Code
-  settings file, passed as `--settings` on every spawn, so its `env` can send
-  the session to another provider or key. Claude Code only, fixed at creation
+- **Profiles.** Another provider or key for one session, fixed at creation
   like the backend (`profile` on `POST /api/agents`); `GET /api/profiles`
-  lists them. The header records only the name, so the key never enters it
-  and an edit applies at the next spawn.
+  lists them with their backend. `$LOOM_HOME/profiles/claude_code/<name>.json`
+  is a Claude Code settings file, passed as `--settings` on every spawn.
+  `$LOOM_HOME/profiles/codex/<name>.json` is an OpenAI-compatible endpoint, its
+  key and the models a session on it may pick, sent with every thread start
+  and resume. The header records only the name, so the key never enters it
+  and an edit applies at the next spawn or resume.
 
 Every spawn's system prompt (CC `--append-system-prompt`, Codex
 `developerInstructions`, Kiro a per-session agent file,
@@ -250,7 +253,7 @@ Everything under `/api` but sign-in needs the bearer token
 ~/.loom/cron.json  push.json         scheduled prompts; VAPID pair and subscriptions
 ~/.loom/directories.json             the shared directory order
 ~/.loom/nodes.json  node-cli.json    devices and their token hashes; the CLI's key (0600)
-~/.loom/profiles/<name>.json         Claude Code profiles
+~/.loom/profiles/<backend>/<name>.json  Claude Code and Codex profiles
 ~/.loom/apps.json  apps/<name>/      the apps registry; each app's directory
 ~/.loom/apps/.trash/<name>-<s>/      a removed app
 ~/.loom/app-icons/<name>/<hash>.<ext>  Loom's copy of each app's icon

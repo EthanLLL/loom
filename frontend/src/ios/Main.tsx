@@ -4,11 +4,13 @@ import {
   createAgent,
   deleteAgent,
   getToken,
+  listProfiles,
   moveAgent,
   onUnauthorized,
   renameAgent,
   saveAppPushToken,
   type AgentBackend,
+  type Profile,
 } from "../api"
 import { Chat } from "../Chat"
 import { NativeComposer } from "./Composer"
@@ -91,10 +93,21 @@ export function NativeMain() {
   )
 
   useNativeAction("select", (id) => setActiveId(str(id)))
-  useNativeAction("create", async (backend) => {
+  // The profiles New session offers. Files on the server, added by hand or by
+  // the agent with nothing to announce them, so read again whenever the app
+  // comes back to the front.
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  useEffect(() => {
+    if (authed && loaded && visible) listProfiles().then(setProfiles, () => {})
+  }, [authed, loaded, visible])
+  usePost({ profiles }, authed && loaded)
+
+  // A backend, or a backend and one of its profiles.
+  useNativeAction("create", async (value) => {
+    const { backend, profile } = typeof value === "string" ? { backend: value } : obj(value)
     const b = str(backend) as AgentBackend
     if (!BACKENDS.includes(b)) return
-    const session = await createAgent(b)
+    const session = await createAgent(b, profile ? str(profile) : undefined)
     upsert(session)
     setActiveId(session.id)
   })

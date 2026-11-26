@@ -20,8 +20,8 @@ defmodule LoomWeb.AgentSessionController do
   # composes absolute paths from it. A channel only ever attaches to an existing
   # session, so creation goes through here.
   #
-  # `profile` optionally names a `Loom.Agent.Profiles` file, Claude Code only.
-  # It is as permanent as the backend.
+  # `profile` optionally names a `Loom.Agent.Profiles` file of that backend's
+  # (Claude Code and Codex). It is as permanent as the backend.
   def create(conn, params) do
     case Loom.Agent.Backend.parse(params["backend"]) do
       {:ok, backend} ->
@@ -61,26 +61,26 @@ defmodule LoomWeb.AgentSessionController do
     conn |> put_status(:unprocessable_entity) |> json(%{error: "submit requires a `text` string"})
   end
 
-  # GET /api/profiles — the profiles a new Claude Code session can use.
+  # GET /api/profiles — the profiles a new session can use, each with the
+  # backend it is for.
   def profiles(conn, _params) do
     json(conn, %{profiles: Loom.Agent.Profiles.list()})
   end
 
-  # GET /api/models?backend=… — what a session of that kind can be switched to.
+  # GET /api/models?backend=…&profile=… — what a session of that kind, on that
+  # profile if any, can be switched to.
   def models(conn, params) do
     case Loom.Agent.Backend.parse(params["backend"]) do
-      {:ok, backend} -> json(conn, %{models: Agent.models(backend)})
+      {:ok, backend} -> json(conn, %{models: Agent.models(backend, params["profile"])})
       :error -> bad_backend(conn, params["backend"])
     end
   end
 
   defp check_profile(_backend, nil), do: :ok
 
-  defp check_profile(:claude_code, name) do
-    with {:ok, _file} <- Loom.Agent.Profiles.path(name), do: :ok
+  defp check_profile(backend, name) do
+    with {:ok, _file} <- Loom.Agent.Profiles.path(backend, name), do: :ok
   end
-
-  defp check_profile(_backend, _name), do: {:error, "only Claude Code sessions take a profile"}
 
   defp create_session(conn, backend, params) do
     id = generate_id()

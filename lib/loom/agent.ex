@@ -188,8 +188,8 @@ defmodule Loom.Agent do
   defdelegate move(id, directory), to: Session
   defdelegate set_model(id, model), to: Session
 
-  @doc "The models a session of `kind` can be switched to; see `Backend.models/0`."
-  def models(kind), do: Loom.Agent.Backend.impl(kind).models()
+  @doc "The models a session of `kind` on `profile` can be switched to; see `Backend.models/1`."
+  def models(kind, profile \\ nil), do: Loom.Agent.Backend.impl(kind).models(profile)
   defdelegate attach(id, since_seq \\ 0), to: Session
   defdelegate info(id), to: Session
   defdelegate topic(id), to: Session

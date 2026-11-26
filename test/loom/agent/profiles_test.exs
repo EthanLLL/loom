@@ -3,6 +3,7 @@ defmodule Loom.Agent.ProfilesTest do
   use ExUnit.Case, async: false
 
   alias Loom.Agent.Backend.ClaudeCode
+  alias Loom.Agent.Backend.Codex
   alias Loom.Agent.Profiles
 
   @moduletag :tmp_dir
@@ -59,22 +60,64 @@ defmodule Loom.Agent.ProfilesTest do
     end) || read.()
   end
 
-  test "lists the json files under profiles/, ignoring odd names", %{tmp_dir: dir} do
+  defp put(dir, backend, name, body) do
+    File.mkdir_p!(Path.join([dir, "profiles", backend]))
+    file = Path.join([dir, "profiles", backend, name])
+    File.write!(file, body)
+    file
+  end
+
+  test "lists the json files under each backend's directory, ignoring odd names",
+       %{tmp_dir: dir} do
     assert Profiles.list() == []
 
-    File.mkdir_p!(Path.join(dir, "profiles"))
-
     for f <- ["zeta.json", "family-key.json", ".hidden.json", "notes.txt"],
-        do: File.write!(Path.join([dir, "profiles", f]), "{}")
+        do: put(dir, "claude_code", f, "{}")
 
-    assert Profiles.list() == ["family-key", "zeta"]
-    assert {:error, _} = Profiles.path("../etc/passwd")
+    put(dir, "codex", "relay.json", "{}")
+    # Neither a backend's directory nor a profile.
+    File.write!(Path.join([dir, "profiles", "loose.json"]), "{}")
+
+    assert Profiles.list() == [
+             %{name: "family-key", backend: :claude_code},
+             %{name: "zeta", backend: :claude_code},
+             %{name: "relay", backend: :codex}
+           ]
+
+    assert {:error, _} = Profiles.path(:claude_code, "../etc/passwd")
+    assert {:error, _} = Profiles.path(:codex, "zeta")
+    assert {:error, _} = Profiles.path(:kiro, "zeta")
+  end
+
+  test "a Codex profile needs a URL, a key and its models", %{tmp_dir: dir} do
+    put(
+      dir,
+      "codex",
+      "ok.json",
+      ~s({"base_url":"https://r.example/v1","api_key":"k","models":["a","b"]})
+    )
+
+    put(dir, "codex", "bare.json", ~s({"base_url":"https://r.example/v1","api_key":"k"}))
+    put(dir, "codex", "junk.json", "not json")
+
+    assert {:ok, %{base_url: "https://r.example/v1", models: ["a", "b"], headers: %{}}} =
+             Profiles.codex("ok")
+
+    assert {:error, "profile bare needs" <> _} = Profiles.codex("bare")
+    assert {:error, "profile junk needs" <> _} = Profiles.codex("junk")
+    assert {:error, "profile gone not found" <> _} = Profiles.codex("gone")
+
+    assert [%{id: "a", default: true}, %{id: "b", default: false}] = Codex.models("ok")
+    assert Codex.models("gone") == []
+  end
+
+  test "a Codex session on a missing profile fails by name before asking the server" do
+    assert {:error, reason} = Codex.start("a_1", %{codex_profile: "gone"})
+    assert reason =~ "profile gone not found"
   end
 
   test "a session on a profile spawns with --settings", %{tmp_dir: dir} do
-    File.mkdir_p!(Path.join(dir, "profiles"))
-    file = Path.join([dir, "profiles", "fam.json"])
-    File.write!(file, ~s({"env":{}}))
+    file = put(dir, "claude_code", "fam.json", ~s({"env":{}}))
 
     {:ok, handle} = ClaudeCode.start("a_1", %{cc_profile: "fam", cc_cwd: dir})
     assert ClaudeCode.persist(handle).cc_profile == "fam"

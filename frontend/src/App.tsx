@@ -516,6 +516,7 @@ function App() {
                 <Composer
                   sessionId={session.id}
                   backend={session.backend}
+                  profile={session.profile ?? null}
                   model={session.model ?? null}
                   busy={busy}
                   interrupted={transcript.status === "interrupted"}

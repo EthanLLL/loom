@@ -256,6 +256,7 @@ defmodule Loom.Agent.Codex.Server do
     params =
       %{"cwd" => opts[:cwd] || System.user_home!()}
       |> Map.merge(@access)
+      |> Map.merge(opts[:provider] || %{})
       |> maybe_put("developerInstructions", opts[:developer_instructions])
       |> maybe_put("model", opts[:model])
 
@@ -266,7 +267,9 @@ defmodule Loom.Agent.Codex.Server do
     params =
       %{"threadId" => thread_id, "excludeTurns" => true}
       |> Map.merge(@access)
+      |> Map.merge(opts[:provider] || %{})
       |> maybe_put("developerInstructions", opts[:developer_instructions])
+      |> maybe_put("model", opts[:model])
 
     {:noreply,
      send_request(state, "thread/resume", params, {:claim_resume, from, owner, thread_id, params})}

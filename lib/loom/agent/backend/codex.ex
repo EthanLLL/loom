@@ -60,21 +60,64 @@ defmodule Loom.Agent.Backend.Codex do
 
   alias Loom.Agent.Backend
   alias Loom.Agent.Codex.Server
+  alias Loom.Agent.Profiles
 
   @impl Backend
   def start(_session_id, meta) do
-    opts = [
-      cwd: Backend.meta_get(meta, :codex_cwd) || default_cwd(),
-      developer_instructions: Backend.meta_get(meta, :instructions)
-    ]
+    cwd = Backend.meta_get(meta, :codex_cwd) || default_cwd()
 
-    open_thread(opts[:cwd], opts[:developer_instructions])
+    %{new(nil, Backend.meta_get(meta, :instructions), cwd) | profile: profile_of(meta)}
+    |> open_thread()
   end
 
-  defp open_thread(cwd, instructions) do
-    case Server.start_thread(cwd: cwd, developer_instructions: instructions) do
-      {:ok, thread_id} -> {:ok, new(thread_id, instructions, cwd)}
+  defp open_thread(handle) do
+    with {:ok, opts} <- thread_opts(handle),
+         {:ok, thread_id} <- Server.start_thread([cwd: handle.cwd] ++ opts) do
+      {:ok, %{handle | thread_id: thread_id}}
+    else
       {:error, reason} -> {:error, describe_error(reason)}
+    end
+  end
+
+  defp profile_of(meta) do
+    case Backend.meta_get(meta, :codex_profile) do
+      name when is_binary(name) -> name
+      _ -> nil
+    end
+  end
+
+  # Given on thread/start and on every resume, including the silent one after an
+  # app-server respawn, so the thread is never running without them.
+  #
+  # A profile's provider goes in the request rather than in config.toml, key and
+  # all. Measured on 0.162.1: threads on one app-server each keep their own; the
+  # key is written nowhere under CODEX_HOME, only the provider's name; and a
+  # resume without it fails with "Model provider … not found" rather than
+  # falling back. Not `env_key`: the agent's shell snapshot exports the
+  # app-server's whole environment. The model is given too, since the machine's
+  # default is one only its own provider knows.
+  defp thread_opts(%{profile: nil} = handle),
+    do: {:ok, [developer_instructions: handle.instructions]}
+
+  defp thread_opts(handle) do
+    with {:ok, profile} <- Profiles.codex(handle.profile) do
+      provider = %{
+        "name" => handle.profile,
+        "base_url" => profile.base_url,
+        "experimental_bearer_token" => profile.api_key,
+        "wire_api" => "responses",
+        "http_headers" => profile.headers
+      }
+
+      {:ok,
+       [
+         developer_instructions: handle.instructions,
+         model: model(handle) || hd(profile.models),
+         provider: %{
+           "modelProvider" => handle.profile,
+           "config" => %{"model_providers" => %{handle.profile => provider}}
+         }
+       ]}
     end
   end
 
@@ -87,23 +130,28 @@ defmodule Loom.Agent.Backend.Codex do
   end
 
   defp resume_thread(id, meta) do
-    with {:ok, handle} <- reattach_thread(id, meta),
-         do: {:ok, %{handle | model: Backend.meta_get(meta, :model)}}
-  end
-
-  defp reattach_thread(id, meta) do
-    instructions = Backend.meta_get(meta, :instructions)
     cwd = Backend.meta_get(meta, :codex_cwd) || default_cwd()
 
-    case Server.resume_thread(id, resume_opts(instructions)) do
-      {:ok, ^id} ->
+    handle = %{
+      new(id, Backend.meta_get(meta, :instructions), cwd)
+      | profile: profile_of(meta),
+        model: Backend.meta_get(meta, :model),
         # A turn id recorded before a restart refers to a turn that is no longer
         # running — the server would reject an interrupt for it anyway.
-        {:ok, %{new(id, instructions, cwd) | turn_id: Backend.meta_get(meta, :codex_turn_id)}}
+        turn_id: Backend.meta_get(meta, :codex_turn_id)
+    }
 
+    reattach(handle)
+  end
+
+  defp reattach(handle) do
+    with {:ok, opts} <- thread_opts(handle),
+         {:ok, _} <- Server.resume_thread(handle.thread_id, opts) do
+      {:ok, handle}
+    else
       {:error, reason} ->
         if unborn?(reason),
-          do: reopen(id, cwd, instructions),
+          do: reopen(handle),
           else: {:error, describe_error(reason)}
     end
   end
@@ -116,24 +164,23 @@ defmodule Loom.Agent.Backend.Codex do
   defp unborn?(reason) when is_binary(reason), do: reason =~ "no rollout found"
   defp unborn?(_reason), do: false
 
-  defp reopen(id, cwd, instructions) do
+  defp reopen(handle) do
     Logger.warning(
-      "Codex: thread #{id} never ran a turn and cannot be resumed; opening a new one"
+      "Codex: thread #{handle.thread_id} never ran a turn and cannot be resumed; opening a new one"
     )
 
-    open_thread(cwd, instructions)
+    open_thread(%{handle | turn_id: nil})
   end
-
-  # Given again on every resume, including the silent one after an app-server
-  # respawn, so the thread is never running without them.
-  defp resume_opts(instructions), do: [developer_instructions: instructions]
 
   defp new(thread_id, instructions, cwd) do
     %{
       thread_id: thread_id,
       instructions: instructions,
-      # Kept for `reopen/3`, which needs it long after the header was read.
+      # Kept for `reopen/1`, which needs it long after the header was read.
       cwd: cwd,
+      # Which `Loom.Agent.Profiles` file names the provider, or nil for the
+      # machine's own. Fixed for the life of the session.
+      profile: nil,
       turn_id: nil,
       # Picked in the composer, or nil for the app-server's default. Sent with
       # every turn rather than once: `turn/start` takes it per call, and a
@@ -155,19 +202,7 @@ defmodule Loom.Agent.Backend.Codex do
   # Reattaching before starting the turn is what makes a restart invisible to
   # the user beyond the one turn that died.
   def run_turn(%{stale?: true} = handle, text) do
-    case Server.resume_thread(handle.thread_id, resume_opts(handle.instructions)) do
-      {:ok, _} ->
-        run_turn(%{handle | stale?: false}, text)
-
-      {:error, reason} ->
-        with true <- unborn?(reason),
-             {:ok, fresh} <- reopen(handle.thread_id, cwd(handle), handle.instructions) do
-          run_turn(%{fresh | model: model(handle)}, text)
-        else
-          false -> {:error, describe_error(reason)}
-          error -> error
-        end
-    end
+    with {:ok, handle} <- reattach(%{handle | stale?: false}), do: run_turn(handle, text)
   end
 
   def run_turn(handle, text) when is_binary(text) do
@@ -245,13 +280,30 @@ defmodule Loom.Agent.Backend.Codex do
 
   @impl Backend
   def persist(handle) do
-    %{codex_thread_id: handle.thread_id, codex_turn_id: handle.turn_id, model: model(handle)}
+    %{
+      codex_thread_id: handle.thread_id,
+      codex_turn_id: handle.turn_id,
+      codex_profile: Map.get(handle, :profile),
+      model: model(handle)
+    }
+  end
+
+  # A profile's own list, the first its default: `model/list` only knows the
+  # machine's provider. Empty if the file has gone; turns say why.
+  @impl Backend
+  def models(profile) when is_binary(profile) do
+    case Profiles.codex(profile) do
+      {:ok, %{models: [default | _] = models}} ->
+        for id <- models, do: %{id: id, label: id, default: id == default}
+
+      {:error, _} ->
+        []
+    end
   end
 
   # What the app-server offers, in its own order, which puts the default first.
   # Empty when it is down: there is nothing to switch to then anyway.
-  @impl Backend
-  def models do
+  def models(nil) do
     case Server.request("model/list", %{}) do
       {:ok, %{"data" => models}} ->
         for %{"id" => id} = m <- models,
@@ -282,9 +334,6 @@ defmodule Loom.Agent.Backend.Codex do
   defp default_cwd do
     Application.get_env(:loom, Loom.Agent, [])[:workspace] || System.user_home!()
   end
-
-  # Handles from before `cwd` was kept.
-  defp cwd(handle), do: Map.get(handle, :cwd) || default_cwd()
 
   defp describe_error(:server_down), do: "the codex app-server stopped"
   defp describe_error(reason) when is_binary(reason), do: reason

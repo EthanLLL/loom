@@ -157,7 +157,7 @@ defmodule Loom.Agent.Session do
   def move(id, directory), do: GenServer.call(via(id), {:move, directory})
 
   @doc """
-  Switch the model, one of the backend's `models/0`. From the next turn on: one
+  Switch the model, one of the backend's `models/1`. From the next turn on: one
   in flight finishes on the model it started with. Said in the transcript, so a
   change of voice halfway down a conversation has its explanation right there.
   """
@@ -268,6 +268,7 @@ defmodule Loom.Agent.Session do
       cc_cwd: Keyword.get(opts, :cwd),
       codex_cwd: Keyword.get(opts, :cwd),
       cc_profile: Keyword.get(opts, :profile),
+      codex_profile: Keyword.get(opts, :profile),
       kiro_cwd: Keyword.get(opts, :cwd),
       instructions: Instructions.for_session(id, backend)
     }
@@ -493,7 +494,7 @@ defmodule Loom.Agent.Session do
   def handle_call({:set_model, model}, _from, state) do
     impl = Backend.impl(state.backend)
 
-    case Enum.find(impl.models(), &(&1.id == model)) do
+    case Enum.find(impl.models(profile(state.handle)), &(&1.id == model)) do
       nil ->
         {:reply, {:error, "unknown model #{inspect(model)}"}, state}
 
@@ -973,7 +974,7 @@ defmodule Loom.Agent.Session do
 
   defp maybe_title(state, _text), do: state
 
-  # Only Claude Code sessions have one; see `Loom.Agent.Profiles`.
+  # Claude Code and Codex sessions may have one; see `Loom.Agent.Profiles`.
   defp profile(%{profile: profile}) when is_binary(profile), do: profile
   defp profile(_handle), do: nil
 

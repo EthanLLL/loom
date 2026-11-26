@@ -32,17 +32,18 @@ export function NativeComposer({
   const [models, setModels] = useState<ModelOption[]>([])
   useEffect(() => {
     let live = true
-    listModels(session.backend).then((list) => live && setModels(list))
+    listModels(session.backend, session.profile).then((list) => live && setModels(list))
     return () => {
       live = false
     }
-  }, [session.backend])
+  }, [session.backend, session.profile])
 
   usePost({
     chat: {
       id: session.id,
       title: session.title ?? session.id,
       backend: session.backend,
+      profile: session.profile ?? null,
       status,
       busy,
       model: session.model ?? null,

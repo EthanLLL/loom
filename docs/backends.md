@@ -40,7 +40,7 @@ Header fields per backend:
 | | Claude Code | Codex | Kiro |
 |---|---|---|---|
 | conversation id | `cc_session_id` (a v4 UUID Loom mints) | `codex_thread_id` | `kiro_session_id` (`sess_…`, from `session/new`) |
-| other | `cc_cwd`, `cc_started`, `cc_profile`, `model` | `codex_turn_id`, `model` | `kiro_cwd`, `model` |
+| other | `cc_cwd`, `cc_started`, `cc_profile`, `model` | `codex_turn_id`, `codex_profile`, `model` | `kiro_cwd`, `model` |
 
 ## 2. Process model
 
@@ -254,10 +254,10 @@ failed). A switch is stored in the header (`model`), emitted as
 `:model_changed`, and applies from the next turn; a running turn finishes on
 its model. No engine restarts.
 
-| | `models/0` | How it is applied |
+| | `models/1` | How it is applied |
 |---|---|---|
 | CC | `opus` (default), `sonnet`, `haiku` | spawn: `--model`. Live process: `{"type":"control_request","request_id":…,"request":{"subtype":"set_model","model":…}}` just before the next message |
-| Codex | `model/list`, minus `hidden`, default from `isDefault`; `[]` when the server is down | `model` on every `turn/start` |
+| Codex | `model/list`, minus `hidden`, default from `isDefault`; `[]` when the server is down. On a profile, its `models`, the first the default | `model` on every `turn/start`; on a profile, also on `thread/start` and `thread/resume` |
 | Kiro | `kiro-cli chat --list-models --format json` (~2.5 s, 15 s timeout), cached 10 min; `auto` is the default | `session/set_config_option configId "model"` after every new/load and before a turn when it changed |
 
 - **CC.** The settings in force map each alias to an id through
@@ -543,17 +543,21 @@ the new server has not seen gets `:not_attached`, and the adapter resumes and
 retries. Measured: a reload requested mid-turn waited for the turn, the
 restart took ~10 ms, and the thread then used an MCP server added meanwhile.
 
-## 10. Profiles (Claude Code only)
+## 10. Profiles (Claude Code and Codex)
 
-A CC session can be bound at creation to a profile,
-`$LOOM_HOME/profiles/<name>.json` (`Loom.Agent.Profiles`), a CC settings file
-passed as `--settings <file>`; its `env` overrides `~/.claude/settings.json`'s.
-Names match `^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`. Creating a Codex or Kiro
-session with a profile is refused.
+A CC or Codex session can be bound at creation to a profile,
+`$LOOM_HOME/profiles/<backend>/<name>.json` (`Loom.Agent.Profiles`). Names
+match `^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`. Creating a Kiro session with a
+profile, or naming one of another backend's, is refused.
 
 The header stores only the name, so the key stays in the file and an edit takes
-effect at the next spawn. A profile that has gone missing fails the turn with
-its name rather than falling back to the default.
+effect at the next spawn (CC) or resume (Codex). A profile that has gone
+missing fails the turn with its name rather than falling back to the default.
+
+### Claude Code
+
+`profiles/claude_code/<name>.json` is a CC settings file passed as
+`--settings <file>`; its `env` overrides `~/.claude/settings.json`'s.
 
 Measured against a local capture server with `CLAUDE_CODE_USE_BEDROCK=0`,
 `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`: CC sent `POST
@@ -569,6 +573,37 @@ violates the regular expression"), so
 experimental `anthropic-beta` values, so
 `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. With both, a session ran tools and
 reported a 1M window. The `profiles` skill has the full file.
+
+### Codex
+
+`profiles/codex/<name>.json` is `{"base_url", "api_key", "models"}`, with
+optional `http_headers`. On `thread/start` and every `thread/resume` the
+adapter sends
+
+```json
+{"modelProvider": "<name>",
+ "config": {"model_providers": {"<name>": {"name": "<name>", "base_url": "…",
+   "experimental_bearer_token": "…", "wire_api": "responses", "http_headers": {}}}},
+ "model": "<the session's model, else the profile's first>"}
+```
+
+Measured on 0.162.1, against a capture server and a real relay:
+
+- Requests go to `<base_url>/responses` with `Authorization: Bearer <key>`.
+  Threads on one app-server, each on its own provider, stay apart, interleaved
+  turns included; a `model` on `turn/start` keeps the thread's provider.
+- A resume without the provider fails, "Model provider '<name>' not found",
+  rather than falling back. Loom resumes every session at boot, hence on
+  every resume.
+- The key is written nowhere under `CODEX_HOME`; rollouts record the
+  provider's name alone. Not `env_key`: Codex's shell snapshots export the
+  app-server's environment, so the agent could read every provider's key.
+- Only the Responses API: `wire_api = "chat"` is refused as no longer
+  supported.
+- `model/list` knows only the default provider, hence the profile's own list.
+  A model missing from `model_catalog_json` logs "Model metadata for … not
+  found" each turn and runs on fallback metadata (a 258k window); turns,
+  tools and resume were unaffected.
 
 ## 11. The API refusing
 

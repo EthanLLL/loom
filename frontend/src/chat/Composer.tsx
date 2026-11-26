@@ -41,6 +41,7 @@ const MAX_LINES = 5
 export function Composer({
   sessionId,
   backend,
+  profile,
   model,
   busy,
   interrupted,
@@ -50,6 +51,7 @@ export function Composer({
 }: {
   sessionId: string
   backend: AgentBackend
+  profile: string | null
   model: string | null
   busy: boolean
   interrupted: boolean
@@ -292,7 +294,7 @@ export function Composer({
           </InputGroupButton>
 
           <div className="flex items-center gap-1 [grid-area:actions]">
-            <ModelPicker sessionId={sessionId} backend={backend} model={model} input={ref} />
+            <ModelPicker sessionId={sessionId} backend={backend} profile={profile} model={model} input={ref} />
 
             {busy && (
               <InputGroupButton
@@ -343,11 +345,13 @@ export function Composer({
 function ModelPicker({
   sessionId,
   backend,
+  profile,
   model,
   input,
 }: {
   sessionId: string
   backend: AgentBackend
+  profile: string | null
   model: string | null
   input: RefObject<HTMLTextAreaElement | null>
 }) {
@@ -355,11 +359,11 @@ function ModelPicker({
 
   useEffect(() => {
     let live = true
-    listModels(backend).then((list) => live && setOptions(list))
+    listModels(backend, profile).then((list) => live && setOptions(list))
     return () => {
       live = false
     }
-  }, [backend])
+  }, [backend, profile])
 
   const current = options.find((o) => o.id === model) ?? options.find((o) => o.default)
   if (!current) return null

@@ -239,7 +239,7 @@ defmodule Loom.Agent.Backend.Kiro do
   def set_model(handle, model), do: {:ok, %{handle | model: model}}
 
   @impl Backend
-  def models do
+  def models(_profile) do
     case :persistent_term.get({__MODULE__, :models}, nil) do
       {at, models} when is_integer(at) ->
         if System.monotonic_time(:millisecond) - at < @models_ttl_ms,

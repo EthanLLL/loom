@@ -114,9 +114,9 @@ service's `PATH`, and log in as the user Loom runs as:
   with `KIRO_API_KEY=…` in that file, mode 0600. An API key in the
   environment wins over a login.
 
-Claude Code sessions can also use profiles: another provider or key per
-session, as Claude Code settings files in `~/.loom/profiles/<name>.json` (see
-the `profiles` skill).
+Claude Code and Codex sessions can also use profiles: another provider or key
+per session, as files in `~/.loom/profiles/claude_code/<name>.json` and
+`~/.loom/profiles/codex/<name>.json` (see the `profiles` skill).
 
 ## 4. Configuration
 
@@ -454,7 +454,7 @@ Back up `~/.loom` (or `LOOM_HOME`) and `.env`. In `~/.loom`:
 | `caddy.json` | Caddy's config, rewritten at boot |
 | `cron.json` | Scheduled prompts |
 | `directories.json` | Sidebar groups and their order |
-| `profiles/` | Claude Code profiles, which may hold API keys |
+| `profiles/` | Claude Code and Codex profiles, which hold API keys |
 
 The agent CLIs keep their own state and credentials in `~/.claude`,
 `~/.codex` and `~/.kiro`; back those up as well if sessions should resume

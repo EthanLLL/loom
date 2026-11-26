@@ -193,7 +193,7 @@ defmodule Loom.BackendStub do
   def persist(handle), do: %{stub_ref: handle.ref, model: handle.model}
 
   @impl Loom.Agent.Backend
-  def models do
+  def models(_profile) do
     [%{id: "big", label: "Big", default: true}, %{id: "small", label: "Small", default: false}]
   end
 

@@ -195,11 +195,13 @@ defmodule Loom.Agent.Backend do
   @callback persist(handle) :: map()
 
   @doc """
-  The models a session of this kind can be switched to, the default first-class
-  one marked. Asked when the picker opens, so a list that comes from the engine
-  itself (Codex) is current.
+  The models a session of this kind on `profile` (nil for none) can be switched
+  to, the default first-class one marked. Asked when the picker opens, so a list
+  that comes from the engine itself (Codex) is current.
   """
-  @callback models() :: [%{id: String.t(), label: String.t(), default: boolean()}]
+  @callback models(profile :: String.t() | nil) :: [
+              %{id: String.t(), label: String.t(), default: boolean()}
+            ]
 
   @doc """
   Use `model` from the next turn on; nil goes back to the engine's default.
