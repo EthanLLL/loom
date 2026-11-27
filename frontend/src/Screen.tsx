@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ArrowLeft01Icon, Cancel01Icon, Maximize01Icon, Minimize01Icon, ReloadIcon, ZoomInAreaIcon, ZoomOutAreaIcon } from "@hugeicons/core-free-icons"
+import { ArrowLeft01Icon, Cancel01Icon, Maximize01Icon, Minimize01Icon, ReloadIcon } from "@hugeicons/core-free-icons"
 import { PaneButton, PaneHead, PaneTitle } from "./Pane"
 import type { VncLine } from "./Vnc"
 
@@ -12,16 +12,15 @@ const INPUT = 10
 const KEYFRAME = 11
 const SETTINGS = 12
 
-const SHARP_KEY = "loom_screen_sharp"
-
 /** Whether a failure means loom-mac-screen isn't on the device at all. */
 const missing = (message: string) => message.includes("nothing is listening")
 
 /**
  * A Mac's screen from loom-mac-screen: H.264 decoded by the browser
  * (WebCodecs) onto a canvas, the mouse and keys sent back as they happen.
- * The line is whatever `open` gives, direct or through loom; the pane only
- * speaks the protocol. `onMissing` is told when nothing answers on the
+ * The line is whatever `open` gives, direct, relayed or through loom; the
+ * pane only speaks the protocol, and tells the Mac what kind of line it is,
+ * which decides the picture's size and rate there. `onMissing` is told when nothing answers on the
  * device's port, for Desktop to fall back to VNC.
  *
  * Keys go as positions (KeyboardEvent.code), so the Mac's own input source
@@ -50,12 +49,10 @@ export function ScreenPane({
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<{ fps: number; mbps: number; size: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
-  // The display's pixels rather than its points: sharp, and four times the work.
-  const [sharp, setSharp] = useState(() => localStorage.getItem(SHARP_KEY) === "1")
   const send = useRef<(type: number, body?: object) => void>(() => {})
 
-  const latest = useRef({ open, onMissing, sharp })
-  latest.current = { open, onMissing, sharp }
+  const latest = useRef({ open, onMissing })
+  latest.current = { open, onMissing }
 
   useEffect(() => {
     const el = canvas.current
@@ -174,7 +171,7 @@ export function ScreenPane({
       channel = ch
       const ready = () => {
         setState("connected")
-        out(SETTINGS, { scale: latest.current.sharp ? 2 : 1 })
+        out(SETTINGS, { line: line!.kind ?? "narrow" })
         out(KEYFRAME)
       }
       if (ch.readyState === "open") ready()
@@ -199,10 +196,6 @@ export function ScreenPane({
     }
   }, [attempt])
 
-  useEffect(() => {
-    localStorage.setItem(SHARP_KEY, sharp ? "1" : "0")
-    send.current(SETTINGS, { scale: sharp ? 2 : 1 })
-  }, [sharp])
 
   // Where on the picture, 0…1 each way: the canvas is fitted with its
   // proportions kept, so there may be bands either side.
@@ -282,12 +275,6 @@ export function ScreenPane({
         {state === "closed" && (
           <PaneButton icon={ReloadIcon} onClick={() => setAttempt((n) => n + 1)} title="Connect again" />
         )}
-        <PaneButton
-          icon={sharp ? ZoomOutAreaIcon : ZoomInAreaIcon}
-          pressed={sharp}
-          onClick={() => setSharp((s) => !s)}
-          title={sharp ? "Sharp: the display's pixels" : "Fast: the display's points; click for its pixels"}
-        />
         {!narrow && (
           <PaneButton
             icon={maximized ? Minimize01Icon : Maximize01Icon}

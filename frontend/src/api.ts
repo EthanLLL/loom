@@ -795,13 +795,21 @@ export function deviceInstallCode(id: string): Promise<{ code: string }> {
 }
 
 /**
+ * What a line to a device is found through: STUN URLs, and TURN servers
+ * (none when loom has no relay), which the device is given as well.
+ */
+export function deviceIce(): Promise<{ stun: string[]; turn: RTCIceServer[] }> {
+  return apiCall("/api/devices/ice", {})
+}
+
+/**
  * The browser's WebRTC offer for a port on the device, handed over by loom;
  * the device's answer back. See node/rtc.go.
  */
-export function deviceRtc(id: string, sdp: string, port: number, iceServers: string[]): Promise<{ sdp: string }> {
+export function deviceRtc(id: string, sdp: string, port: number): Promise<{ sdp: string }> {
   return apiCall(`/api/devices/${id}/rtc`, {
     method: "POST",
-    body: JSON.stringify({ sdp, port, ice_servers: iceServers }),
+    body: JSON.stringify({ sdp, port }),
   })
 }
 

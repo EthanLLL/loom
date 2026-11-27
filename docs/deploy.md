@@ -409,8 +409,23 @@ Connect, for macOS devices, shows the Mac's screen. It needs on the Mac either
 `127.0.0.1:5960`) or Screen Sharing turned on (System Settings → General →
 Sharing), which Loom uses over VNC on 5900 when the first is not running. The
 browser reaches the Mac directly over WebRTC when the networks allow it, using
-public STUN servers and no TURN; otherwise Loom relays it over
-`/devices/<id>/port/<port>`.
+public STUN servers; otherwise through a TURN relay, if one is configured; and
+otherwise Loom relays it over `/devices/<id>/port/<port>`, which goes over TCP
+through wherever Loom runs and is the slowest of the three.
+
+The relay is Amazon Kinesis Video Streams' TURN (pay per use, no server of
+your own), through a signaling channel made once:
+
+```sh
+aws kinesisvideo create-signaling-channel --region <region> --channel-name loom-connect
+```
+
+`LOOM_TURN_KVS_CHANNEL` is its ARN, and `LOOM_TURN_AWS_PROFILE` an AWS
+profile allowed `kinesisvideo:GetSignalingChannelEndpoint` and
+`kinesisvideo:GetIceServerConfig` on it, nothing else: its keys in
+`~/.aws/credentials`, or a `credential_process` in `~/.aws/config` (IAM Roles
+Anywhere, SSO), as for the AWS CLI. Without a profile the `AWS_*` variables
+are used. Pick the region nearest both ends: the relay sits between them.
 
 ## 11. Push notifications
 

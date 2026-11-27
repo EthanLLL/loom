@@ -8,8 +8,10 @@ defmodule LoomWeb.DevicesController do
   The dialog turns it into `curl -fsSL <origin>/node/install/<code> | sh`; see
   `LoomWeb.NodeInstallController`.
 
-  Connect, the device's own screen, is `rtc/2` for a direct line from the
-  browser to a port on it, and `port/2` for the relay when there is none.
+  Connect, the device's own screen, is `ice/2` for the servers a line is
+  found through, `rtc/2` for a line from the browser to a port on the device
+  (direct, or through a TURN relay), and `port/2` for the relay through Loom
+  when there is none.
   """
   use LoomWeb, :controller
 
@@ -19,6 +21,12 @@ defmodule LoomWeb.DevicesController do
   @rtc_timeout 15_000
 
   def index(conn, _params), do: json(conn, %{nodes: Nodes.list()})
+
+  @doc """
+  `{stun, turn}`: STUN URLs, and TURN servers as RTCIceServer (none when no
+  relay is configured), for the browser's side of `rtc/2`. See `Loom.Turn`.
+  """
+  def ice(conn, _params), do: json(conn, %{stun: Loom.Turn.stun(), turn: Loom.Turn.ice_servers()})
 
   def create(conn, params) do
     case Nodes.create(params["name"]) do
@@ -50,14 +58,13 @@ defmodule LoomWeb.DevicesController do
 
   @doc """
   Hands the browser's WebRTC offer, for a `port` on the device's loopback, to
-  the device and answers with the device's: `{sdp}`. The two then find a way to each other, or don't, without
-  loom (see node/rtc.go). 409 when the device is offline, 502 when it
+  the device and answers with the device's: `{sdp}`. The two then find a way
+  to each other, or don't, without loom (see node/rtc.go). The device is
+  given the same servers as `ice/2` gives the browser. 409 when the device is offline, 502 when it
   refused, 504 when it didn't answer (a loom-node from before this).
   """
-  def rtc(conn, %{"id" => id, "sdp" => sdp, "port" => port} = params)
+  def rtc(conn, %{"id" => id, "sdp" => sdp, "port" => port})
       when is_binary(sdp) and is_integer(port) do
-    servers = for s <- List.wrap(params["ice_servers"]), is_binary(s), do: s
-
     case Nodes.lookup_id(id) do
       {:ok, channel} ->
         req = Base.url_encode64(:crypto.strong_rand_bytes(9), padding: false)
@@ -66,7 +73,12 @@ defmodule LoomWeb.DevicesController do
         send(
           channel,
           {:node_send, self(), req, "rtc_offer",
-           %{"sdp" => sdp, "ice_servers" => servers, "port" => port}}
+           %{
+             "sdp" => sdp,
+             "ice_servers" => Loom.Turn.stun(),
+             "turn_servers" => Loom.Turn.ice_servers(),
+             "port" => port
+           }}
         )
 
         receive do

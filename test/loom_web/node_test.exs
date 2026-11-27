@@ -231,22 +231,29 @@ defmodule LoomWeb.NodeTest do
 
       task =
         Task.async(fn ->
-          post(user(), "/api/devices/#{node.id}/rtc", %{
-            "sdp" => "offer",
-            "port" => 5900,
-            "ice_servers" => ["stun:example.org:3478", 7]
-          })
+          post(user(), "/api/devices/#{node.id}/rtc", %{"sdp" => "offer", "port" => 5900})
         end)
+
+      # Loom's own servers, not any the browser names; no relay configured here.
+      stun = Loom.Turn.stun()
 
       assert_push "rtc_offer", %{
         "id" => id,
         "sdp" => "offer",
         "port" => 5900,
-        "ice_servers" => ["stun:example.org:3478"]
+        "ice_servers" => ^stun,
+        "turn_servers" => []
       }
 
       push(socket, "rtc_answer", %{"id" => id, "sdp" => "answer"})
       assert %{"sdp" => "answer"} = Task.await(task) |> json_response(200)
+    end
+
+    test "ice gives the browser the same servers" do
+      assert %{"stun" => stun, "turn" => []} =
+               user() |> get("/api/devices/ice") |> json_response(200)
+
+      assert stun == Loom.Turn.stun()
     end
 
     test "rtc passes on the device's refusal, and refuses an offline device" do

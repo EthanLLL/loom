@@ -12,6 +12,9 @@ export type VncLine = {
   channel: string | WebSocket | RTCDataChannel
   // Said beside the title, e.g. how the line goes.
   note?: string
+  // For loom-mac-screen (its Capture.Line): the Mac's own network, across
+  // the internet or a relay, or round by loom (and when not said).
+  kind?: "lan" | "wan" | "narrow"
   close?: () => void
 }
 

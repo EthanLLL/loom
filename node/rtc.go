@@ -18,10 +18,11 @@ import (
 // passed through loom. The offer names a port on loopback; each data channel
 // the browser opens, labelled "tcp:<port>", is joined to it, as tcp.go does
 // over loom.
-// No relay (TURN) server: when no direct path is found, the browser falls
-// back to tcp.go, and loom is the relay.
+// When loom has a TURN relay (lib/loom/turn.ex), both sides are given it and
+// use it when no direct path is found; when there is none either, the
+// browser falls back to tcp.go, and loom is the relay.
 //
-//	loom → device: rtc_offer {id, sdp, ice_servers, port}
+//	loom → device: rtc_offer {id, sdp, ice_servers, turn_servers, port}
 //	device → loom: rtc_answer {id, sdp}, error {id, message}
 //
 // Non-trickle: the answer goes back with every candidate in it. The peer
@@ -29,8 +30,8 @@ import (
 // ends, as everything else does.
 
 const (
-	// For the STUN servers to answer: until a little after the first does,
-	// or the most it is waited. Some never answer from some networks
+	// For the STUN servers to answer (or, given a relay, the relay): until
+	// a little after the first does, or the most it is waited. Some never answer from some networks
 	// (stun.miwifi.com from a home line), and waiting for all of them, as
 	// gathering "complete" does, held the answer up the whole time.
 	srflxGrace  = 300 * time.Millisecond
@@ -76,6 +77,7 @@ func (s *session) answer(r request) (string, error) {
 			servers = append(servers, webrtc.ICEServer{URLs: []string{u}})
 		}
 	}
+	servers = append(servers, r.TurnServers...)
 	pc, err := api.NewPeerConnection(webrtc.Configuration{ICEServers: servers})
 	if err != nil {
 		return "", err
@@ -117,8 +119,12 @@ func (s *session) answer(r request) (string, error) {
 	gathered := webrtc.GatheringCompletePromise(pc)
 	reflexive := make(chan struct{})
 	var first sync.Once
+	want := webrtc.ICECandidateTypeSrflx
+	if len(r.TurnServers) > 0 {
+		want = webrtc.ICECandidateTypeRelay
+	}
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
-		if c != nil && c.Typ == webrtc.ICECandidateTypeSrflx {
+		if c != nil && c.Typ == want {
 			first.Do(func() { close(reflexive) })
 		}
 	})

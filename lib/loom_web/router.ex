@@ -57,6 +57,7 @@ defmodule LoomWeb.Router do
     put "/layout", LayoutController, :update
 
     get "/devices", DevicesController, :index
+    get "/devices/ice", DevicesController, :ice
     post "/devices", DevicesController, :create
     patch "/devices/:id", DevicesController, :update
     delete "/devices/:id", DevicesController, :delete

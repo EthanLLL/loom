@@ -60,6 +60,14 @@ config :loom, Loom.Push.APNs,
   key_id: System.get_env("LOOM_APNS_KEY_ID"),
   team_id: System.get_env("LOOM_APNS_TEAM_ID")
 
+# A TURN relay for Connect lines no direct path is found for (Loom.Turn):
+# Kinesis Video Streams' TURN, through the signaling channel with this ARN,
+# with the credentials of this AWS profile (or the AWS_* variables). Unset,
+# such a line goes round by Loom.
+config :loom, Loom.Turn,
+  kvs_channel: System.get_env("LOOM_TURN_KVS_CHANNEL"),
+  aws_profile: System.get_env("LOOM_TURN_AWS_PROFILE")
+
 # The same app's id (`<team id>.<bundle id>`), named in
 # /.well-known/apple-app-site-association so it may use this Loom's passkeys
 # and saved password for its own sign-in screen. Comma-separated for more

@@ -279,6 +279,8 @@ type request struct {
 	SDP     string `json:"sdp"`
 
 	IceServers []string `json:"ice_servers"`
+	// RTCIceServer, as the browser has them: {urls, username, credential}.
+	TurnServers []webrtc.ICEServer `json:"turn_servers"`
 }
 
 func (s *session) handle(event string, payload json.RawMessage) {

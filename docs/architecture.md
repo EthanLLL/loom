@@ -380,7 +380,13 @@ agent ──zsh──> loom-node exec mac -- '…'      CLI, on this host
   networks allow: the browser's WebRTC offer goes to the device as
   `rtc_offer` (`POST /api/devices/:id/rtc`), its `rtc_answer` comes back with
   every candidate in it, and the two punch through on their own; a data
-  channel labelled `tcp:<port>` is the line. No TURN server: when no path is
+  channel labelled `tcp:<port>` is the line. Both sides get the same servers
+  (`GET /api/devices/ice`, `Loom.Turn`): public STUN, and, when one is
+  configured, a TURN relay, which both use when no direct path is found
+  (Kinesis Video Streams', with short-lived credentials minted per connect).
+  The client tells loom-mac-screen what kind of line it got (`lan`, `wan`
+  for direct across the internet or relayed, `narrow` through loom), which
+  sets the picture's size and rate there. When no path is
   found within seconds, the client falls back to `/devices/:id/port/:port`, a
   WebSocket that loom relays as `tcp_open`, `tcp_in`, `tcp_out`,
   `tcp_closed` (`LoomWeb.DevicePortSocket`). Loopback ports only, and they
